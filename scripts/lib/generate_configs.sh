@@ -204,10 +204,23 @@ EOF
 
     log_success "pubspec.yaml updated with asset configuration"
 
+    # Verify configuration was added
+    if ! grep -q "flutter_launcher_icons:" "$pubspec"; then
+        log_error "Failed to add flutter_launcher_icons configuration to pubspec.yaml"
+        return 1
+    fi
+
     # Run flutter pub get to update dependencies with new config
     log_info "Running flutter pub get to apply changes..."
+    echo ""
     cd "$app_name" || return 1
-    flutter pub get > /dev/null 2>&1
+
+    if ! flutter pub get; then
+        log_error "flutter pub get failed"
+        cd .. || return 1
+        return 1
+    fi
+
     cd .. || return 1
     log_success "Dependencies updated"
 

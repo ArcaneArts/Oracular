@@ -1,16 +1,14 @@
 name: arcane_beamer
 description: "A New Arcane project thats Designed with BEAMER as the URL Web Navigation"
 publish_to: 'none'
-
 version: 1.0.0+1
-
 environment:
   sdk: ^3.9.2
-
 dependencies:
   flutter:
     sdk: flutter
 
+  # ARCANE - specific. (arcane_desktop, arcane, arcane_auth, and related.)
   arcane: ^6.5.2
   arcane_fluf: ^1.3.0
   arcane_auth: ^1.8.1
@@ -19,57 +17,75 @@ dependencies:
   toxic: ^1.3.8
   fire_crud: ^3.1.14
   pylon: ^3.2.0
+  package_info_plus: ^9.0.0
+  fast_log: ^1.0.7
+  beamer: ^1.7.0  # THIS IS A BEAMER SPECIFIC APP, BEAMER DOES THE NAVIGATION/URL HANDLING
+  artifact: ^1.0.19 # This is the Models and Data Structures used across Arcane Apps.
+
+  # ARCANE DESKTOP - Transient [Only enabled if building for desktop]
+  #  arcane_desktop: 2.1.0 # Disabled for now, as this is a cross-platform app, not desktop only.
+  #  flutter_acrylic: ^1.1.4          #NEEEDED FOR: arcane_desktop
+  #  window_manager: ^0.5.1           #NEEEDED FOR: arcane_desktop
+  #  modern_titlebar_buttons: ^1.1.2  #NEEEDED FOR: arcane_desktop
+  # ARCANE - Transient
+
+  # Utility
   rxdart: ^0.28.0
-#  fire_api_flutter: ^1.5.1
-#  fire_api: ^1.5.1
-#  firebase_core: ^4.0.0
-#  firebase_auth: ^6.0.0
-#  cloud_firestore: ^6.0.0
-#  firebase_analytics: ^12.0.0
-#  firebase_crashlytics: ^5.0.0
-#  firebase_performance: ^0.11.0
-#  firebase_storage: ^13.0.0
-#  google_sign_in: ^6.3.0
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   flutter_native_splash: ^2.4.7
   serviced: ^1.0.3
-  fast_log: ^1.0.7
+  lottie: ^3.3.2
+  file_picker: ^10.3.6
+  jiffy: ^6.4.3
   http: ^1.6.0
+  throttled: ^1.0.1
+  crypto: ^3.0.7
+  connectivity_plus: ^7.0.0
+  flutter_svg: any
+  synchronized: ^3.4.0
   convert: ^3.1.2
-  universal_io: ^2.2.2
   intl: ^0.20.2
   duration: ^4.0.3
   decimal: ^3.2.4
   rational: ^2.2.3
   timeago: ^3.7.1
-  crypto: ^3.0.7
   tinycolor2: ^3.0.1
   url_launcher: ^6.3.2
-  beamer: ^1.7.0
-  email_validator: ^3.0.0
   tryhard: ^1.0.1
-  throttled: ^1.0.1
   cached_network_image: ^3.4.1
   faker: ^2.2.0
-  artifact: ^1.0.19
+  universal_io: ^2.2.2
+  email_validator: ^3.0.0
+
+# FIREBASE - (For Arcane Apps that want Firebase Integration)
+# {all firebase dependencies here}
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  flutter_lints: ^5.0.0
-  flutter_launcher_icons: ^0.14.2
-
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 flutter:
-
+  shaders:
+    - packages/arcane/resources/shaders/frost.frag
+    - packages/arcane/resources/shaders/pixelate.frag
+    - packages/arcane/resources/shaders/pixelate_blur.frag
+    - packages/arcane/resources/shaders/rgb.frag
+    - packages/arcane/resources/shaders/loader.frag
+    - packages/arcane/resources/shaders/glyph.frag
+    - packages/arcane/resources/shaders/invert.frag
+    - packages/arcane/resources/shaders/warp.frag
+    - packages/arcane/resources/shaders/black_hole.frag
+    - packages/arcane/resources/shaders/lux.frag
+    - packages/arcane/resources/shaders/cascade.frag
+    - packages/arcane/resources/shaders/edge.frag
+    - packages/arcane/resources/shaders/arcane_blur.frag
   uses-material-design: true
-
   assets:
     - assets/icon/
-
 flutter_native_splash:
-  color: "#230055"
+  color: "#000000"
   image: assets/icon/splash.png
 
 flutter_launcher_icons:
@@ -82,3 +98,7 @@ flutter_launcher_icons:
     generate: true
   macos:
     generate: true
+
+scripts:
+  pod_install_mac: cd macos && rm Podfile.lock && pod install --repo-update
+  pod_install_ios: cd ios && rm Podfile.lock && pod install --repo-update

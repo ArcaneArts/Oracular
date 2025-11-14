@@ -16,18 +16,9 @@ firebase_login() {
         return 1
     fi
 
-    log_info "Logging into Firebase..."
     echo ""
-
-    firebase login
-
-    if [ $? -ne 0 ]; then
-        log_error "Firebase login failed"
-        return 1
-    fi
-
-    log_success "Firebase login successful"
-    return 0
+    retry_command "Login to Firebase" firebase login
+    return $?
 }
 
 gcloud_login() {
@@ -39,18 +30,9 @@ gcloud_login() {
         return 1
     fi
 
-    log_info "Logging into Google Cloud..."
     echo ""
-
-    gcloud auth login
-
-    if [ $? -ne 0 ]; then
-        log_error "Google Cloud login failed"
-        return 1
-    fi
-
-    log_success "Google Cloud login successful"
-    return 0
+    retry_command "Login to Google Cloud" gcloud auth login
+    return $?
 }
 
 flutterfire_configure() {
@@ -67,24 +49,16 @@ flutterfire_configure() {
 
     cd "$app_name" || return 1
 
-    log_info "Running flutterfire configure..."
     log_info "This will create firebase_options.dart and register your app with Firebase"
     echo ""
 
-    flutterfire configure \
-        --project="$firebase_project_id" \
-        --platforms=android,ios,macos,web,linux,windows
-
-    if [ $? -ne 0 ]; then
-        log_error "FlutterFire configuration failed"
-        cd ..
+    if retry_command "Configure FlutterFire" flutterfire configure --project="$firebase_project_id" --platforms=android,ios,macos,web,linux,windows; then
+        cd .. || return 1
+        return 0
+    else
+        cd .. || return 1
         return 1
     fi
-
-    cd .. || return 1
-
-    log_success "FlutterFire configuration complete"
-    return 0
 }
 
 enable_google_apis() {
@@ -97,14 +71,15 @@ enable_google_apis() {
         return 0
     fi
 
+    echo ""
     log_info "Setting Google Cloud project..."
-    gcloud config set project "$firebase_project_id"
+    retry_command "Set Google Cloud project" gcloud config set project "$firebase_project_id" || return 1
 
     log_info "Enabling Artifact Registry API..."
-    gcloud services enable artifactregistry.googleapis.com
+    retry_command "Enable Artifact Registry API" gcloud services enable artifactregistry.googleapis.com || return 1
 
     log_info "Enabling Cloud Run API..."
-    gcloud services enable run.googleapis.com
+    retry_command "Enable Cloud Run API" gcloud services enable run.googleapis.com || return 1
 
     log_success "Google Cloud APIs enabled"
     return 0

@@ -182,6 +182,70 @@ run_command() {
     fi
 }
 
+# Run command with retry logic
+# Usage: retry_command "description" command args...
+retry_command() {
+    local description="$1"
+    shift
+
+    local attempt=1
+    local max_auto_retries=2
+
+    while true; do
+        if [ $attempt -eq 1 ]; then
+            log_info "Running: $description"
+        else
+            log_info "Retry attempt $attempt: $description"
+        fi
+
+        # Run the command
+        if "$@"; then
+            log_success "Completed: $description"
+            return 0
+        fi
+
+        # Command failed
+        log_error "Failed: $description"
+
+        # Auto-retry once
+        if [ $attempt -lt $max_auto_retries ]; then
+            log_warning "Retrying automatically..."
+            echo ""
+            attempt=$((attempt + 1))
+            sleep 1
+            continue
+        fi
+
+        # After auto-retry fails, ask user
+        echo ""
+        log_warning "Command has failed $attempt times"
+        echo ""
+
+        local choice
+        while true; do
+            read -p "$(echo -e ${YELLOW}?${NC}) Do you want to (r)etry, (s)kip, or (a)bort? [r/s/a]: " choice
+            case "$choice" in
+                [Rr]* )
+                    attempt=$((attempt + 1))
+                    echo ""
+                    break
+                    ;;
+                [Ss]* )
+                    log_warning "Skipping: $description"
+                    return 1
+                    ;;
+                [Aa]* )
+                    log_error "Aborting setup"
+                    exit 1
+                    ;;
+                * )
+                    echo "Please answer (r)etry, (s)kip, or (a)bort"
+                    ;;
+            esac
+        done
+    done
+}
+
 # Create directory if it doesn't exist
 ensure_directory() {
     local dir_path="$1"

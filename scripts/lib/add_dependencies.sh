@@ -15,9 +15,8 @@ add_client_dependencies() {
 
     cd "$app_name" || return 1
 
-    log_info "Adding core Arcane and utility dependencies..."
-
-    flutter pub add \
+    echo ""
+    if ! retry_command "Add core Arcane and utility dependencies" flutter pub add \
         arcane \
         arcane_fluf \
         arcane_auth \
@@ -47,21 +46,14 @@ add_client_dependencies() {
         throttled \
         cached_network_image \
         faker \
-        artifact
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to add core dependencies to client app"
+        artifact; then
         cd ..
         return 1
     fi
 
-    log_success "Core dependencies added"
-
     # Add Firebase dependencies if requested
     if [ "$use_firebase" = "yes" ]; then
-        log_info "Adding Firebase dependencies..."
-
-        flutter pub add \
+        retry_command "Add Firebase dependencies" flutter pub add \
             firebase_core \
             firebase_auth \
             cloud_firestore \
@@ -72,25 +64,11 @@ add_client_dependencies() {
             fire_crud \
             fire_api \
             fire_api_flutter \
-            google_sign_in
-
-        if [ $? -ne 0 ]; then
-            log_warning "Failed to add some Firebase dependencies (you can add them manually later)"
-        else
-            log_success "Firebase dependencies added"
-        fi
+            google_sign_in || log_warning "Skipping Firebase dependencies (failed)"
     fi
 
     # Add dev dependencies
-    log_info "Adding dev dependencies..."
-
-    flutter pub add --dev flutter_launcher_icons
-
-    if [ $? -ne 0 ]; then
-        log_warning "Failed to add dev dependencies"
-    else
-        log_success "Dev dependencies added"
-    fi
+    retry_command "Add dev dependencies" flutter pub add --dev flutter_launcher_icons || log_warning "Skipping dev dependencies (failed)"
 
     cd .. || return 1
 
@@ -107,9 +85,8 @@ add_models_dependencies() {
 
     cd "$models_name" || return 1
 
-    log_info "Adding core dependencies..."
-
-    flutter pub add \
+    echo ""
+    if ! retry_command "Add core dependencies to models" flutter pub add \
         crypto \
         dart_mappable \
         equatable \
@@ -118,39 +95,18 @@ add_models_dependencies() {
         rxdart \
         fast_log \
         jiffy \
-        throttled
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to add core dependencies to models package"
+        throttled; then
         cd ..
         return 1
     fi
 
-    log_success "Core dependencies added"
-
     # Add Firebase dependencies if requested
     if [ "$use_firebase" = "yes" ]; then
-        log_info "Adding Firebase dependencies..."
-
-        flutter pub add fire_api
-
-        if [ $? -ne 0 ]; then
-            log_warning "Failed to add Firebase dependencies"
-        else
-            log_success "Firebase dependencies added"
-        fi
+        retry_command "Add Firebase dependencies to models" flutter pub add fire_api || log_warning "Skipping Firebase dependencies (failed)"
     fi
 
     # Add dev dependencies
-    log_info "Adding dev dependencies..."
-
-    flutter pub add --dev build_runner dart_mappable_builder
-
-    if [ $? -ne 0 ]; then
-        log_warning "Failed to add dev dependencies"
-    else
-        log_success "Dev dependencies added"
-    fi
+    retry_command "Add dev dependencies to models" flutter pub add --dev build_runner dart_mappable_builder || log_warning "Skipping dev dependencies (failed)"
 
     cd .. || return 1
 
@@ -167,9 +123,8 @@ add_server_dependencies() {
 
     cd "$server_name" || return 1
 
-    log_info "Adding core dependencies..."
-
-    flutter pub add \
+    echo ""
+    if ! retry_command "Add core dependencies to server" flutter pub add \
         fire_crud \
         shelf \
         shelf_router \
@@ -185,27 +140,14 @@ add_server_dependencies() {
         crypto \
         dart_jsonwebtoken \
         x509 \
-        jiffy
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to add core dependencies to server app"
+        jiffy; then
         cd ..
         return 1
     fi
 
-    log_success "Core dependencies added"
-
     # Add Firebase dependencies if requested
     if [ "$use_firebase" = "yes" ]; then
-        log_info "Adding Firebase dependencies..."
-
-        flutter pub add fire_api fire_api_dart
-
-        if [ $? -ne 0 ]; then
-            log_warning "Failed to add Firebase dependencies"
-        else
-            log_success "Firebase dependencies added"
-        fi
+        retry_command "Add Firebase dependencies to server" flutter pub add fire_api fire_api_dart || log_warning "Skipping Firebase dependencies (failed)"
     fi
 
     cd .. || return 1

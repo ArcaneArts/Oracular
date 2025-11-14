@@ -21,10 +21,8 @@ create_client_app() {
         fi
     fi
 
-    log_info "Running flutter create for client app..."
     echo ""
-
-    flutter create \
+    retry_command "Create client app" flutter create \
         --platforms=android,ios,web,linux,windows,macos \
         -a java \
         -t app \
@@ -34,14 +32,7 @@ create_client_app() {
         --project-name "$app_name" \
         --overwrite \
         "$app_name"
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to create client app"
-        return 1
-    fi
-
-    log_success "Client app created: $app_name"
-    return 0
+    return $?
 }
 
 create_models_package() {
@@ -58,23 +49,14 @@ create_models_package() {
         fi
     fi
 
-    log_info "Running flutter create for models package..."
     echo ""
-
-    flutter create \
+    retry_command "Create models package" flutter create \
         -t package \
         --suppress-analytics \
         --project-name "$models_name" \
         --overwrite \
         "$models_name"
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to create models package"
-        return 1
-    fi
-
-    log_success "Models package created: $models_name"
-    return 0
+    return $?
 }
 
 create_server_app() {
@@ -92,10 +74,8 @@ create_server_app() {
         fi
     fi
 
-    log_info "Running flutter create for server app..."
     echo ""
-
-    flutter create \
+    retry_command "Create server app" flutter create \
         --platforms=linux \
         -t app \
         --suppress-analytics \
@@ -104,14 +84,7 @@ create_server_app() {
         --project-name "$server_name" \
         --overwrite \
         "$server_name"
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to create server app"
-        return 1
-    fi
-
-    log_success "Server app created: $server_name"
-    return 0
+    return $?
 }
 
 link_models_to_projects() {

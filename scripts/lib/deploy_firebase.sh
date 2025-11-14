@@ -15,18 +15,9 @@ deploy_firestore() {
         return 1
     fi
 
-    log_info "Deploying Firestore rules and indexes..."
     echo ""
-
-    firebase deploy --only firestore
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to deploy Firestore"
-        return 1
-    fi
-
-    log_success "Firestore deployed successfully"
-    return 0
+    retry_command "Deploy Firestore rules and indexes" firebase deploy --only firestore
+    return $?
 }
 
 deploy_storage() {
@@ -37,18 +28,9 @@ deploy_storage() {
         return 1
     fi
 
-    log_info "Deploying Storage rules..."
     echo ""
-
-    firebase deploy --only storage
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to deploy Storage"
-        return 1
-    fi
-
-    log_success "Storage deployed successfully"
-    return 0
+    retry_command "Deploy Storage rules" firebase deploy --only storage
+    return $?
 }
 
 build_web_app() {
@@ -58,21 +40,14 @@ build_web_app() {
 
     cd "$app_name" || return 1
 
-    log_info "Running flutter build web --release..."
     echo ""
-
-    flutter build web --release
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to build web app"
-        cd ..
+    if retry_command "Build web app for production" flutter build web --release; then
+        cd .. || return 1
+        return 0
+    else
+        cd .. || return 1
         return 1
     fi
-
-    cd .. || return 1
-
-    log_success "Web app built successfully"
-    return 0
 }
 
 deploy_hosting_release() {
@@ -83,18 +58,9 @@ deploy_hosting_release() {
         return 1
     fi
 
-    log_info "Deploying to Firebase Hosting (release target)..."
     echo ""
-
-    firebase deploy --only hosting:release
-
-    if [ $? -ne 0 ]; then
-        log_error "Failed to deploy to hosting (release)"
-        return 1
-    fi
-
-    log_success "Release hosting deployed successfully"
-    return 0
+    retry_command "Deploy to Firebase Hosting (release)" firebase deploy --only hosting:release
+    return $?
 }
 
 deploy_hosting_beta() {
@@ -105,19 +71,9 @@ deploy_hosting_beta() {
         return 1
     fi
 
-    log_info "Deploying to Firebase Hosting (beta target)..."
     echo ""
-
-    firebase deploy --only hosting:beta
-
-    if [ $? -ne 0 ]; then
-        log_warning "Failed to deploy to hosting (beta)"
-        log_instruction "Make sure you've created the beta site in Firebase Console"
-        return 1
-    fi
-
-    log_success "Beta hosting deployed successfully"
-    return 0
+    retry_command "Deploy to Firebase Hosting (beta)" firebase deploy --only hosting:beta
+    return $?
 }
 
 deploy_all_firebase() {
@@ -135,9 +91,28 @@ deploy_all_firebase() {
 
         deploy_hosting_release
 
-        log_info "To deploy beta, ensure you've created the beta site in Firebase Console"
-        if confirm "Do you want to deploy to beta hosting site?"; then
-            deploy_hosting_beta
+        # Beta hosting setup instructions
+        echo ""
+        log_step "Beta Hosting Site Setup"
+        log_info "Firebase Hosting allows multiple sites for staging/preview environments."
+        echo ""
+        log_instruction "To deploy a beta version, you need to create a second hosting site:"
+        log_instruction "1. Open: https://console.firebase.google.com/project/$FIREBASE_PROJECT_ID/hosting/sites"
+        log_instruction "2. Scroll down and click 'Add another site'"
+        log_instruction "3. Enter Site ID: ${FIREBASE_PROJECT_ID}-beta"
+        log_instruction "4. Click 'Add site'"
+        echo ""
+        log_info "This creates a separate URL for beta testing (${FIREBASE_PROJECT_ID}-beta.web.app)"
+        echo ""
+
+        if confirm "Have you created the beta hosting site in Firebase Console?"; then
+            echo ""
+            if confirm "Do you want to deploy to beta hosting site now?"; then
+                deploy_hosting_beta
+            fi
+        else
+            log_info "Skipping beta deployment. You can deploy later using:"
+            log_instruction "  firebase deploy --only hosting:beta"
         fi
     fi
 

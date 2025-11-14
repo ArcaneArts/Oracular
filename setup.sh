@@ -112,8 +112,12 @@ main() {
     print_header "Step 3: Firebase Configuration (Optional)"
     configure_firebase_options
 
-    # Step 4: Show summary and confirm
-    print_header "Step 4: Configuration Summary"
+    # Step 4: Asset generation options
+    print_header "Step 4: Asset Generation Options"
+    configure_asset_generation
+
+    # Step 5: Show summary and confirm
+    print_header "Step 5: Configuration Summary"
     show_configuration_summary
 
     if ! confirm "Proceed with these settings?"; then
@@ -124,45 +128,45 @@ main() {
     # Save configuration
     save_configuration
 
-    # Step 5: Create projects
-    print_header "Step 5: Creating Projects"
+    # Step 6: Create projects
+    print_header "Step 6: Creating Projects"
     create_all_projects "$APP_NAME" "$ORG_DOMAIN" || exit 1
 
-    # Step 6: Add dependencies
-    print_header "Step 6: Adding Dependencies"
+    # Step 7: Add dependencies
+    print_header "Step 7: Adding Dependencies"
     add_all_dependencies "$APP_NAME" "$USE_FIREBASE" || exit 1
 
-    # Step 7: Setup Firebase (if enabled)
+    # Step 8: Setup Firebase (if enabled)
     if [ "$USE_FIREBASE" = "yes" ]; then
-        print_header "Step 7: Setting Up Firebase"
+        print_header "Step 8: Setting Up Firebase"
         setup_firebase_integration
     fi
 
-    # Step 8: Generate configuration files
-    print_header "Step 8: Generating Configuration Files"
+    # Step 9: Generate configuration files
+    print_header "Step 9: Generating Configuration Files"
     if [ "$USE_FIREBASE" = "yes" ]; then
         generate_all_configs "$APP_NAME" "$FIREBASE_PROJECT_ID"
     fi
 
-    # Step 9: Copy template assets
-    print_header "Step 9: Setting Up Assets"
+    # Step 10: Copy template assets
+    print_header "Step 10: Setting Up Assets"
     copy_template_assets "$APP_NAME" "$TEMPLATE_DIR"
     update_pubspec_for_assets "$APP_NAME"
 
-    # Step 10: Configure platform versions and generate assets
-    print_header "Step 10: Generating App Icons and Splash Screens"
-    generate_all_assets "$APP_NAME"
+    # Step 11: Configure platform versions and generate assets
+    print_header "Step 11: Generating App Icons and Splash Screens"
+    generate_all_assets "$APP_NAME" "$GENERATE_ICONS" "$GENERATE_SPLASH"
 
-    # Step 11: Setup server
-    print_header "Step 11: Setting Up Server"
+    # Step 12: Setup server
+    print_header "Step 12: Setting Up Server"
     setup_server "$APP_NAME"
 
-    # Step 12: Clean up test folders
+    # Step 13: Clean up test folders
     delete_test_folders "$APP_NAME"
 
-    # Step 13: Optional Firebase deployment
+    # Step 14: Optional Firebase deployment
     if [ "$USE_FIREBASE" = "yes" ]; then
-        print_header "Step 13: Firebase Deployment (Optional)"
+        print_header "Step 14: Firebase Deployment (Optional)"
         if confirm "Do you want to deploy Firebase resources now?"; then
             deploy_all_firebase "$APP_NAME"
         else
@@ -342,6 +346,30 @@ configure_firebase_options() {
     fi
 }
 
+configure_asset_generation() {
+    log_step "Asset Generation Configuration"
+
+    log_info "The setup can automatically generate app icons and splash screens."
+    log_instruction "• App icons: Generated for all platforms from a 1024x1024 PNG"
+    log_instruction "• Splash screens: Generated for all platforms from your splash image"
+    echo ""
+
+    if confirm "Do you want to generate app icons?"; then
+        GENERATE_ICONS="yes"
+    else
+        GENERATE_ICONS="no"
+        log_info "Skipping icon generation (you can run it manually later)"
+    fi
+
+    echo ""
+    if confirm "Do you want to generate splash screens?"; then
+        GENERATE_SPLASH="yes"
+    else
+        GENERATE_SPLASH="no"
+        log_info "Skipping splash generation (you can run it manually later)"
+    fi
+}
+
 show_configuration_summary() {
     log_step "Configuration Summary"
 
@@ -367,6 +395,11 @@ show_configuration_summary() {
         log_info "Firebase: Not configured"
     fi
     echo ""
+
+    log_info "Asset Generation:"
+    log_instruction "  App Icons: $GENERATE_ICONS"
+    log_instruction "  Splash Screens: $GENERATE_SPLASH"
+    echo ""
 }
 
 save_configuration() {
@@ -386,6 +419,8 @@ TEMPLATE_NAME=$TEMPLATE_NAME
 USE_FIREBASE=$USE_FIREBASE
 FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID
 SETUP_CLOUD_RUN=$SETUP_CLOUD_RUN
+GENERATE_ICONS=$GENERATE_ICONS
+GENERATE_SPLASH=$GENERATE_SPLASH
 EOF
 
     log_success "Configuration saved to $CONFIG_FILE"
@@ -424,12 +459,25 @@ show_final_summary() {
     log_instruction "   flutter run"
     echo ""
 
-    log_instruction "2. Customize your app icons and splash screen:"
-    log_instruction "   • Replace $APP_NAME/assets/icon/icon.png (1024x1024)"
-    log_instruction "   • Replace $APP_NAME/assets/icon/splash.png"
-    log_instruction "   • Run: cd $APP_NAME && dart run flutter_launcher_icons"
-    log_instruction "   • Run: cd $APP_NAME && dart run flutter_native_splash:create"
-    echo ""
+    if [ "$GENERATE_ICONS" = "no" ] || [ "$GENERATE_SPLASH" = "no" ]; then
+        log_instruction "2. Generate app icons and splash screens (skipped during setup):"
+        if [ "$GENERATE_ICONS" = "no" ]; then
+            log_instruction "   • Add your icon: $APP_NAME/assets/icon/icon.png (1024x1024)"
+            log_instruction "   • Run: cd $APP_NAME && dart run flutter_launcher_icons"
+        fi
+        if [ "$GENERATE_SPLASH" = "no" ]; then
+            log_instruction "   • Add your splash: $APP_NAME/assets/icon/splash.png"
+            log_instruction "   • Run: cd $APP_NAME && dart run flutter_native_splash:create"
+        fi
+        echo ""
+    else
+        log_instruction "2. Customize your app icons and splash screen (optional):"
+        log_instruction "   • Replace $APP_NAME/assets/icon/icon.png (1024x1024)"
+        log_instruction "   • Replace $APP_NAME/assets/icon/splash.png"
+        log_instruction "   • Re-run: cd $APP_NAME && dart run flutter_launcher_icons"
+        log_instruction "   • Re-run: cd $APP_NAME && dart run flutter_native_splash:create"
+        echo ""
+    fi
 
     if [ "$USE_FIREBASE" = "yes" ]; then
         log_instruction "3. Deploy to Firebase Hosting:"
