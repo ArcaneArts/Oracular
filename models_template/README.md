@@ -540,8 +540,8 @@ Future<Map<String, dynamic>> sendCommand(
 
 - [Main README](../README.md) - Project overview
 - [Server Template](../server_template/README.md) - Backend server guide
-- [FireCrud Documentation](../SoftwareThings/FireCrud.txt) - Complete CRUD guide
-- [Artifact Documentation](../SoftwareThings/Artifact.txt) - Serialization guide
+- [FireCrud Documentation](../references/FireCrud.txt) - Complete CRUD guide
+- [Artifact Documentation](../references/Artifact.txt) - Serialization guide
 
 ## Related Templates
 

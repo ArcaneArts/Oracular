@@ -244,9 +244,9 @@ Card(
 ## Documentation
 
 - [Main README](../README.md) - All templates overview
-- [ArcaneDesign.txt](../SoftwareThings/ArcaneDesign.txt) - Complete component reference
-- [Pylon.txt](../SoftwareThings/Pylon.txt) - State management
-- [Toxic.txt](../SoftwareThings/Toxic.txt) - Utility extensions
+- [ArcaneDesign.txt](../references/ArcaneDesign.txt) - Complete component reference
+- [Pylon.txt](../references/Pylon.txt) - State management
+- [Toxic.txt](../references/Toxic.txt) - Utility extensions
 
 ## Dependencies
 

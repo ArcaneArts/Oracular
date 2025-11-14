@@ -368,8 +368,8 @@ Row(
 
 - [Main README](../README.md) - All templates overview
 - [Beamer Package](https://pub.dev/packages/beamer) - Beamer documentation
-- [ArcaneDesign.txt](../SoftwareThings/ArcaneDesign.txt) - Complete component reference
-- [Pylon.txt](../SoftwareThings/Pylon.txt) - State management
+- [ArcaneDesign.txt](../references/ArcaneDesign.txt) - Complete component reference
+- [Pylon.txt](../references/Pylon.txt) - State management
 
 ## Dependencies
 

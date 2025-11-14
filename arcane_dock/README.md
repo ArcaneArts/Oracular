@@ -342,7 +342,7 @@ Core packages:
 - [Main README](../README.md) - All templates overview
 - [tray_manager](https://pub.dev/packages/tray_manager) - Tray manager package docs
 - [window_manager](https://pub.dev/packages/window_manager) - Window manager package docs
-- [ArcaneDesign.txt](../SoftwareThings/ArcaneDesign.txt) - Complete component reference
+- [ArcaneDesign.txt](../references/ArcaneDesign.txt) - Complete component reference
 
 ## Related Templates
 

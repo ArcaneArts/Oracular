@@ -1,5 +1,5 @@
 name: arcane_template
-description: "A New Arcane project thats Designed with Arcane"
+description: "A New Arcane project that's Designed with Arcane design, and structure in mind."
 publish_to: 'none'
 version: 1.0.0+1
 environment:

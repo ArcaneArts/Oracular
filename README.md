@@ -183,18 +183,18 @@ cd my_app_server
 **Library References:**
 
 UI & Design:
-- [ArcaneDesign.txt](SoftwareThings/ArcaneDesign.txt) - Complete component reference
-- [ArcaneShadDesign.txt](SoftwareThings/ArcaneShadDesign.txt) - Advanced patterns
-- [ArcaneDesktop.txt](SoftwareThings/ArcaneDesktop.txt) - Desktop-specific features
-- [ArcaneSourcecode.txt](SoftwareThings/ArcaneSourcecode.txt) - Internal architecture
+- [ArcaneDesign.txt](references/ArcaneDesign.txt) - Complete component reference
+- [ArcaneShadDesign.txt](references/ArcaneShadDesign.txt) - Advanced patterns
+- [ArcaneDesktop.txt](references/ArcaneDesktop.txt) - Desktop-specific features
+- [ArcaneSourcecode.txt](references/ArcaneSourcecode.txt) - Internal architecture
 
 State & Data:
-- [Pylon.txt](SoftwareThings/Pylon.txt) - State management guide
-- [FireCrud.txt](SoftwareThings/FireCrud.txt) - Firestore CRUD operations
-- [Artifact.txt](SoftwareThings/Artifact.txt) - Data serialization
+- [Pylon.txt](references/Pylon.txt) - State management guide
+- [FireCrud.txt](references/FireCrud.txt) - Firestore CRUD operations
+- [Artifact.txt](references/Artifact.txt) - Data serialization
 
 Utilities:
-- [Toxic.txt](SoftwareThings/Toxic.txt) - Flutter utility extensions
+- [Toxic.txt](references/Toxic.txt) - Flutter utility extensions
 
 ## Key Differences
 

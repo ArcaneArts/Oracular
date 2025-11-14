@@ -67,3 +67,5 @@ arcane_beamer/windows/flutter/generated_plugins.cmake
 arcane_beamer/windows/flutter/generated_plugin_registrant.cc
 
 arcane_beamer/macos/Flutter/GeneratedPluginRegistrant.swift
+
+WARP.md
