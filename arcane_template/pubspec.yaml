@@ -3,13 +3,13 @@ description: "A New Arcane project thats Designed with Arcane"
 publish_to: 'none'
 version: 1.0.0+1
 environment:
-  sdk: ^3.9.2
+  sdk: ^3.10.0
 dependencies:
   flutter:
     sdk: flutter
 
   # ARCANE - Core UI Framework
-  arcane: ^6.5.2
+  arcane: ^6.5.3
   arcane_user: ^1.1.0
 
   # ARCANE - Firebase Integration (added automatically if Firebase is enabled)

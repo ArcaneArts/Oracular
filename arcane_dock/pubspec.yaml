@@ -4,14 +4,14 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.9.2
+  sdk: ^3.10.0
 
 dependencies:
   flutter:
     sdk: flutter
 
   # ARCANE - UI Framework
-  arcane: ^6.5.2
+  arcane: ^6.5.3
 
   # ARCANE - Firebase Integration (added automatically if Firebase is enabled)
   # arcane_fluf: ^1.3.0

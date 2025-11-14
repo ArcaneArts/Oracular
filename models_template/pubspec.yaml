@@ -2,9 +2,8 @@ name: APPNAME_models
 description: Shared models package for APPNAME
 version: 1.0.0
 publish_to: 'none'
-
 environment:
-  sdk: ^3.9.2
+  sdk: ^3.10.0
 
 dependencies:
   artifact: ^1.0.19

@@ -49,3 +49,21 @@ app.*.map.json
 CLAUDE.md
 .claude/
 
+
+*.lock
+
+arcane_template/windows/flutter/generated_plugin_registrant.cc
+
+arcane_template/windows/flutter/generated_plugins.cmake
+
+arcane_template/macos/Flutter/GeneratedPluginRegistrant.swift
+
+arcane_dock/macos/Flutter/GeneratedPluginRegistrant.swift
+
+arcane_dock/macos/Flutter/ephemeral/
+
+arcane_beamer/windows/flutter/generated_plugins.cmake
+
+arcane_beamer/windows/flutter/generated_plugin_registrant.cc
+
+arcane_beamer/macos/Flutter/GeneratedPluginRegistrant.swift
