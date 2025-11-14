@@ -1,0 +1,2757 @@
+========================================================
+                  ARCANE CHEAT SHEET
+========================================================
+
+This cheat sheet provides a quick-reference guide to the arcane Dart library,
+This is a neo-shad design in flutter, which provides a set of tools and utilities for building
+modern, responsive, and visually appealing user interfaces. 
+
+This library is designed to simplify the process of creating complex UI component, and using
+other libraries like Toxic, Firecrud, and others from ArcaneArts.
+
+========================================================
+                  Screens & Navigation
+========================================================
+ArcaneScreens unify sliver and box layouts, headers, gutters, and navigation. Prefer ArcaneScreen unless you need the stricter FillScreen or SliverScreen.
+
+When to use which
+	•	ArcaneScreen: mixed slivers/widgets, simplest default.
+	•	FillScreen: one box child filling the viewport.
+	•	SliverScreen: full control with a single root sliver.
+	•	NavigationScreen: multi-tab layouts with bottom/rail/sidebar/drawer/custom.
+
+Common props
+	•	header: Bar(...): Title, actions, trailing.
+	•	gutter: bool: content edge padding. Default on. Set false for edge-to-edge.
+	•	child: a box widget subtree.
+	•	sliver: a sliver subtree.
+	•	tabs: for navigation only.
+	•	type: NavigationType: bottom, rail, sidebar, drawer, custom.
+
+Headers (Bar)
+	•	titleText, subtitleText
+	•	leading, actions, trailing
+	•	Use small, composable widgets. Avoid heavy layout in bars.
+
+Gutter rules
+	•	Keep gutter on for text-heavy lists and forms.
+	•	Disable gutter for grid galleries, cards, media, or surfaces that want edge-to-edge.
+
+Collections vs Sections
+	•	Collection: ordered set of widgets or slivers.
+	•	Section: a labeled sub-group that can wrap a Collection or any sliver/widget.
+
+Quick starts
+
+Fill layout
+
+FillScreen(
+  header: Bar(titleText: "Header", trailing:[IconButton(icon:Icon(Icons.activity), onPressed:(){})]),
+  child: Center(child: Text("Fill Screen")),
+)
+
+Sliver layout
+
+SliverScreen(
+  gutter: false,
+  header: Bar(titleText: "Header"),
+  sliver: SGridView.builder(
+    childCount: 24, crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 2,
+    builder: (_, i) => Card(child: Center(child: Text("Item $i"))),
+  ),
+)
+
+Preferred: ArcaneScreen
+
+ArcaneScreen(
+  header: Bar(titleText: "Header", trailing:[IconButton(icon:Icon(Icons.activity), onPressed:(){})]),
+  child: Center(child: Text("Arcane Screen")),
+)
+
+Collections and Sections
+
+ArcaneScreen(
+  header: Bar(titleText: "Header"),
+  child: Collection(children: [
+    Tile(title: Text("A")),
+    Tile(title: Text("B")),
+    Section(subtitleText: "Section A", child: Tile(title: Text("C"))),
+    SListView.builder(childCount: 6, builder: (_, i) => Tile(title: Text("$i"))),
+    Section(
+      subtitleText: "Section B",
+      child: Collection(children: [
+        Tile(title: Text("F")),
+        Section(subtitleText: "Section B.2", child: Collection(children: [
+          Tile(title: Text("I")), Tile(title: Text("J")), Tile(title: Text("K")),
+        ])),
+        SListView.builder(childCount: 6, builder: (_, i) => Tile(title: Text("$i"))),
+      ]),
+    ),
+  ]),
+)
+
+Navigation patterns
+
+Tabs (any nav type)
+
+NavigationScreen(
+  type: type, index: index, onIndexChanged: (i)=> setState(()=> index = i),
+  tabs: [
+    NavTab(label:"Tab 1", icon: Icons.activity, selectedIcon: Icons.activity_fill,
+      builder: (_) => SliverScreen(header: Bar(titleText:"Tab 1"),
+        sliver: SListView.builder(childCount:10, builder:(_, i)=> ListTile(title: Text("Item $i")))) ),
+    NavTab(label:"Tab 2", icon: Icons.address_book, selectedIcon: Icons.address_book_fill,
+      builder: (_) => SliverScreen(header: Bar(titleText:"Tab 2"),
+        sliver: SGridView.builder(crossAxisCount:3, childCount:10,
+          builder:(_, i)=> Card(child: ListTile(title: Text("Item $i"))))) ),
+    NavTab(label:"Tab 3", icon: Icons.gear_six, selectedIcon: Icons.gear_six_fill,
+      builder: (_) => FillScreen(header: Bar(titleText:"Tab 3"),
+        child: Center(child: CardCarousel(children:[
+          RadioCards<NavigationType>(
+            items: NavigationType.values.where((e)=> e != NavigationType.custom).toList(),
+            value: type, onChanged: (nt)=> setState(()=> type = nt),
+            builder: (nt)=> ListTile(title: Text(nt.name)),
+          ),
+        ]))),
+    ),
+  ],
+)
+
+Sidebar navigation
+
+MutablePylon<int>(
+  rebuildChildren: true, local: true, value: 0,
+  builder: (context) => NavigationScreen(
+    type: NavigationType.sidebar,
+    index: context.pylon<int>(), onIndexChanged: context.setPylon<int>,
+    tabs: [
+      NavTab(label:"Sliver Screen", icon: Icons.airplane, selectedIcon: Icons.airplane_fill,
+        builder: (_) => SliverScreen(header: Bar(titleText:"This is bar 1"),
+          sliver: SListView.builder(childCount: 1000, builder:(_, i)=> BasicCard(title: Text("Tile $i")).padBottom(8))))),
+      NavTab(label:"Fill Screen", icon: Icons.activity, selectedIcon: Icons.activity_fill,
+        builder: (_) => FillScreen(header: Bar(titleText:"This is bar 2"),
+          child: CenterBody(icon: Icons.activity, message:"This is Fill Screen"))),
+      NavTab(label:"Sliver Fill", icon: Icons.activity, selectedIcon: Icons.activity_fill,
+        builder: (_) => SliverScreen(header: Bar(titleText:"This is bar 5"),
+          sliver: SliverFill(child: CenterBody(icon: Icons.activity, message:"This is a Sliver Filled")))),
+    ],
+    sidebarHeader: (_) => ArcaneSidebarHeader(titleText:"Header", subtitleText:"Subtitle", trailing:[Icon(Icons.search_ionic)]),
+    sidebarFooter: (_) => ArcaneSidebarFooter(content: Text("Footer")),
+  ),
+)
+
+Drawer navigation
+
+Same as sidebar, only type: NavigationType.drawer.
+
+Custom navigation
+	•	Build your own nav chrome with NavigationType.custom.
+	•	Use a customNavigationBuilder to compose arbitrary UI.
+	•	Keep tabs defined to reuse builders and indexing logic.
+
+// Extension to render a NavTab as a button
+extension XNavTabBuilder on NavTab {
+  Widget buildButton(BuildContext context, NavigationScreen nav, int tabIndex, int currentIndex) =>
+    ArcaneSidebarButton(
+      icon: Icon(tabIndex == currentIndex ? (selectedIcon ?? icon) : icon),
+      label: label ?? "Item ${tabIndex + 1}",
+      selected: tabIndex == currentIndex,
+      onTap: () { if (tabIndex != currentIndex) nav.onIndexChanged?.call(tabIndex); },
+    );
+}
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+  @override
+  Widget build(BuildContext context) => MutablePylon<int>(
+    rebuildChildren: true, local: true, value: 0,
+    builder: (context) => NavigationScreen(
+      type: NavigationType.custom,
+      index: context.pylon<int>(),
+      onIndexChanged: context.setPylon<int>,
+      customNavigationBuilder: (context, nav, index) => Scaffold(
+        child: Pylon<ArcaneSidebarInjector>(
+          value: ArcaneSidebarInjector((context) => ArcaneSidebar.sliver(
+            collapsedWidth: 54,
+            sliver: (_) => MultiSliver(children: [
+              ExpansionBarSection(title: context.isSidebarExpanded ? Text("Section 1") : SizedBox.shrink(),
+                sliver: SListView(children: [
+                  s1.buildButton(context, nav, _tabs.indexOf(s1), index),
+                  s2.buildButton(context, nav, _tabs.indexOf(s2), index),
+                  s3.buildButton(context, nav, _tabs.indexOf(s3), index),
+                ])),
+              SliverToBoxAdapter(child: Divider()),
+              ExpansionBarSection(title: context.isSidebarExpanded ? Text("Section 2") : SizedBox.shrink(),
+                sliver: SListView(children: [
+                  s4.buildButton(context, nav, _tabs.indexOf(s4), index),
+                  s5.buildButton(context, nav, _tabs.indexOf(s5), index),
+                ])),
+              SliverToBoxAdapter(child: Divider()),
+              ExpansionBarSection(title: context.isSidebarExpanded ? Text("Section 3") : SizedBox.shrink(),
+                sliver: SListView(children: [
+                  s6.buildButton(context, nav, _tabs.indexOf(s6), index),
+                  s7.buildButton(context, nav, _tabs.indexOf(s7), index),
+                ])),
+            ]),
+            footer: (_) => ArcaneSidebarFooter(
+              content: IconButton(
+                icon: Icon(index == _tabs.indexOf(s8) ? Icons.user_circle_fill : Icons.user_circle),
+                onPressed: () => nav.onIndexChanged?.call(_tabs.indexOf(s8)),
+              ),
+            ),
+          )),
+          builder: nav.tabs[index].builder,
+        ),
+      ),
+      tabs: _tabs,
+    ),
+  );
+}
+
+Patterns and tips
+
+Sliver lists and grids
+	•	Prefer SListView.builder and SGridView.builder for large data.
+	•	Use SliverFill for single full-viewport content.
+
+State with Pylon
+	•	MutablePylon<T> holds local reactive state.
+	•	context.pylon<T>() reads.
+	•	context.setPylon<T>(value) writes.
+	•	Set rebuildChildren: true only when child rebuilds are required.
+
+Performance
+	•	Keep header cheap. Avoid heavy streams in Bar.
+	•	Use builder variants for large collections.
+	•	Turn gutter: false to maximize effective density for grids and media.
+	•	Prefer const where possible.
+
+Accessibility
+	•	Set clear titleText and subtitleText.
+	•	Ensure tappable targets meet minimum size in custom nav buttons.
+	•	Provide semantic labels for custom icons.
+
+Testing
+	•	Assert screen composition by type: find.byType(ArcaneScreen), SliverList, SliverGrid.
+	•	Pump with small childCount to keep tests fast.
+	•	For navigation, simulate onIndexChanged and verify builders.
+
+Gotchas
+	•	Do not set both child and sliver on FillScreen or SliverScreen.
+	•	ArcaneScreen accepts either slivers or widgets, not both at once; wrap mixed content in Collection.
+	•	When using NavigationType.custom, you must still pass tabs for the active-tab builder.
+	•	Sections can nest Collections; avoid deep nesting for readability.
+
+Minimal recipes
+	•	Edge-to-edge grid: SliverScreen(gutter: false, sliver: SGridView.builder(...))
+	•	Simple page: ArcaneScreen(header: Bar(titleText:"Title"), child: Padding(...))
+	•	Long list with sections: ArcaneScreen(child: Collection(children:[Section(...), SListView.builder(...), ...]))
+	•	Bottom tabs: NavigationScreen(type: NavigationType.bottom, tabs:[...])
+	•	Sidebar with header/footer: use sidebarHeader and sidebarFooter.
+	•	Custom chrome: NavigationType.custom + customNavigationBuilder + tab extension.
+
+========================================================
+                  Common Widgets
+========================================================
+
+========================================================
+Core building blocks for input, feedback, and empty states. Favor concise configs. Keep getters/setters fast and pure.
+
+Mutable text
+
+Bind a String to a Text and update via .mutable.
+
+String content = "Hello World";
+@override
+Widget build(BuildContext context) => Text(content).mutable((next) {
+  setState(() => content = next);
+});
+
+	•	mutable((value){ ... }) receives the edited string.
+	•	Use for quick rename fields, inline editors, and debug toggles.
+	•	Debounce heavy work outside the callback.
+
+CenterBody (empty/feedback state)
+
+CenterBody(
+  icon: Icons.warning_fill,
+  message: "Not Found",
+  actionText: "Refresh",            // optional
+  onActionPressed: () => print("Refreshing..."),
+)
+
+	•	One-liner empty or error view.
+	•	Pair with SliverFill for sliver pages.
+	•	Omit actionText/onActionPressed for passive states.
+
+========================================================
+ArcaneInput
+
+All inputs share:
+	•	name, description, icon are optional metadata.
+	•	getter and setter are required. They must be Future<T> Function() and Future<void> Function(T).
+	•	defaultValue initializes when getter returns null.
+	•	Keep I/O minimal. Cache if source is slow.
+
+Selectable Cards
+
+Use when the domain is an enum or short option set.
+
+API
+	•	ArcaneInput.selectCards<T>({ defaultValue, options, getter, setter, name?, description?, icon? })
+	•	T should be stable and comparable. Enums work best.
+
+Examples
+
+// With icon and description
+ArcaneInput.selectCards<ThemeMode>(
+  name: "Theme",
+  description: "Choose app theme",
+  icon: Icons.airplane,
+  defaultValue: ThemeMode.system,
+  options: ThemeMode.values,
+  getter: () async => _storage["a"],
+  setter: (v) async => _storage["a"] = v,
+);
+
+// No icon
+ArcaneInput.selectCards<ThemeMode>(
+  name: "Theme (no icon)",
+  description: "Mode",
+  defaultValue: ThemeMode.system,
+  options: ThemeMode.values,
+  getter: () async => _storage["b"],
+  setter: (v) async => _storage["b"] = v,
+);
+
+// Minimal
+ArcaneInput.selectCards<ThemeMode>(
+  name: "Theme",
+  defaultValue: ThemeMode.system,
+  options: ThemeMode.values,
+  getter: () async => _storage["c"],
+  setter: (v) async => _storage["c"] = v,
+);
+
+Tips
+	•	Keep options.length small (≤8) for clarity.
+	•	Prefer builder variants only when you need custom card content.
+	•	Persist immediately in setter; avoid batching unless required.
+
+Date
+
+Single date picker. Stores a DateTime.
+
+API
+	•	ArcaneInput.date({ getter, setter, name?, description?, icon? })
+
+Examples
+
+ArcaneInput.date(
+  name: "Start date",
+  description: "When it begins",
+  icon: Icons.airplane,
+  getter: () async => _storage["a"],
+  setter: (v) async => _storage["a"] = v,
+);
+
+ArcaneInput.date(
+  name: "Due date",
+  description: "Optional",
+  getter: () async => _storage["b"],
+  setter: (v) async => _storage["b"] = v,
+);
+
+ArcaneInput.date(
+  name: "Birthday",
+  getter: () async => _storage["c"],
+  setter: (v) async => _storage["c"] = v,
+);
+
+Tips
+	•	Normalize to UTC or app zone at the boundary.
+	•	Validate ranges before calling setter.
+
+Time
+
+Time-of-day picker. Stores a TimeOfDay or a DateTime at app convention.
+
+API
+	•	ArcaneInput.time({ getter, setter, name?, description?, icon? })
+
+Examples
+
+ArcaneInput.time(
+  name: "Reminder time",
+  description: "Local time",
+  icon: Icons.airplane,
+  getter: () async => _storage["a"],
+  setter: (v) async => _storage["a"] = v,
+);
+
+ArcaneInput.time(
+  name: "Cutoff",
+  description: "Daily limit",
+  getter: () async => _storage["b"],
+  setter: (v) async => _storage["b"] = v,
+);
+
+ArcaneInput.time(
+  name: "Alarm",
+  getter: () async => _storage["c"],
+  setter: (v) async => _storage["c"] = v,
+);
+
+Tips
+	•	Combine with ArcaneInput.date for full timestamps.
+	•	Store as ISO strings in persistence to avoid drift.
+
+Color
+
+Pick a color with preview.
+
+API
+	•	ArcaneInput.color({ getter, setter, name?, description?, icon? })
+
+Examples
+
+ArcaneInput.color(
+  name: "Brand color",
+  description: "Primary tint",
+  icon: Icons.airplane,
+  getter: () async => _storage["a"],
+  setter: (v) async => _storage["a"] = v,
+);
+
+ArcaneInput.color(
+  name: "Accent",
+  description: "Cards and chips",
+  getter: () async => _storage["b"],
+  setter: (v) async => _storage["b"] = v,
+);
+
+ArcaneInput.color(
+  name: "Outline",
+  getter: () async => _storage["c"],
+  setter: (v) async => _storage["c"] = v,
+);
+
+Tips
+	•	Store as ARGB int or hex string. Be consistent.
+	•	Ensure contrast with text for accessibility.
+
+========================================================
+Patterns, Validation, UX
+	•	Async I/O: Avoid long getter futures in build. Warm them earlier or return cached values.
+	•	Defaults: Always set defaultValue for enums and primitives.
+	•	Error handling: Guard setter with try/catch. Show a toast or SnackBar on failure. Revert UI state if needed.
+	•	Layout: Group related inputs inside a Collection and split with Section(subtitleText: ...).
+	•	Readability: Use name as a concise label. Keep description short.
+	•	Testing: Stub getter/setter with in-memory maps. Pump frames and assert persisted values.
+	•	A11y: Provide name for semantics. Verify tap targets and color contrast.
+
+
+========================================================
+                   Cards, Search, and Dialogs
+========================================================
+
+========================================================
+Cards present compact content blocks. Use for lists, settings, dashboards.
+
+Components
+	•	GlowCard: soft glow from thumbHash
+	•	BasicCard: title, subtitle, leading, trailing
+	•	CardSection: labeled block that contains children
+
+Quick starts
+
+GlowCard(
+  thumbHash: "H3IFHI4ri5RQpWdCen0rUPLtCQ",
+  child: Text("I glow the thumbhash!\n* BasicCard supports this\n* CardSection too!")
+)
+
+BasicCard(
+  title: Text("Title"),
+  subtitle: Text("The Subtitle"),
+  leading: Icon(Icons.address_book),
+  trailing: IconButtonMenu(
+    icon: Icons.dots_three_vertical,
+    items: [MenuButton(child: Text("Menu or whatever"))],
+  ),
+)
+
+CardSection(
+  titleText: "Title",
+  subtitleText: "The Subtitle",
+  leadingIcon: Icons.address_book,
+  trailing: IconButtonMenu(
+    icon: Icons.dots_three_vertical,
+    items: [MenuButton(child: Text("Menu or whatever"))],
+  ),
+  children: [
+    ListTile(titleText: "Some Option",  subtitleText: "Some description", leadingIcon: Icons.activity_bold),
+    ListTile(titleText: "Some Option 2",subtitleText: "Some description", leadingIcon: Icons.add_circle_outline_ionic),
+    ListTile(titleText: "Some Option 3",subtitleText: "Some description", leadingIcon: Icons.airplane_landing_light),
+  ],
+)
+
+Tips
+	•	Prefer BasicCard for single item. Use CardSection to group settings.
+	•	Pass thumbHash for quick avatars or previews without images.
+	•	Keep trailing menus short. Use icons with semantic meaning.
+
+Gotchas
+	•	Do not over-nest CardSection inside dense lists. Favor sections per screen area.
+	•	Large interactive content belongs in the child, not the header fields.
+
+========================================================
+Search
+
+Two modes: inline field or pop-up button.
+
+Inline search box
+
+FillScreen(
+  header: Bar(titleText: "Header", trailing: [
+    SearchBox(
+      leading: Icon(Icons.search_outline_ionic),
+      placeholder: Text("Search!"),
+      autofocus: false,
+      minWidth: 0,
+      onEditingComplete: () => print("Editing Complete"),
+      onSubmitted: (v) => setState(() => query = v),
+      onChanged:   (v) => setState(() => query = v),
+    )
+  ]),
+  child: Center(child: Text(query == null ? "null" : '"$query"')),
+)
+
+Search dialog button
+
+Transactional locks input on submit. Live streams changes.
+
+FillScreen(
+  header: Bar(titleText: "Header", trailing: [
+    SearchButton(
+      mode: SearchButtonMode.transactional,
+      onSearch: (v) => setState(() => query = v),
+    )
+  ]),
+  child: Center(child: Text(query == null ? "null" : '"$query"')),
+)
+
+FillScreen(
+  header: Bar(titleText: "Header", trailing: [
+    SearchButton(
+      mode: SearchButtonMode.live,
+      onSearch: (v) => setState(() => query = v),
+    )
+  ]),
+  child: Center(child: Text(query == null ? "null" : '"$query"')),
+)
+
+Tips
+	•	Use live for filters. Use transactional for network queries.
+	•	Keep minWidth: 0 for tight toolbars. Increase on large screens.
+	•	Debounce in your state layer if live-searching remote data.
+
+========================================================
+Dialogs
+
+Standard confirm, text, email, command, and date/time pickers.
+
+Confirm
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogConfirm(
+    title: "Title Text",
+    description: "Description Text goes here",
+    confirmText: "Confirm Text",
+    cancelText: "Cancel Text",
+    onConfirm: () => print("Confirmed"),
+  ).open(_context),
+  child: Text("Confirm Dialog"),
+)
+
+Confirm with verification text
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogConfirmText(
+    title: "Title Text",
+    description: "Please type 'derp' to continue.",
+    verificationText: "derp",
+    ignoreCase: true,
+    confirmText: "Confirm Text",
+    cancelText: "Cancel Text",
+    onConfirm: () => print("Confirmed"),
+  ).open(_context),
+  child: Text("Confirm Text Dialog"),
+)
+
+Text input
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogText(
+    title: "Title Text",
+    description: "Description Text goes here",
+    placeholder: Text("Hint Text"),
+    confirmText: "Confirm Text",
+    cancelText: "Cancel Text",
+    onConfirm: (t) => print(t),
+  ).open(_context),
+  child: Text("Text Dialog"),
+)
+
+Email input
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogEmail(
+    title: "Title Text",
+    description: "Please enter an email address.",
+    confirmText: "Confirm Text",
+    cancelText: "Cancel Text",
+    onConfirm: (e) => print(e),
+  ).open(_context),
+  child: Text("Email Dialog"),
+)
+
+Command palette
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogCommand(
+    leading: Icon(Icons.airplane),
+    options: {
+      "Alpha","Beta","Gamma","Delta","Epsilon","Zeta","Eta","Theta",
+      "Iota","Kappa","Lambda","Mu","Nu","Xi","Omicron","Pi","Rho",
+      "Sigma","Tau","Upsilon","Phi","Chi","Psi","Omega",
+    },
+    onConfirm: (v) => print(v),
+  ).open(_context),
+  child: Text("Command Dialog"),
+)
+
+Date pickers
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogDate(
+    title: "Title Text",
+    confirmText: "Confirm Text",
+    cancelText: "Cancel Text",
+    onConfirm: (t) => print(t),
+    stateBuilder: (date) =>
+      date.weekday == DateTime.friday ? DateState.disabled : DateState.enabled,
+  ).open(_context),
+  child: Text("Date Dialog"),
+)
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogDateRange(
+    title: "Title Text",
+    confirmText: "Confirm Text",
+    cancelText: "Cancel Text",
+    onConfirm: (r) => print(r),
+    stateBuilder: (date) =>
+      date.day % 2 == 0 ? DateState.disabled : DateState.enabled,
+  ).open(_context),
+  child: Text("Date Range Dialog"),
+)
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogDateMulti(
+    title: "Title Text",
+    confirmText: "Confirm Text",
+    cancelText: "Cancel Text",
+    onConfirm: (t) => print(t),
+    stateBuilder: (date) =>
+      date.day % 7 == 0 ? DateState.disabled : DateState.enabled,
+  ).open(_context),
+  child: Text("Multi Date Dialog"),
+)
+
+Time picker
+
+PrimaryButton(
+  leading: Icon(Icons.open_outline_ionic),
+  onPressed: () => DialogDateMulti(
+    showSeconds: false,
+    use24HourFormat: false,
+    title: "Title Text",
+    confirmText: "Confirm Text",
+    cancelText: "Cancel Text",
+    onConfirm: (t) => print(t),
+  ).open(_context),
+  child: Text("Time Dialog"),
+)
+
+Patterns
+	•	Always call .open(context) from a tap or press.
+	•	Use stateBuilder to block specific dates.
+	•	For destructive actions, prefer DialogConfirmText.
+
+Gotchas
+	•	Keep button leading small to avoid layout shifts.
+	•	Verify _context is a valid build context at call time.
+	•	Validate email on confirm when using DialogEmail.
+
+
+========================================================
+                  Tables, Chats, and Shortcuts
+========================================================
+Tables
+
+StaticTable renders lightweight, styled tables. Rows are TR. Cells are TD. Use header/footer rows for semantics.
+
+Basics
+
+StaticTable(
+  rows: [
+    TR.header(column:[TD(Text("Cell 1")), TD(Text("Cell A"))]),
+    TR(column:[TD(Text("Cell 1")), TD(Text("Cell A"))]),
+    TR(column:[TD(Text("Cell 2")), TD(Text("Cell B"))]),
+    TR.footer(column:[TD(Text("Cell 1")), TD(Text("Cell A"))]),
+  ],
+)
+
+Alternating rows
+
+StaticTable(
+  alternatingRowColor: true,
+  rows: [/* TR.header, TR..., TR.footer */],
+)
+
+Per-cell and per-row color
+
+StaticTable(
+  rows: [
+    TR.header(column:[TD(Text("Cell 1")), TD(Text("Cell A"))]),
+    TR(column:[TD(Text("Cell 1"), color: Colors.red.withOpacity(0.1)), TD(Text("Cell A"))]),
+    TR(column:[TD(Text("Cell 2"), color: Colors.red.withOpacity(0.1)), TD(Text("Cell B"), color: Colors.blue.withOpacity(0.1))]),
+    TR(color: Colors.green.withOpacity(0.1), column:[TD(Text("Cell 2")), TD(Text("Cell B"))]),
+    TR.footer(column:[TD(Text("Cell 1")), TD(Text("Cell A"))]),
+  ],
+)
+
+Column sizing
+
+StaticTable(
+  defaultColumnWidth: const ComfyColumnWidth(),
+  columnWidths: const {
+    // ComfyColumnWidth | FixedColumnWidth | FractionColumnWidth
+    // IntrinsicColumnWidth | MaxColumnWidth | MinColumnWidth | FlexColumnWidth
+    0: ComfyColumnWidth(flex: 1),
+    1: ComfyColumnWidth(flex: 4),
+  },
+  rows: [/* TR.header, TR..., TR.footer */],
+)
+
+Guidelines
+	•	Use TR.header and TR.footer for assistive tech and consistent styling.
+	•	Prefer alternatingRowColor: true for dense data lists.
+	•	Keep text left-aligned by default. Align numbers right with a wrapping widget if needed.
+	•	Avoid heavy widgets inside TD. Keep cells cheap.
+	•	For long content, wrap TD child in Flexible or provide ellipsis at the Text.
+
+Gotchas
+	•	Column index keys in columnWidths must match the cell order in each TR.
+	•	Do not mix unequal column counts across rows.
+	•	Set consistent padding via cell child widgets if needed.
+
+⸻
+
+Chats
+
+ChatScreen renders message UIs. Styles: ChatStyle.bubbles or ChatStyle.tiles. Provide a ChatProvider that streams messages and resolves users.
+
+Bubbles
+
+ChatScreen(
+  gutter: false,
+  header: Bar(titleText: "Chat Bubbles"),
+  style: ChatStyle.bubbles,
+  provider: MyChatProvider(
+    users: [MyUser(id:"0", name:"Dan"), MyUser(id:"1", name:"Alice")],
+    messages: BehaviorSubject.seeded([]),
+  ),
+  sender: "0",
+)
+
+Tiles
+
+ChatScreen(
+  gutter: false,
+  header: Bar(titleText: "Chat Tiles"),
+  style: ChatStyle.tiles,
+  provider: MyChatProvider(
+    users: [MyUser(id:"0", name:"Dan"), MyUser(id:"1", name:"Alice")],
+    messages: BehaviorSubject.seeded([]),
+  ),
+  sender: "0",
+)
+
+Message model
+
+class MyMessage implements AbstractChatMessage {
+  final String id;
+  final String message;
+  @override final DateTime timestamp;
+  @override final String senderId;
+  MyMessage({required this.id, required this.message, required this.timestamp, required this.senderId});
+  @override Widget get messageWidget => Text(message);
+}
+
+User model
+
+class MyUser extends AbstractChatUser {
+  @override final String id;
+  @override final String name;
+  MyUser({required this.id, required this.name});
+  @override Widget get avatar => const Icon(Icons.user);
+}
+
+Provider
+
+class MyChatProvider extends ChatProvider {
+  final List<MyUser> users;
+  final BehaviorSubject<List<MyMessage>> messages;
+  MyChatProvider({required this.users, required this.messages});
+  @override Future<MyUser> getUser(String id) async => users.firstWhere((u) => u.id == id);
+  @override Stream<List<MyMessage>> streamLastMessages() => messages;
+  @override Future<void> sendMessage(String text) async {
+    messages.add([
+      ...messages.value,
+      MyMessage(
+        id: Random.secure().nextDouble().toString(),
+        senderId: "0",
+        message: text,
+        timestamp: DateTime.timestamp(),
+      ),
+    ]);
+  }
+}
+
+Patterns
+	•	Use BehaviorSubject.seeded([]) for an initial empty stream.
+	•	Always return the same stream from streamLastMessages().
+	•	Keep messageWidget lightweight. For rich content, compose small widgets.
+	•	Cache user lookups if getUser is expensive.
+	•	Use gutter: false for edge-to-edge chats. Enable gutter for form inputs above the list if present.
+
+Testing
+	•	Pump the screen. Emit messages on the subject. Verify list growth and alignment by senderId.
+	•	Mock getUser for deterministic avatars and names.
+
+Gotchas
+	•	sender must match a user id in users.
+	•	Ensure messages.value is defined before spreading.
+	•	Use unique id per message to avoid list diff collisions.
+
+⸻
+
+Shortcuts
+
+Global keyboard shortcuts with reactive handlers.
+
+Basic
+
+ArcaneShortcuts(
+  shortcuts: {
+    LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.alt, LogicalKeyboardKey.keyF)
+      : () => counter.add(counter.value + 1),
+  },
+  child: counter.build((i) => Text("CTRL + ALT + F Pressed $i times")),
+)
+
+Guidelines
+	•	Use LogicalKeySet for cross-platform keys. Prefer control + alt on desktop.
+	•	Keep handlers pure and fast. Offload heavy work to async functions.
+	•	Coalesce state writes when triggering multiple updates.
+	•	Scope shortcuts narrowly by wrapping only the subtree that needs them.
+
+Conflicts
+	•	Avoid OS-reserved combos. Examples: Cmd+Q on macOS, Alt+F4 on Windows.
+	•	In text fields, consider disabling conflicting bindings or checking focus before acting.
+
+Patterns
+	•	Use a Pylon/stream to reflect shortcut state in the UI quickly.
+	•	For command palettes, bind Ctrl/Cmd+K to open a modal and route actions centrally.
+
+⸻
+
+Quick recipes
+	•	Zebra table: StaticTable(alternatingRowColor:true, rows:[...])
+	•	Alert row: TR(color: Colors.red.withOpacity(0.08), column:[...])
+	•	Right-weighted column: columnWidths:{1: FlexColumnWidth(2)}
+	•	Chat prototype: ChatScreen(style: ChatStyle.bubbles, provider: MyChatProvider(...))
+	•	Global find: ArcaneShortcuts({ LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyF): openSearch })
+
+========================================================
+                  Animation, Accordion, and Collapsible
+========================================================
+Arcane provides light, composable primitives for numeric animation and progressive disclosure.
+
+NumberTicker (animated numbers)
+	•	Use when displaying counts that change.
+	•	Inputs: initialNumber, number, optional style, optional formatter(int).
+	•	Drive changes by updating the backing int.
+
+int _number = 0;
+final _controller = TextEditingController();
+
+@override
+Widget build(BuildContext context) => Column(children: [
+  NumberTicker(
+    initialNumber: 0,
+    number: _number,
+    style: const TextStyle(fontSize: 32),
+    formatter: (n) => NumberFormat.compact().format(n),
+  ),
+  const Gap(24),
+  TextField(
+    initialValue: _number.toString(),
+    controller: _controller,
+    onEditingComplete: () {
+      final n = int.tryParse(_controller.text);
+      if (n != null) setState(() => _number = n);
+    },
+  ),
+]);
+
+Tips
+	•	Format with NumberFormat.compact() for large values.
+	•	Update number only when it changes to avoid redundant ticks.
+	•	Keep text style constant during the animation for stability.
+
+Accordion (multi-item disclosure)
+	•	Pattern: Accordion(items:[AccordionItem(...), ...])
+	•	Each item: AccordionItem(trigger: AccordionTrigger(child: ...), content: ...)
+	•	Good for FAQs and grouped details.
+
+const Accordion(items: [
+  AccordionItem(
+    trigger: AccordionTrigger(child: Text('Lorem ipsum dolor sit amet')),
+    content: Text('Lorem ipsum dolor sit amet, consectetur adipiscing elit...'),
+  ),
+  AccordionItem(
+    trigger: AccordionTrigger(child: Text('Sed do eiusmod tempor incididunt...')),
+    content: Text('Sed do eiusmod tempor incididunt ut labore et dolore...'),
+  ),
+  AccordionItem(
+    trigger: AccordionTrigger(child: Text('Ut enim ad minim veniam...')),
+    content: Text('Ut enim ad minim veniam, quis nostrud exercitation...'),
+  ),
+]);
+
+Tips
+	•	Keep triggers short and scannable.
+	•	Put long text in content; avoid heavy layouts inside triggers.
+
+Collapsible (single region disclosure)
+	•	Free-form children with one CollapsibleTrigger and any number of CollapsibleContent.
+	•	Use when you need custom layouts in the expanded area.
+
+Collapsible(children: [
+  const CollapsibleTrigger(
+    child: Text('@sunarya-thito starred 3 repositories'),
+  ),
+  OutlinedContainer( // static child or header add-on
+    child: const Text('@sunarya-thito/shadcn_flutter')
+        .small().mono().withPadding(horizontal: 16, vertical: 8),
+  ).withPadding(top: 8),
+  CollapsibleContent(
+    child: OutlinedContainer(
+      child: const Text('@flutter/flutter')
+          .small().mono().withPadding(horizontal: 16, vertical: 8),
+    ).withPadding(top: 8),
+  ),
+  CollapsibleContent(
+    child: OutlinedContainer(
+      child: const Text('@dart-lang/sdk')
+          .small().mono().withPadding(horizontal: 16, vertical: 8),
+    ).withPadding(top: 8),
+  ),
+]);
+
+Tips
+	•	Wrap only the parts that should expand in CollapsibleContent.
+	•	Keep CollapsibleTrigger light for fast taps.
+	•	Interleave static children for summaries or badges.
+
+Gotchas
+	•	Do not mutate controllers without disposing them in full widgets.
+	•	Avoid nesting interactive controls inside triggers; place them in content.
+	•	Prefer Accordion for multiple independent sections; use Collapsible for one custom block.
+
+========================================================
+                    Display Contents
+========================================================
+Primitives for avatars, code blocks, data tables, and activity trackers.
+
+Avatar
+	•	Inputs: initials, optional provider, size, backgroundColor, optional badge.
+	•	Helpers: Avatar.getInitials(String).
+
+Avatar(
+  backgroundColor: Colors.red,
+  initials: Avatar.getInitials('sunarya-thito'),
+  provider: const NetworkImage('https://avatars.githubusercontent.com/u/64018564?v=4'),
+)
+
+Avatar(
+  initials: Avatar.getInitials('sunarya-thito'),
+  size: 64,
+)
+
+Avatar(
+  initials: Avatar.getInitials('sunarya-thito'),
+  size: 64,
+  badge: const AvatarBadge(size: 20, color: Colors.green),
+)
+
+Avatar groups
+	•	Use AvatarGroup.toLeft|toRight|toTop|toBottom(...) to stack with overlap.
+	•	Keep 4–8 avatars per group for legibility.
+
+List<AvatarWidget> getAvatars() => [
+  Avatar(initials: Avatar.getInitials('sunarya-thito'), backgroundColor: Colors.red),
+  Avatar(initials: Avatar.getInitials('sunarya-thito'), backgroundColor: Colors.green),
+  Avatar(initials: Avatar.getInitials('sunarya-thito'), backgroundColor: Colors.blue),
+  Avatar(initials: Avatar.getInitials('sunarya-thito'), backgroundColor: Colors.yellow),
+];
+
+@override
+Widget build(BuildContext context) => Wrap(
+  spacing: 16, runSpacing: 16, children: [
+    AvatarGroup.toLeft(children: getAvatars()),
+    AvatarGroup.toRight(children: getAvatars()),
+    AvatarGroup.toTop(children: getAvatars()),
+    AvatarGroup.toBottom(children: getAvatars()),
+  ],
+);
+
+Tips
+	•	Prefer provider for user photos. Fallback to initials.
+	•	Use badge for presence/state. Keep badge.size ≤ size/3.
+
+CodeSnippet
+	•	Renders short code blocks with copy affordance.
+
+const CodeSnippet(code: 'flutter pub get', mode: 'shell')
+
+Tips
+	•	Use mode to hint syntax. Keep lines short.
+
+Tables
+
+Table system supports static tables, resizable grids, and large scrollable sheets.
+
+Static table
+	•	Compose with Table, TableHeader, TableRow, TableFooter.
+	•	Build cells via helpers for consistency.
+
+TableCell buildHeaderCell(String text, [bool alignRight = false]) => TableCell(
+  child: Container(
+    padding: const EdgeInsets.all(8),
+    alignment: alignRight ? Alignment.centerRight : null,
+    child: Text(text).muted().semiBold(),
+  ),
+);
+
+TableCell buildCell(String text, [bool alignRight = false]) => TableCell(
+  child: Container(
+    padding: const EdgeInsets.all(8),
+    alignment: alignRight ? Alignment.centerRight : null,
+    child: Text(text),
+  ),
+);
+
+@override
+Widget build(BuildContext context) => Table(rows: [
+  TableRow(cells: [
+    buildHeaderCell('Invoice'),
+    buildHeaderCell('Status'),
+    buildHeaderCell('Method'),
+    buildHeaderCell('Amount', true),
+  ]),
+  TableRow(cells: [
+    buildCell('INV001'), buildCell('Paid'), buildCell('Credit Card'), buildCell('\$250.00', true),
+  ]),
+  // ...more rows...
+  TableFooter(cells: [
+    TableCell(
+      columnSpan: 4,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        child: Row(children: [
+          const Text('Total'),
+          Expanded(child: Align(alignment: Alignment.centerRight, child: const Text('\$2,300.00').semiBold())),
+        ]),
+      ),
+    ),
+  ]),
+]);
+
+Themed cells with borders
+
+TableCell buildCell(String text, [bool alignRight = false]) {
+  final theme = Theme.of(context);
+  return TableCell(
+    theme: TableCellTheme(
+      border: WidgetStatePropertyAll(Border.all(
+        color: theme.colorScheme.border,
+        strokeAlign: BorderSide.strokeAlignCenter,
+      )),
+    ),
+    child: Container(
+      padding: const EdgeInsets.all(8),
+      alignment: alignRight ? Alignment.topRight : null,
+      child: Text(text),
+    ),
+  );
+}
+
+Resizable table
+	•	Control defaults with ResizableTableController.
+
+final controller = ResizableTableController(
+  defaultColumnWidth: 150,
+  defaultRowHeight: 40,
+  defaultHeightConstraint: const ConstrainedTableSize(min: 40),
+  defaultWidthConstraint: const ConstrainedTableSize(min: 80),
+);
+
+@override
+Widget build(BuildContext context) => OutlinedContainer(
+  child: ResizableTable(
+    controller: controller,
+    rows: [
+      TableHeader(cells: [buildCell('Invoice'), buildCell('Status'), buildCell('Method'), buildCell('Amount', true)]),
+      TableRow(cells: [buildCell('INV001'), buildCell('Paid'), buildCell('Credit Card'), buildCell('\$250.00', true)]),
+      // ...more rows...
+    ],
+  ),
+);
+
+Large sheet with panning and frozen refs
+	•	Pair ScrollableClient with Table.
+	•	Use FrozenTableData with TableRef indices for pinned rows/columns.
+
+@override
+Widget build(BuildContext context) => ScrollConfiguration(
+  behavior: ScrollConfiguration.of(context).copyWith(
+    dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
+    overscroll: false,
+  ),
+  child: SizedBox(
+    height: 400,
+    child: OutlinedContainer(
+      child: ScrollableClient(
+        diagonalDragBehavior: DiagonalDragBehavior.free,
+        builder: (context, offset, viewportSize, _) => Table(
+          horizontalOffset: offset.dx,
+          verticalOffset: offset.dy,
+          viewportSize: viewportSize,
+          defaultColumnWidth: const FixedTableSize(150),
+          defaultRowHeight: const FixedTableSize(40),
+          frozenCells: const FrozenTableData(
+            frozenRows: [TableRef(0), TableRef(3)],
+            frozenColumns: [TableRef(0), TableRef(2)],
+          ),
+          rows: [
+            TableHeader(cells: [
+              buildCell('Invoice'), buildCell('Status'), buildCell('Method'),
+              buildCell('Amount', true), buildCell('Verification'), buildCell('Last Updated'),
+            ]),
+            TableRow(cells: [
+              buildCell('INV001'), buildCell('Paid'), buildCell('Credit Card'),
+              buildCell('\$250.00', true), buildCell('Verified'), buildCell('2 hours ago'),
+            ]),
+            // ...more rows...
+          ],
+        ),
+      ),
+    ),
+  ),
+);
+
+Table tips
+	•	Right-align numeric amounts.
+	•	Freeze header row and key columns for long sheets.
+	•	Use ResizableTable for authoring. Use Table+ScrollableClient for large read-only data.
+
+Tracker
+	•	Dense status grid for time-series or health indicators.
+	•	Data model: TrackerData(tooltip, level).
+	•	Levels: fine, warning, critical, unknown.
+
+@override
+Widget build(BuildContext context) {
+  final data = List<TrackerData>.generate(80, (_) => const TrackerData(
+    tooltip: Text('Tracker Fine'), level: TrackerLevel.fine));
+
+  data[35] = data[40] = const TrackerData(tooltip: Text('Tracker Warning'), level: TrackerLevel.warning);
+  data[60] = data[68] = data[72] = const TrackerData(tooltip: Text('Tracker Critical'), level: TrackerLevel.critical);
+  for (int i = 8; i < 16; i++) {
+    data[i] = const TrackerData(tooltip: Text('Tracker Unknown'), level: TrackerLevel.unknown);
+  }
+  return Tracker(data: data);
+}
+
+Tracker tips
+	•	Keep tooltips short. One line each.
+	•	Encode meaning consistently per level. Add a legend near the widget if needed.
+
+Gotchas
+	•	Dispose controllers you create for tables or text fields in stateful widgets.
+	•	Avoid heavy widgets inside TableCell. Prefer plain Text and light decorators.
+	•	For avatars with network images, provide initials as fallback to avoid blank states.
+
+========================================================
+                  Feedback and Notifications
+========================================================
+Status, alerts, progress, skeletons, toasts. Keep signals brief and actionable.
+
+Alerts
+	•	Informational or destructive variants.
+	•	Use inside content areas for inline feedback.
+
+const Alert(
+  title: Text('Alert title'),
+  content: Text('This is alert content.'),
+  leading: Icon(Icons.info_outline),
+);
+
+const Alert.destructive(
+  title: Text('Alert title'),
+  content: Text('This is alert content.'),
+  trailing: Icon(Icons.dangerous_outlined),
+);
+
+Tips
+	•	One key action per alert. Link secondary help, don’t crowd actions.
+	•	Destructive only for irreversible impact.
+
+Dialogs
+	•	Block user flow for confirmations or critical choices.
+
+PrimaryButton(
+  child: const Text('Click Here'),
+  onPressed: () => showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Alert title'),
+      content: const Text('Lorem ipsum dolor sit amet, consectetur adipiscing elit.'),
+      actions: [
+        OutlineButton(child: const Text('Cancel'), onPressed: ()=> Navigator.pop(context)),
+        PrimaryButton(child: const Text('OK'), onPressed: ()=> Navigator.pop(context)),
+      ],
+    ),
+  ),
+);
+
+Tips
+	•	Keep titles short. Avoid nested scrollables in content.
+
+Circular progress
+	•	Indeterminate: activity present, duration unknown.
+	•	Determinate: supply 0–100 value. Clamp before divide.
+
+const CircularProgressIndicator();
+
+double _progress = 0;
+Widget build(BuildContext _) => Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    CircularProgressIndicator(value: _progress.clamp(0, 100) / 100, size: 48),
+    const Gap(48),
+    Row(children: [
+      DestructiveButton(onPressed: ()=> setState(()=> _progress = 0), child: const Text('Reset')),
+      const Gap(16),
+      PrimaryButton(onPressed: ()=> setState(()=> _progress -= 10), child: const Text('Decrease by 10')),
+      const Gap(16),
+      PrimaryButton(onPressed: ()=> setState(()=> _progress += 10), child: const Text('Increase by 10')),
+    ]),
+  ],
+);
+
+Gotchas
+	•	Keep determinate value stable. Rapid jitter reads as error.
+
+Linear progress (Material)
+	•	Value null = indeterminate.
+	•	Determinate value range 0.0–1.0.
+
+const SizedBox(width: 200, child: LinearProgressIndicator());
+
+double value = 0;
+Widget build(BuildContext _) => Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    SizedBox(width: 200, child: LinearProgressIndicator(value: value)),
+    const Gap(24),
+    Row(mainAxisSize: MainAxisSize.min, children: [
+      PrimaryButton(onPressed: ()=> setState(()=> value = 0), child: const Text('Reset')),
+      const Gap(24),
+      PrimaryButton(onPressed: (){
+        if (value + 0.1 < 1) setState(()=> value += 0.1);
+      }, child: const Text('Increase')),
+      const Gap(24),
+      PrimaryButton(onPressed: (){
+        if (value - 0.1 > 0) setState(()=> value -= 0.1);
+      }, child: const Text('Decrease')),
+    ]),
+  ],
+);
+
+Progress (Arcane)
+	•	Branded bar with min, max, and numeric progress (0–100 typical).
+
+double _progress = 0.0;
+Widget build(BuildContext _) => Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    SizedBox(width: 400, child: Progress(progress: _progress.clamp(0, 100), min: 0, max: 100)),
+    const Gap(16),
+    Row(children: [
+      DestructiveButton(onPressed: ()=> setState(()=> _progress = 0), child: const Text('Reset')),
+      const Gap(16),
+      PrimaryButton(onPressed: (){ if (_progress > 0) setState(()=> _progress -= 10); }, child: const Text('Decrease by 10')),
+      const Gap(16),
+      PrimaryButton(onPressed: (){ if (_progress < 100) setState(()=> _progress += 10); }, child: const Text('Increase by 10')),
+    ]),
+  ],
+);
+
+Tips
+	•	Keep min/max consistent across a flow.
+	•	Show exact value as text when helpful.
+
+Skeletons
+	•	Reserve space and reduce layout shift while loading.
+	•	Wrap containers and text with .asSkeleton() as needed.
+
+Column(children: [
+  const Basic(
+    title: Text('Skeleton Example 1'),
+    content: Text('Lorem ipsum dolor sit amet, consectetur adipiscing elit.'),
+    leading: Avatar(initials: ''),
+    trailing: Icon(Icons.arrow_forward),
+  ),
+  const Gap(24),
+  Basic(
+    title: const Text('Skeleton Example 1'),
+    content: const Text('Lorem ipsum dolor sit amet, consectetur adipiscing elit.'),
+    leading: const Avatar(initials: '').asSkeleton(), // image-like widgets need their own skeleton
+    trailing: const Icon(Icons.arrow_forward),
+  ).asSkeleton(),
+]);
+
+Guidelines
+	•	Mirror final layout. Avoid changing sizes between skeleton and content.
+	•	Keep shimmer subtle.
+
+Toasts
+	•	Ephemeral, non-blocking confirmations with optional action.
+	•	Choose screen edge via ToastLocation.
+
+Widget buildToast(BuildContext _, ToastOverlay overlay) => SurfaceCard(
+  child: Basic(
+    title: const Text('Event has been created'),
+    subtitle: const Text('Sunday, July 07, 2024 at 12:00 PM'),
+    trailingAlignment: Alignment.center,
+    trailing: PrimaryButton(size: ButtonSize.small, onPressed: overlay.close, child: const Text('Undo')),
+  ),
+);
+
+Widget build(BuildContext context) => Wrap(
+  spacing: 8, runSpacing: 8, children: [
+    PrimaryButton(onPressed: ()=> showToast(context: context, builder: buildToast, location: ToastLocation.bottomLeft),  child: const Text('Show Bottom Left Toast')),
+    PrimaryButton(onPressed: ()=> showToast(context: context, builder: buildToast, location: ToastLocation.bottomRight), child: const Text('Show Bottom Right Toast')),
+    PrimaryButton(onPressed: ()=> showToast(context: context, builder: buildToast, location: ToastLocation.topLeft),    child: const Text('Show Top Left Toast')),
+    PrimaryButton(onPressed: ()=> showToast(context: context, builder: buildToast, location: ToastLocation.topRight),   child: const Text('Show Top Right Toast')),
+    PrimaryButton(onPressed: ()=> showToast(context: context, builder: buildToast, location: ToastLocation.bottomCenter), child: const Text('Show Bottom Center Toast')),
+    PrimaryButton(onPressed: ()=> showToast(context: context, builder: buildToast, location: ToastLocation.topCenter),    child: const Text('Show Top Center Toast')),
+  ],
+);
+
+Best practices
+	•	One toast at a time per corner. Queue if needed.
+	•	Keep action primary and short. Close on action.
+
+Accessibility
+	•	Alerts and dialogs announce via semantics automatically. Keep titles meaningful.
+	•	For progress, announce milestone changes only.
+	•	Ensure toast content is readable for a few seconds and not critical to task completion.
+
+
+========================================================
+                  Navs. and Breadcrumbs
+========================================================
+Arcane nav primitives cover trails, rails, menus, bars, sidebars, pagination, tabs, switchers, and trees. Compose small parts. Keep state local. Avoid heavy layouts in nav chrome.
+
+Breadcrumb
+	•	Linear trail with custom separator.
+	•	Use MoreDots() for collapsed segments.
+
+Breadcrumb(
+  separator: Breadcrumb.arrowSeparator,
+  children: [
+    TextButton(density: ButtonDensity.compact, onPressed: () {}, child: Text('Home')),
+    MoreDots(),
+    TextButton(density: ButtonDensity.compact, onPressed: () {}, child: Text('Components')),
+    Text('Breadcrumb'),
+  ],
+)
+
+Tips
+	•	Short labels. No wrapping.
+	•	Collapse deep paths with MoreDots.
+
+⸻
+
+DotIndicator
+	•	Small pager with tap or programmatic control.
+
+int _index = 0;
+DotIndicator(
+  index: _index,
+  length: 5,
+  onChanged: (i) => setState(() => _index = i),
+)
+
+Tips
+	•	Use for carousels and steppers.
+	•	Keep length small for touch targets.
+
+⸻
+
+NavigationRail
+	•	Vertical app nav with sections, labels, and expand.
+
+bool expanded = false;
+int selected = 0;
+
+NavigationItem buildButton(String text, IconData icon) => NavigationItem(
+  label: Text(text), alignment: Alignment.centerLeft,
+  selectedStyle: ButtonStyle.primaryIcon(), child: Icon(icon),
+);
+
+NavigationLabel buildLabel(String text) => NavigationLabel(
+  alignment: Alignment.centerLeft, child: Text(text).semiBold().muted(),
+);
+
+OutlinedContainer(
+  height: 600, width: 800,
+  child: Row(children: [
+    NavigationRail(
+      backgroundColor: Theme.of(context).colorScheme.card,
+      labelType: NavigationLabelType.expanded,
+      labelPosition: NavigationLabelPosition.end,
+      alignment: NavigationRailAlignment.start,
+      expanded: expanded,
+      index: selected,
+      onSelected: (v) => setState(() => selected = v),
+      children: [
+        NavigationButton(
+          alignment: Alignment.centerLeft,
+          label: Text('Menu'),
+          child: Icon(Icons.menu),
+          onPressed: () => setState(() => expanded = !expanded),
+        ),
+        NavigationDivider(),
+        buildLabel('You'),
+        buildButton('Home', Icons.home_filled),
+        buildButton('Trending', Icons.trending_up),
+        buildButton('Subscription', Icons.subscriptions),
+        NavigationDivider(),
+        buildLabel('History'),
+        buildButton('History', Icons.history),
+        buildButton('Watch Later', Icons.access_time_rounded),
+        NavigationDivider(),
+        buildLabel('Movie'),
+        buildButton('Action', Icons.movie_creation_outlined),
+        buildButton('Horror', Icons.movie_creation_outlined),
+        buildButton('Thriller', Icons.movie_creation_outlined),
+        NavigationDivider(),
+        buildLabel('Short Films'),
+        buildButton('Action', Icons.movie_creation_outlined),
+        buildButton('Horror', Icons.movie_creation_outlined),
+      ],
+    ),
+    VerticalDivider(),
+    Flexible(child: SizedBox()),
+  ]),
+)
+
+Tips
+	•	Toggle expanded for label reveal.
+	•	Group with NavigationLabel and NavigationDivider.
+
+⸻
+
+Menubar
+	•	Desktop-style top menu with buttons, submenus, checkboxes, radios, and shortcuts.
+
+bool _showBookmarksBar = false;
+bool _showFullURLs = true;
+int _selectedProfile = 1;
+
+Menubar(children: [
+  MenuButton(child: Text('File'), subMenu: [
+    MenuButton(leading: Icon(RadixIcons.filePlus),
+      trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyT, control: true)),
+      child: Text('New Tab')),
+    MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyN, control: true)),
+      child: Text('New Window')),
+    MenuButton(enabled: false, child: Text('New Incognito Window')),
+    MenuDivider(),
+    MenuButton(child: Text('Share'), subMenu: [MenuButton(child: Text('Email Link')), MenuButton(child: Text('Messages')), MenuButton(child: Text('Notes'))]),
+    MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyP, control: true)), child: Text('Print')),
+    MenuButton(child: Text('Exit'), subMenu: [MenuButton(child: Text('Save and Exit')), MenuButton(child: Text('Discard and Exit'))]),
+  ]),
+  MenuButton(child: Text('Edit'), subMenu: [
+    MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyZ, control: true)), child: Text('Undo')),
+    MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true)), child: Text('Redo')),
+    MenuDivider(),
+    MenuButton(child: Text('Find'), subMenu: [MenuButton(child: Text('Search the Web')), MenuDivider(), MenuButton(child: Text('Find...')), MenuButton(child: Text('Find Next')), MenuButton(child: Text('Find Previous'))]),
+    MenuDivider(),
+    MenuButton(child: Text('Cut')), MenuButton(child: Text('Copy')), MenuButton(child: Text('Paste')),
+  ]),
+  MenuButton(child: Text('View'), subMenu: [
+    MenuCheckbox(value: _showBookmarksBar, onChanged: (_, v){ setState(() => _showBookmarksBar = v); }, autoClose: false, child: Text('Always Show Bookmarks Bar')),
+    MenuCheckbox(value: _showFullURLs, onChanged: (_, v){ setState(() => _showFullURLs = v); }, autoClose: false, child: Text('Always Show Full URLs')),
+    MenuDivider(),
+    MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyR, control: true)), child: Text('Reload')),
+    MenuButton(enabled: false, trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyR, control: true, shift: true)), child: Text('Force Reload')),
+    MenuDivider(),
+    MenuButton(child: Text('Toggle Full Screen')),
+    MenuDivider(),
+    MenuButton(child: Text('Hide Sidebar')),
+  ]),
+  MenuButton(child: Text('Profiles'), subMenu: [
+    MenuRadioGroup<int>(
+      value: _selectedProfile,
+      onChanged: (_, v){ setState(() => _selectedProfile = v); },
+      children: const [
+        MenuRadio<int>(value: 0, autoClose: false, child: Text('Andy')),
+        MenuRadio<int>(value: 1, autoClose: false, child: Text('Benoit')),
+        MenuRadio<int>(value: 2, autoClose: false, child: Text('Luis')),
+      ],
+    ),
+    MenuDivider(),
+    MenuButton(child: Text('Edit...')),
+    MenuDivider(),
+    MenuButton(child: Text('Add Profile...')),
+  ]),
+])
+
+Tips
+	•	Use autoClose: false for toggles that should stay open.
+	•	Pair MenuShortcut with platform-appropriate activators.
+
+⸻
+
+NavigationBar
+	•	Bottom or footer bar. Supports alignment, labels, expand behavior, and custom item styles.
+
+int selected = 0;
+var alignment = NavigationBarAlignment.spaceAround;
+var expands = true;
+var labelType = NavigationLabelType.none;
+var customButtonStyle = true;
+var expanded = true;
+
+NavigationItem buildButton(String label, IconData icon) => NavigationItem(
+  style: customButtonStyle ? ButtonStyle.muted(density: ButtonDensity.icon) : null,
+  selectedStyle: customButtonStyle ? ButtonStyle.fixed(density: ButtonDensity.icon) : null,
+  label: Text(label), child: Icon(icon),
+);
+
+Scaffold(
+  footers: [
+    Divider(),
+    NavigationBar(
+      alignment: alignment,
+      labelType: labelType,
+      expanded: expanded,
+      expands: expands,
+      index: selected,
+      onSelected: (i) => setState(() => selected = i),
+      children: [
+        buildButton('Home', BootstrapIcons.house),
+        buildButton('Explore', BootstrapIcons.compass),
+        buildButton('Library', BootstrapIcons.musicNoteList),
+        buildButton('Profile', BootstrapIcons.person),
+        buildButton('App', BootstrapIcons.appIndicator),
+      ],
+    ),
+  ],
+  child: Container(color: Colors.primaries[Colors.primaries.length - selected - 1]),
+)
+
+Tips
+	•	Use ButtonDensity.icon for compact bars.
+	•	Toggle expanded for label visibility.
+
+⸻
+
+NavigationMenu
+	•	Mega menu style with rich panels.
+
+NavigationMenu(children: [
+  NavigationMenuItem(
+    child: Text('Getting started'),
+    content: NavigationMenuContentList(
+      reverse: true,
+      children: [
+        NavigationMenuContent(title: Text('Introduction'), content: Text('Component library...'), onPressed: () {}),
+        NavigationMenuContent(title: Text('Installation'), content: Text('How to install...'), onPressed: () {}),
+        NavigationMenuContent(title: Text('Typography'), content: Text('Styles and usage...'), onPressed: () {}),
+        Clickable(
+          mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click),
+          child: Card(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              FlutterLogo(size: 32), Gap(16),
+              Text('shadcn_flutter').mono().semiBold().large(),
+              Gap(8), Text('Beautifully designed components...').muted(),
+            ]),
+          ).constrained(maxWidth: 192),
+        ),
+      ],
+    ),
+  ),
+  NavigationMenuItem(
+    child: Text('Components'),
+    content: NavigationMenuContentList(children: [
+      NavigationMenuContent(title: Text('Accordion'), content: Text('Accordion component for Flutter.'), onPressed: () {}),
+      NavigationMenuContent(title: Text('Alert'), content: Text('Alert component for Flutter.'), onPressed: () {}),
+      // …
+    ]),
+  ),
+  NavigationMenuItem(
+    child: Text('Blog'),
+    content: NavigationMenuContentList(crossAxisCount: 2, children: [
+      NavigationMenuContent(title: Text('Latest news'), content: Text('Stay updated...'), onPressed: () {}),
+      NavigationMenuContent(title: Text('Change log'), content: Text('View the change log...'), onPressed: () {}),
+      NavigationMenuContent(title: Text('Contributors'), content: Text('List of contributors...'), onPressed: () {}),
+    ]),
+  ),
+  NavigationMenuItem(onPressed: () {}, child: Text('Documentation')),
+])
+
+Tips
+	•	Constrain cards to avoid overflow.
+	•	Use reverse: true to float featured content to the end.
+
+⸻
+
+NavigationRail — interactive demo
+	•	Expose rail parameters with selects and checkboxes.
+
+int selected = 0;
+var alignment = NavigationRailAlignment.start;
+var labelType = NavigationLabelType.none;
+var labelPosition = NavigationLabelPosition.bottom;
+var customButtonStyle = false;
+var expanded = true;
+
+NavigationItem buildButton(String label, IconData icon) => NavigationItem(
+  style: customButtonStyle ? ButtonStyle.muted(density: ButtonDensity.icon) : null,
+  selectedStyle: customButtonStyle ? ButtonStyle.fixed(density: ButtonDensity.icon) : null,
+  label: Text(label), child: Icon(icon),
+);
+
+Row(children: [
+  NavigationRail(
+    alignment: alignment,
+    labelType: labelType,
+    labelPosition: labelPosition,
+    expanded: expanded,
+    index: selected,
+    onSelected: (i) => setState(() => selected = i),
+    children: [
+      buildButton('Home', BootstrapIcons.house),
+      buildButton('Explore', BootstrapIcons.compass),
+      buildButton('Library', BootstrapIcons.musicNoteList),
+      NavigationDivider(),
+      NavigationLabel(child: Text('Settings')),
+      buildButton('Profile', BootstrapIcons.person),
+      buildButton('App', BootstrapIcons.appIndicator),
+      NavigationDivider(),
+      NavigationGap(12),
+      NavigationWidget(child: FlutterLogo()),
+    ],
+  ),
+  VerticalDivider(),
+  Expanded(child: /* controls + content */ SizedBox()),
+])
+
+
+⸻
+
+NavigationSidebar
+	•	Left sidebar list. Good for media libraries.
+
+int selected = 0;
+NavigationItem buildButton(String label, IconData icon) =>
+  NavigationItem(label: Text(label), child: Icon(icon));
+
+NavigationSidebar(
+  index: selected,
+  onSelected: (i) => setState(() => selected = i),
+  children: [
+    NavigationLabel(child: Text('Discovery')),
+    buildButton('Listen Now', BootstrapIcons.playCircle),
+    buildButton('Browse', BootstrapIcons.grid),
+    buildButton('Radio', BootstrapIcons.broadcast),
+    NavigationGap(24),
+    NavigationDivider(),
+    NavigationLabel(child: Text('Library')),
+    buildButton('Playlist', BootstrapIcons.musicNoteList),
+    // …
+    NavigationLabel(child: Text('Playlists')),
+    buildButton('Recently Added', BootstrapIcons.musicNoteList),
+    // …
+  ],
+)
+
+Tips
+	•	Use NavigationGap to group blocks.
+	•	Keep item counts reasonable or virtualize content.
+
+⸻
+
+Pagination
+	•	Page selector for lists and tables.
+
+int page = 1;
+Pagination(
+  page: page, totalPages: 20, maxPages: 3,
+  onPageChanged: (v) => setState(() => page = v),
+)
+
+
+⸻
+
+Switcher
+	•	Animated index switch with direction control. Use for wizards and content swaps.
+
+List<AxisDirection> dirs = [AxisDirection.up, AxisDirection.down, AxisDirection.left, AxisDirection.right];
+List<Size> sizes = [Size(200, 300), Size(300, 200)];
+int dir = 0, index = 0;
+
+Column(children: [
+  PrimaryButton(child: Text('Switch Direction (${dirs[dir % dirs.length]})'), onPressed: () => setState(() => dir++)),
+  PrimaryButton(child: Text('Next Item'), onPressed: () => setState(() => index++)),
+  Gap(24),
+  ClipRect(
+    child: Switcher(
+      index: index,
+      direction: dirs[dir % dirs.length],
+      onIndexChanged: (i) => setState(() => index = i),
+      children: [
+        for (int i = 0; i < 100; i++)
+          NumberedContainer(index: i, width: sizes[i % sizes.length].width, height: sizes[i % sizes.length].height)
+      ],
+    ),
+  ),
+])
+
+Auth swap with validation:
+
+bool _isRegister = false;
+final _register = FormController();
+final _login = FormController();
+
+Switcher(
+  index: _isRegister ? 1 : 0,
+  onIndexChanged: (i) => setState(() => _isRegister = i == 1),
+  direction: AxisDirection.left,
+  children: [
+    // login
+    SizedBox(
+      key: Key('login'), width: 350,
+      child: Form(controller: _login, child: Column(spacing: 16, children: [
+        FormField(
+          key: TextFieldKey(#email),
+          label: Text('Email'),
+          validator: EmailValidator() & NotEmptyValidator(),
+          showErrors: {FormValidationMode.changed, FormValidationMode.submitted},
+          child: TextField(
+            initialValue: _login.getValue(TextFieldKey(#email)),
+            keyboardType: TextInputType.emailAddress, autocorrect: false, enableSuggestions: false,
+          ),
+        ),
+        const FormField(key: TextFieldKey(#password), label: Text('Password'),
+          validator: NotEmptyValidator(), showErrors: {FormValidationMode.changed, FormValidationMode.submitted},
+          child: TextField(obscureText: true)),
+        const SubmitButton(child: Text('Login')),
+        const Text("Don't have an account? ").thenButton(
+          onPressed: () => setState(() => _isRegister = true), child: Text('Sign Up!')),
+      ])),
+    ),
+    // register
+    SizedBox(
+      key: Key('register-form'), width: 350,
+      child: Form(controller: _register, child: Column(spacing: 16, children: [
+        FormField(
+          key: TextFieldKey(#email),
+          label: Text('Email'),
+          validator: EmailValidator() & NotEmptyValidator(),
+          showErrors: {FormValidationMode.changed, FormValidationMode.submitted},
+          child: TextField(
+            initialValue: _register.getValue(TextFieldKey(#email)),
+            keyboardType: TextInputType.emailAddress, autocorrect: false, enableSuggestions: false,
+          ),
+        ),
+        const FormField(
+          key: TextFieldKey(#password), label: Text('Password'),
+          validator: LengthValidator(min: 6, message: 'Password must be at least 6 characters'),
+          showErrors: {FormValidationMode.changed, FormValidationMode.submitted},
+          child: TextField(obscureText: true),
+        ),
+        const FormField(
+          key: TextFieldKey(#confirmPassword), label: Text('Confirm Password'),
+          validator: CompareWith.equal(TextFieldKey(#password), message: 'Passwords do not match'),
+          showErrors: {FormValidationMode.changed, FormValidationMode.submitted},
+          child: TextField(obscureText: true),
+        ),
+        const SubmitButton(child: Text('Register')),
+        const Text('Already have an account? ').thenButton(
+          onPressed: () => setState(() => _isRegister = false), child: Text('Login!')),
+      ])),
+    ),
+  ],
+)
+
+
+⸻
+
+Tabs
+	•	Three flavors: TabList + IndexedStack, sortable TabPane, and compact Tabs.
+
+TabList:
+
+int index = 0;
+Column(children: [
+  TabList(
+    index: index,
+    onChanged: (v) => setState(() => index = v),
+    children: const [TabItem(child: Text('Tab 1')), TabItem(child: Text('Tab 2')), TabItem(child: Text('Tab 3'))],
+  ),
+  Gap(16),
+  IndexedStack(index: index, children: const [
+    NumberedContainer(index: 1), NumberedContainer(index: 2), NumberedContainer(index: 3),
+  ]).sized(height: 300),
+])
+
+TabPane with close and reorder:
+
+class MyTab { final String title; final int count; final String content; MyTab(this.title, this.count, this.content); }
+
+late List<TabPaneData<MyTab>> tabs;
+int focused = 0;
+
+TabItem _buildTabItem(BuildContext context, MyTab d) => TabItem(
+  child: ConstrainedBox(constraints: BoxConstraints(minWidth: 150),
+    child: Label(
+      leading: OutlinedContainer(backgroundColor: Colors.white, width: 18, height: 18,
+        borderRadius: Theme.of(context).borderRadiusMd,
+        child: Center(child: Text('${d.count}').xSmall().bold()),
+      ),
+      trailing: IconButton.ghost(shape: ButtonShape.circle, size: ButtonSize.xSmall, icon: Icon(Icons.close),
+        onPressed: () => setState(() => tabs.removeWhere((e) => e.data == d))),
+      child: Text(d.title),
+    ),
+  ),
+);
+
+TabPane<MyTab>(
+  items: tabs,
+  itemBuilder: (context, item, i) => _buildTabItem(context, item.data),
+  focused: focused,
+  onFocused: (v) => setState(() => focused = v),
+  onSort: (v) => setState(() => tabs = v),
+  leading: [IconButton.secondary(icon: Icon(Icons.arrow_drop_down), size: ButtonSize.small, density: ButtonDensity.iconDense, onPressed: () {})],
+  trailing: [IconButton.ghost(icon: Icon(Icons.add), size: ButtonSize.small, density: ButtonDensity.iconDense,
+    onPressed: () => setState(() {
+      final max = tabs.fold<int>(0, (m, e) => e.data.count > m ? e.data.count : m);
+      tabs.add(TabPaneData(MyTab('Tab ${max + 1}', max + 1, 'Content ${max + 1}')));
+    }))],
+  child: SizedBox(height: 400, child: Center(child: Text('Tab ${focused + 1}').xLarge().bold())),
+)
+
+Tabs compact:
+
+int index = 0;
+Column(children: [
+  Tabs(index: index, onChanged: (v) => setState(() => index = v), children: const [
+    TabItem(child: Text('Tab 1')), TabItem(child: Text('Tab 2')), TabItem(child: Text('Tab 3')),
+  ]),
+  Gap(8),
+  IndexedStack(index: index, children: const [
+    NumberedContainer(index: 1), NumberedContainer(index: 2), NumberedContainer(index: 3),
+  ]).sized(height: 300),
+])
+
+Tips
+	•	Prefer TabPane for closable sortable tabs.
+	•	Use IndexedStack to preserve tab state.
+
+⸻
+
+TreeView
+	•	Hierarchical navigation with selection, expand, and custom item views.
+
+bool expandIcon = false;
+bool usePath = true;
+bool recursiveSelection = false;
+List<TreeNode<String>> treeItems = [
+  TreeItem(data: 'Apple', expanded: true, children: [
+    TreeItem(data: 'Red Apple', children: [TreeItem(data: 'Red Apple 1'), TreeItem(data: 'Red Apple 2')]),
+    TreeItem(data: 'Green Apple'),
+  ]),
+  TreeItem(data: 'Banana', children: [
+    TreeItem(data: 'Yellow Banana'),
+    TreeItem(data: 'Green Banana', children: [TreeItem(data: 'Green Banana 1'), TreeItem(data: 'Green Banana 2'), TreeItem(data: 'Green Banana 3')]),
+  ]),
+  TreeItem(data: 'Cherry', children: [TreeItem(data: 'Red Cherry'), TreeItem(data: 'Green Cherry')]),
+  TreeItem(data: 'Date'),
+  TreeRoot(children: [
+    TreeItem(data: 'Elderberry', children: [TreeItem(data: 'Black Elderberry'), TreeItem(data: 'Red Elderberry')]),
+    TreeItem(data: 'Fig', children: [TreeItem(data: 'Green Fig'), TreeItem(data: 'Purple Fig')]),
+  ]),
+];
+
+Column(mainAxisSize: MainAxisSize.min, children: [
+  OutlinedContainer(
+    child: SizedBox(
+      height: 300, width: 250,
+      child: TreeView(
+        expandIcon: expandIcon,
+        shrinkWrap: true,
+        recursiveSelection: recursiveSelection,
+        nodes: treeItems,
+        branchLine: usePath ? BranchLine.path : BranchLine.line,
+        onSelectionChanged: TreeView.defaultSelectionHandler(treeItems, (value) => setState(() => treeItems = value)),
+        builder: (context, node) => TreeItemView(
+          onPressed: () {},
+          trailing: node.leaf ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator()) : null,
+          leading: node.leaf ? Icon(BootstrapIcons.fileImage) : Icon(node.expanded ? BootstrapIcons.folder2Open : BootstrapIcons.folder2),
+          onExpand: TreeView.defaultItemExpandHandler(treeItems, node, (value) => setState(() => treeItems = value)),
+          child: Text(node.data),
+        ),
+      ),
+    ),
+  ),
+  Gap(16),
+  Row(mainAxisSize: MainAxisSize.min, children: [
+    PrimaryButton(onPressed: () => setState(() => treeItems = treeItems.expandAll()), child: Text('Expand All')),
+    Gap(8),
+    PrimaryButton(onPressed: () => setState(() => treeItems = treeItems.collapseAll()), child: Text('Collapse All')),
+  ]),
+  Gap(8),
+  Checkbox(
+    state: expandIcon ? CheckboxState.checked : CheckboxState.unchecked,
+    onChanged: (v) => setState(() => expandIcon = v == CheckboxState.checked),
+    trailing: Text('Expand Icon'),
+  ),
+  Gap(8),
+  Checkbox(
+    state: usePath ? CheckboxState.checked : CheckboxState.unchecked,
+    onChanged: (v) => setState(() => usePath = v == CheckboxState.checked),
+    trailing: Text('Use Path Branch Line'),
+  ),
+  Gap(8),
+  Checkbox(
+    state: recursiveSelection ? CheckboxState.checked : CheckboxState.unchecked,
+    onChanged: (v) {
+      setState(() {
+        recursiveSelection = v == CheckboxState.checked;
+        if (recursiveSelection) treeItems = treeItems.updateRecursiveSelection();
+      });
+    },
+    trailing: Text('Recursive Selection'),
+  ),
+])
+
+
+⸻
+
+Patterns
+	•	Keep nav chrome lightweight. Heavy content goes in pages.
+	•	Reuse NavigationItem builders to centralize icon, density, and style.
+	•	For multi-surface apps pair a NavigationRail or NavigationSidebar with a NavigationBar.
+	•	Use Switcher for auth flows and step transitions. Use Tabs for peer content.
+	•	Breadcrumbs for deep hierarchies only. Hide mid segments with MoreDots.
+
+Gotchas
+	•	Do not mutate controllers without disposal in stateful widgets.
+	•	Avoid long labels in rails and bars. Truncate or collapse.
+	•	Ensure focus and shortcuts in Menubar are platform-correct.
+	•	Keep tap targets ≥ 44 logical px in custom items.
+
+
+========================================================
+                  Forms and Inputs
+========================================================
+
+========================================================
+Forms & Inputs
+
+Arcane inputs are composable and feature-rich. Favor small builders and validators. Keep state local.
+
+Autocomplete
+	•	Wrap a TextField with AutoComplete(suggestions: ...).
+	•	Update suggestions on onChanged using the active word.
+
+final _controller = TextEditingController();
+List<String> _sugs = [];
+
+void _update(String _) {
+  final w = _controller.currentWord;
+  setState(() => _sugs = (w==null||w.isEmpty) ? [] :
+    suggestions.where((e)=> e.toLowerCase().contains(w.toLowerCase())).toList());
+}
+
+AutoComplete(
+  suggestions: _sugs,
+  child: TextField(
+    controller: _controller,
+    onChanged: _update,
+    trailing: const IconButton.text(
+      density: ButtonDensity.compact,
+      icon: Icon(Icons.clear),
+      onPressed: clearActiveTextInput,
+    ),
+  ),
+);
+
+Checkbox
+	•	Checkbox(state: ..., onChanged: ...)
+	•	Use tristate: true for indeterminate.
+
+CheckboxState _state = CheckboxState.unchecked;
+Checkbox(
+  state: _state,
+  onChanged: (v) => setState(()=> _state = v),
+  trailing: const Text('Remember me'),
+  // tristate: true,
+);
+
+ChipInput with suggestions
+	•	Accept tokens, show inline suggestions, manage list.
+
+List<String> _chips = [], _sugs = [];
+final _c = TextEditingController()..addListener(() {
+  final t = _c.text;
+  setState(()=> _sugs = t.isEmpty ? [] :
+    _availableSuggestions.where((e)=> e.startsWith(t)).toList());
+});
+
+ChipInput<String>(
+  controller: _c,
+  suggestions: _sugs,
+  onSuggestionChoosen: (i){ setState(()=> _chips.add(_sugs[i])); _c.clear(); },
+  onSubmitted: (v){ setState(()=> _chips..add(v)..remove('')); _sugs.clear(); _c.clear(); },
+  onChanged: (v)=> setState(()=> _chips = v),
+  chips: _chips,
+  chipBuilder: (_, chip)=> Text(chip),
+);
+
+ColorInput
+	•	Supports PromptMode.popover and PromptMode.dialog.
+	•	Persist with ColorHistoryStorage.of(context).
+
+ColorDerivative color = ColorDerivative.fromColor(Colors.blue);
+Column(children: [
+  SizedBox(
+    width: 32, height: 32,
+    child: ColorInput(
+      color: color, mode: PromptMode.popover,
+      onChanged: (v)=> setState(()=> color = v),
+      storage: ColorHistoryStorage.of(context),
+    ),
+  ),
+  const Gap(16),
+  ColorInput(
+    color: color, mode: PromptMode.dialog, showLabel: true,
+    dialogTitle: const Text('Select Color'),
+    onChanged: (v)=> setState(()=> color = v),
+    storage: ColorHistoryStorage.of(context),
+  ),
+]);
+
+Form, fields, and validation
+	•	Use Form(onSubmit: ...) and FormField with TextFieldKey.
+	•	Compose validators: LengthValidator, CompareWith.equal, ConditionalValidator.
+
+final usernameKey = TextFieldKey('username');
+final passwordKey = TextFieldKey('password');
+final confirmKey  = TextFieldKey('confirmPassword');
+
+Form(
+  onSubmit: (context, values) {
+    final u = usernameKey[values];
+    final p = passwordKey[values];
+    final c = confirmKey[values];
+    final json = jsonEncode(values.map((k,v)=> MapEntry(k.key, v)));
+    // handle values or show dialog
+  },
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      FormTableLayout(rows: [
+        FormField(
+          key: usernameKey,
+          label: const Text('Username'),
+          hint: const Text('This is your public display name'),
+          validator: const LengthValidator(min: 4),
+          child: const TextField(initialValue: 'sunarya-thito'),
+        ),
+        FormField(
+          key: passwordKey,
+          label: const Text('Password'),
+          validator: const LengthValidator(min: 8),
+          child: const TextField(obscureText: true),
+        ),
+        FormField(
+          key: confirmKey,
+          label: const Text('Confirm Password'),
+          validator: CompareWith.equal(passwordKey, message: 'Passwords do not match'),
+          child: const TextField(obscureText: true),
+        ),
+      ]),
+      const Gap(24),
+      FormErrorBuilder(builder: (context, errors, _) =>
+        PrimaryButton(onPressed: errors.isEmpty ? () => context.submitForm() : null, child: const Text('Submit'))),
+    ],
+  ),
+);
+
+FormattedInput (patterned values)
+	•	Build with FormattedValue([InputPart...]). Read parts in onChanged.
+
+FormattedInput(
+  onChanged: (v) => debugPrint(v.values.map((p)=> p.value??'').join('/')),
+  initialValue: FormattedValue([
+    const InputPart.editable(length: 2, width: 40, placeholder: Text('MM')).withValue('01'),
+    const InputPart.static('/'),
+    const InputPart.editable(length: 2, width: 40, placeholder: Text('DD')).withValue('02'),
+    const InputPart.static('/'),
+    const InputPart.editable(length: 4, width: 60, placeholder: Text('YYYY')).withValue('2021'),
+  ]),
+);
+
+OTP input
+	•	Compose with InputOTP and InputOTPChild.
+
+String live = '',? submitted;
+Column(children: [
+  InputOTP(
+    onChanged: (v)=> setState(()=> live = v.otpToString()),
+    onSubmitted: (v)=> setState(()=> submitted = v.otpToString()),
+    children: const [
+      InputOTPChild.character(allowDigit: true),
+      InputOTPChild.character(allowDigit: true),
+      InputOTPChild.character(allowDigit: true),
+      InputOTPChild.separator,
+      InputOTPChild.character(allowDigit: true),
+      InputOTPChild.character(allowDigit: true),
+      InputOTPChild.character(allowDigit: true),
+    ],
+  ),
+  gap(16),
+  Text('Value: $live'),
+  Text('Submitted Value: $submitted'),
+]);
+
+ItemPicker
+	•	Async result via Future. Show feedback with showToast.
+
+PrimaryButton(
+  onPressed: () {
+    showItemPicker<int>(
+      context,
+      title: const Text('Pick an item'),
+      items: ItemBuilder(itemCount: 1000, itemBuilder: (i)=> i),
+      builder: (_, item)=> ItemPickerOption(value: item, child: Text('$item').large),
+    ).then((v){
+      showToast(
+        context: context,
+        builder: (_, __)=> SurfaceCard(child: Text(v!=null ? 'You picked $v!' : 'You picked nothing!')),
+      );
+    });
+  },
+  child: const Text('Show Item Picker'),
+);
+
+Numeric TextField with spinner and math
+	•	Enable InputFeature.spinner() and TextInputFormatters.mathExpression().
+
+double value = 0;
+Column(children: [
+  SizedBox(
+    width: 100,
+    child: TextField(
+      initialValue: '$value',
+      onChanged: (s)=> setState(()=> value = double.tryParse(s) ?? 0),
+      features: const [InputFeature.spinner()],
+      submitFormatters: [TextInputFormatters.mathExpression()],
+    ),
+  ),
+  gap(8),
+  Text('Value: $value'),
+]);
+
+PhoneInput
+
+PhoneNumber? _phone;
+Column(children: [
+  PhoneInput(
+    initialCountry: Country.indonesia,
+    onChanged: (v)=> setState(()=> _phone = v),
+  ),
+  const Gap(24),
+  Text(_phone?.value ?? '(No value)'),
+]);
+
+RadioGroup
+	•	Use RadioCard for card choices. Use RadioItem for list choices.
+
+int value = 1;
+RadioGroup(
+  value: value, onChanged: (v)=> setState(()=> value = v),
+  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+    RadioCard(value: 1, child: Basic(title: Text('8-core CPU'), content: Text('32 GB RAM'))),
+    RadioCard(value: 2, child: Basic(title: Text('6-core CPU'), content: Text('24 GB RAM'))),
+    RadioCard(value: 3, child: Basic(title: Text('4-core CPU'), content: Text('16 GB RAM'))),
+  ]).gap(12),
+);
+
+int? selected;
+Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  RadioGroup<int>(
+    value: selected, onChanged: (v)=> setState(()=> selected = v),
+    child: const Column(children: [
+      RadioItem(value: 1, trailing: Text('Option 1')),
+      RadioItem(value: 2, trailing: Text('Option 2')),
+      RadioItem(value: 3, trailing: Text('Option 3')),
+    ]),
+  ),
+  const Gap(16),
+  Text('Selected: $selected'),
+]);
+
+Select
+
+String? selected;
+Select<String>(
+  itemBuilder: (_, item)=> Text(item),
+  popupConstraints: const BoxConstraints(maxHeight: 300, maxWidth: 200),
+  value: selected,
+  onChanged: (v)=> setState(()=> selected = v),
+  placeholder: const Text('Select a fruit'),
+  popup: const SelectPopup(items: SelectItemList(children: [
+    SelectItemButton(value: 'Apple',  child: Text('Apple')),
+    SelectItemButton(value: 'Banana', child: Text('Banana')),
+    SelectItemButton(value: 'Cherry', child: Text('Cherry')),
+  ])),
+);
+
+Slider
+
+SliderValue v = const SliderValue.single(0.5);
+Slider(value: v, onChanged: (x)=> setState(()=> v = x));
+
+StarRating
+
+double v = 1.5;
+StarRating(value: v, starSize: 32, onChanged: (x)=> setState(()=> v = x));
+
+Switch
+
+bool v = false;
+Switch(value: v, onChanged: (x)=> setState(()=> v = x));
+
+TextArea and TextField
+
+const TextArea(
+  initialValue: 'Hello, World!',
+  expandableWidth: true, expandableHeight: true,
+  initialWidth: 500, initialHeight: 300,
+);
+
+const TextField(placeholder: Text('Enter your name'));
+
+TextField with features
+
+TextField(
+  initialValue: 'Hello World!',
+  placeholder: const Text('Search something...'),
+  features: [
+    InputFeature.leading(
+      StatedWidget.builder(builder: (context, s) =>
+        s.hovered ? const Icon(Icons.search) : const Icon(Icons.search).iconMutedForeground(),
+      ),
+      visibility: InputFeatureVisibility.textEmpty,
+    ),
+    InputFeature.clear(
+      visibility: (InputFeatureVisibility.textNotEmpty & InputFeatureVisibility.focused) |
+                  InputFeatureVisibility.hovered,
+    ),
+  ],
+);
+
+Input helpers: clear, hint, copy, paste, password toggle
+
+Column(children: [
+  TextField(
+    placeholder: const Text('Enter your name'),
+    features: [
+      const InputFeature.clear(),
+      InputFeature.hint(popupBuilder: (_) => const TooltipContainer(child: Text('This is for your username'))),
+      const InputFeature.copy(),
+      const InputFeature.paste(),
+    ],
+  ),
+  const Gap(24),
+  const TextField(
+    placeholder: Text('Enter your password'),
+    features: [
+      InputFeature.clear(visibility: InputFeatureVisibility.textNotEmpty),
+      InputFeature.passwordToggle(mode: PasswordPeekMode.hold),
+    ],
+  ),
+]);
+
+Async field validation
+
+Form(
+  child: FormField(
+    key: const InputKey(#test),
+    label: const Text('Username'),
+    validator: ConditionalValidator(
+      (v) async {
+        await Future.delayed(const Duration(seconds: 1));
+        return !['sunarya-thito','septogeddon','admin'].contains(v);
+      },
+      message: 'Username already taken',
+    ),
+    child: const TextField(
+      placeholder: Text('Enter your username'),
+      initialValue: 'sunarya-thito',
+      features: [InputFeature.revalidate()],
+    ),
+  ),
+);
+
+TimePicker
+
+TimeOfDay t = TimeOfDay.now();
+Column(children: [
+  TimePicker(value: t, mode: PromptMode.popover, onChanged: (v)=> setState(()=> t = v ?? TimeOfDay.now())),
+  const Gap(16),
+  TimePicker(value: t, mode: PromptMode.dialog, dialogTitle: const Text('Select Time'),
+             onChanged: (v)=> setState(()=> t = v ?? TimeOfDay.now())),
+]);
+
+Toggle
+
+bool v = false;
+Toggle(value: v, onChanged: (x)=> setState(()=> v = x), child: const Text('Toggle'));
+
+Tips
+	•	Dispose TextEditingController in dispose.
+	•	Keep validators pure and fast; use ConditionalValidator for async.
+	•	Prefer feature flags (InputFeature.*) over ad-hoc adorners.
+	•	Use FormErrorBuilder to gate submit actions.
+	•	Constrain popups with popupConstraints to avoid overflow.
+
+Gotchas
+	•	Avoid setting both controller and initialValue if widget forbids it.
+	•	Reuse TextFieldKey across rebuilds; do not re-create per frame.
+	•	OTP separators do not accept input. Include them only as InputOTPChild.separator.
+
+
+
+========================================================
+                  Overlay and Utility
+========================================================
+Overlay primitives handle drawers, sheets, popovers, tooltips, dropdowns, hover cards, and swipeable surfaces. Utilities cover menus, keyboard, marquee, refresh, badges, chips, command palette, calendar, and desktop windows.
+
+Overlay: Drawer (stackable)
+	•	API: openDrawer(context:, builder:, position:, expands:), closeOverlay(context)
+	•	Positions: start | end | top | bottom
+	•	Pattern: re-enter openDrawer to stack.
+
+final positions = [
+  OverlayPosition.end, OverlayPosition.end,
+  OverlayPosition.bottom, OverlayPosition.bottom,
+  OverlayPosition.top, OverlayPosition.top,
+  OverlayPosition.start, OverlayPosition.start,
+];
+
+void _open(BuildContext context, int count) => openDrawer(
+  context: context,
+  expands: true,
+  position: positions[count % positions.length],
+  builder: (_) => Padding(
+    padding: const EdgeInsets.all(48),
+    child: IntrinsicWidth(
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Drawer ${count + 1} at ${positions[count % positions.length].name}'),
+        const Gap(16),
+        PrimaryButton(onPressed: () => _open(context, count + 1), child: const Text('Open Another Drawer')),
+        const Gap(8),
+        SecondaryButton(onPressed: () => closeOverlay(context), child: const Text('Close Drawer')),
+      ]),
+    ),
+  ),
+);
+
+PrimaryButton(onPressed: () => _open(context, 0), child: const Text('Open Drawer'));
+
+Tips
+	•	Use expands:true for full-bleed content.
+	•	Use closeOverlay from inside any overlay child.
+
+Overlay: HoverCard
+	•	Shows content on hover or focus.
+
+HoverCard(
+  hoverBuilder: (_) => const SurfaceCard(
+    child: Basic(leading: FlutterLogo(), title: Text('@flutter'), content: Text('The Flutter SDK provides...')),
+  ).sized(width: 300),
+  child: LinkButton(onPressed: () {}, child: const Text('@flutter')),
+);
+
+Overlay: Popover
+	•	API: showPopover(context:, alignment:, offset:, overlayBarrier:, builder:)
+
+PrimaryButton(
+  onPressed: () {
+    showPopover(
+      context: context,
+      alignment: Alignment.topCenter,
+      offset: const Offset(0, 8),
+      overlayBarrier: OverlayBarrier(borderRadius: theme.borderRadiusLg),
+      builder: (_) => ModalContainer(
+        child: SizedBox(
+          width: 300,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('Dimensions').large().medium(),
+            const Text('Set the dimensions for the layer.').muted(),
+            Form(controller: FormController(), child: const FormTableLayout(rows: [
+              FormField<double>(key: FormKey(#width),    label: Text('Width'),       child: TextField(initialValue: '100%')),
+              FormField<double>(key: FormKey(#maxWidth), label: Text('Max. Width'),  child: TextField(initialValue: '300px')),
+              FormField<double>(key: FormKey(#height),   label: Text('Height'),      child: TextField(initialValue: '25px')),
+              FormField<double>(key: FormKey(#maxHeight),label: Text('Max. Height'), child: TextField(initialValue: 'none')),
+            ], spacing: 8)).withPadding(vertical: 16),
+            PrimaryButton(onPressed: () => closeOverlay(context), child: const Text('Submit')),
+          ]),
+        ),
+      ),
+    ).future.then((_) => print('Popover closed'));
+  },
+  child: const Text('Open popover'),
+);
+
+Rule
+	•	If background is translucent, set an overlayBarrier.
+
+Overlay: Sheet
+	•	API: openSheet(context:, builder:, position:), closeSheet(context)
+
+final _form = FormController();
+
+Widget _buildSheet(BuildContext context) => Padding(
+  padding: const EdgeInsets.all(24),
+  child: Form(controller: _form, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(children: [
+      const Text('Edit profile').large().medium().expanded(),
+      TextButton(density: ButtonDensity.icon, child: const Icon(Icons.close), onPressed: () => closeSheet(context)),
+    ]),
+    const Gap(8),
+    const Text('Make changes to your profile here. Click save when you\'re done.').muted(),
+    const Gap(16),
+    FormTableLayout(rows: const [
+      FormField<String>(key: FormKey(#name),     label: Text('Name'),     validator: NotEmptyValidator() & LengthValidator(min: 4), child: TextField(initialValue: 'Thito Yalasatria Sunarya', placeholder: Text('Your fullname'))),
+      FormField<String>(key: FormKey(#username), label: Text('Username'), validator: NotEmptyValidator() & LengthValidator(min: 4), child: TextField(initialValue: '@sunarya-thito',          placeholder: Text('Your username'))),
+    ]),
+    const Gap(16),
+    Align(alignment: AlignmentDirectional.centerEnd, child: FormErrorBuilder(builder: (context, errors, _) {
+      return PrimaryButton(
+        onPressed: errors.isNotEmpty ? null : () {
+          context.submitForm().then((res) {
+            if (res.errors.isEmpty) {
+              closeSheet(context).then((_) => showDialog(context: context, builder: (_) => AlertDialog(
+                title: const Text('Profile updated'),
+                content: Text('Content: ${_form.values}'),
+                actions: [PrimaryButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+              )));
+            }
+          });
+        },
+        child: const Text('Save changes'),
+      );
+    })),
+  ])),
+);
+
+PrimaryButton(
+  onPressed: () => openSheet(context: context, position: OverlayPosition.end, builder: _buildSheet),
+  child: const Text('Open Sheet'),
+);
+
+Overlay: Swiper (drawer or sheet via gesture)
+	•	API: Swiper(handler:, position:, builder:, child:)
+	•	Handlers: SwiperHandler.drawer | sheet
+
+OverlayPosition _pos = OverlayPosition.end;
+bool _drawer = true;
+
+Widget _select(OverlayPosition pos, String label) => SelectedButton(
+  value: _pos == pos,
+  onChanged: (v) => v ? setState(() => _pos = pos) : null,
+  style: const ButtonStyle.outline(),
+  selectedStyle: const ButtonStyle.primary(),
+  child: Text(label),
+);
+
+Swiper(
+  position: _pos,
+  handler: _drawer ? SwiperHandler.drawer : SwiperHandler.sheet,
+  builder: (_) => ConstrainedBox(
+    constraints: const BoxConstraints(minWidth: 320, minHeight: 320),
+    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      const Text('Hello!'), const Gap(24),
+      PrimaryButton(
+        onPressed: () => openDrawer(
+          context: context,
+          position: OverlayPosition.bottom,
+          builder: (_) => ListView.separated(
+            itemCount: 1000,
+            itemBuilder: (_, i) => Card(child: Text('Item $i')),
+            separatorBuilder: (_, __) => const Gap(8),
+          ),
+        ),
+        child: const Text('Close'),
+      ),
+    ]),
+  ),
+  child: SizedBox(
+    height: 500,
+    child: Card(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Text('Swipe me!'), const Gap(24),
+      ButtonGroup(children: [
+        _select(OverlayPosition.left, 'Left'),
+        _select(OverlayPosition.right, 'Right'),
+        _select(OverlayPosition.top, 'Top'),
+        _select(OverlayPosition.bottom, 'Bottom'),
+      ]),
+      const Gap(24),
+      ButtonGroup(children: [
+        Toggle(value: _drawer, onChanged: (v) => setState(() => _drawer = v), child: const Text('Drawer')),
+        Toggle(value: !_drawer, onChanged: (v) => setState(() => _drawer = !v), child: const Text('Sheet')),
+      ]),
+    ]))),
+  ),
+);
+
+Tooltip
+
+Tooltip(
+  tooltip: const TooltipContainer(child: Text('This is a tooltip.')),
+  child: PrimaryButton(onPressed: () {}, child: const Text('Hover over me')),
+);
+
+WindowNavigator (desktop-style MDI)
+	•	Manage draggable, resizable windows inside a region.
+
+final navigatorKey = GlobalKey<WindowNavigatorHandle>();
+
+Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+  OutlinedContainer(
+    height: 600,
+    child: WindowNavigator(
+      key: navigatorKey,
+      initialWindows: const [
+        Window(bounds: Rect.fromLTWH(0, 0, 200, 200),   title: Text('Window 1'), content: RebuildCounter()),
+        Window(bounds: Rect.fromLTWH(200, 0, 200, 200), title: Text('Window 2'), content: RebuildCounter()),
+      ],
+      child: const Center(child: Text('Desktop')),
+    ),
+  ),
+  PrimaryButton(
+    onPressed: () => navigatorKey.currentState?.pushWindow(Window(
+      bounds: const Rect.fromLTWH(0, 0, 200, 200),
+      title: Text('Window ${navigatorKey.currentState!.windows.length + 1}'),
+      content: const RebuildCounter(),
+    )),
+    child: const Text('Add Window'),
+  ),
+]);
+
+Badges
+
+const PrimaryBadge(child: Text('Primary'));
+const SecondaryBadge(child: Text('Secondary'));
+const OutlineBadge(child: Text('Outline'));
+const DestructiveBadge(child: Text('Destructive'));
+
+Calendar
+	•	Props: value, view, onChanged, selectionMode, optional now.
+	•	Modes: single | range | multi | none.
+
+CalendarValue? _value;
+CalendarView _view = CalendarView.now();
+final loc = ShadcnLocalizations.of(context);
+
+Card(child: IntrinsicWidth(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+  Row(children: [
+    OutlineButton(density: ButtonDensity.icon, onPressed: () => setState(() => _view = _view.previous), child: const Icon(Icons.arrow_back).iconXSmall()),
+    Text('${loc.getMonth(_view.month)} ${_view.year}').small().medium().center().expanded(),
+    OutlineButton(density: ButtonDensity.icon, onPressed: () => setState(() => _view = _view.next), child: const Icon(Icons.arrow_forward).iconXSmall()),
+  ]),
+  const Gap(16),
+  Calendar(
+    value: _value, view: _view,
+    onChanged: (v) => setState(() => _value = v),
+    selectionMode: CalendarSelectionMode.range, // change to single/multi/none as needed
+    // now: DateTime.now(),
+  ),
+])));
+
+Chips
+
+Wrap(spacing: 8, runSpacing: 8, children: const [
+  Chip(child: Text('Apple'),   trailing: ChipButton(child: Icon(Icons.close))),
+  Chip(style: ButtonStyle.primary(),    child: Text('Banana'), trailing: ChipButton(child: Icon(Icons.close))),
+  Chip(style: ButtonStyle.outline(),    child: Text('Cherry'), trailing: ChipButton(child: Icon(Icons.close))),
+  Chip(style: ButtonStyle.ghost(),      child: Text('Durian'), trailing: ChipButton(child: Icon(Icons.close))),
+  Chip(style: ButtonStyle.destructive(),child: Text('Elderberry'), trailing: ChipButton(child: Icon(Icons.close))),
+]);
+
+Command Palette
+
+Command(
+  builder: (context, query) async* {
+    final items = {
+      'Suggestions': ['Calendar', 'Search Emoji', 'Launch'],
+      'Settings': ['Profile', 'Mail', 'Settings'],
+    };
+    final icons = {
+      'Calendar': Icon(Icons.calendar_today),
+      'Search Emoji': Icon(Icons.emoji_emotions_outlined),
+      'Launch': Icon(Icons.rocket_launch_outlined),
+      'Profile': Icon(Icons.person_outline),
+      'Mail': Icon(Icons.mail_outline),
+      'Settings': Icon(Icons.settings_outlined),
+    };
+    for (final e in items.entries) {
+      final children = <Widget>[];
+      for (final item in e.value) {
+        if (query == null || item.toLowerCase().contains(query.toLowerCase())) {
+          children.add(CommandItem(title: Text(item), leading: icons[item], onTap: () {}));
+        }
+      }
+      if (children.isNotEmpty) {
+        await Future.delayed(const Duration(seconds: 1));
+        yield [CommandCategory(title: Text(e.key), children: children)];
+      }
+    }
+  },
+).sized(width: 300, height: 300);
+
+Context Menu
+
+int people = 0; bool showBookmarksBar = false; bool showFullUrls = true;
+
+ContextMenu(
+  items: [
+    const MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.bracketLeft, control: true)), child: Text('Back')),
+    const MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.bracketRight, control: true)), enabled: false, child: Text('Forward')),
+    const MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyR, control: true)), child: Text('Reload')),
+    const MenuButton(subMenu: [
+      MenuButton(trailing: MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyS, control: true)), child: Text('Save Page As...')),
+      MenuButton(child: Text('Create Shortcut...')),
+      MenuButton(child: Text('Name Window...')),
+      MenuDivider(),
+      MenuButton(child: Text('Developer Tools')),
+    ], child: Text('More Tools')),
+    const MenuDivider(),
+    MenuCheckbox(value: showBookmarksBar, onChanged: (_, v) => setState(() => showBookmarksBar = v), autoClose: false,
+      trailing: const MenuShortcut(activator: SingleActivator(LogicalKeyboardKey.keyB, control: true, shift: true)), child: const Text('Show Bookmarks Bar')),
+    MenuCheckbox(value: showFullUrls, onChanged: (_, v) => setState(() => showFullUrls = v), autoClose: false, child: const Text('Show Full URLs')),
+    const MenuDivider(), const MenuLabel(child: Text('People')), const MenuDivider(),
+    MenuRadioGroup(value: people, onChanged: (_, v) => setState(() => people = v), children: const [
+      MenuRadio(value: 0, autoClose: false, child: Text('Pedro Duarte')),
+      MenuRadio(value: 1, autoClose: false, child: Text('Colm Tuite')),
+    ]),
+  ],
+  child: DashedContainer(strokeWidth: 2, gap: 2, borderRadius: BorderRadius.circular(theme.radiusMd), child: const Text('Right click here').center())
+    .constrained(maxWidth: 300, maxHeight: 200),
+);
+
+Dropdown
+
+OutlineButton(
+  onPressed: () {
+    showDropdown(context: context, builder: (_) => const DropdownMenu(children: [
+      MenuLabel(child: Text('My Account')), MenuDivider(),
+      MenuButton(child: Text('Profile')), MenuButton(child: Text('Billing')), MenuButton(child: Text('Settings')), MenuButton(child: Text('Keyboard shortcuts')),
+      MenuDivider(), MenuButton(child: Text('Team')),
+      MenuButton(child: Text('Invite users'), subMenu: [ MenuButton(child: Text('Email')), MenuButton(child: Text('Message')), MenuDivider(), MenuButton(child: Text('More...')) ]),
+      MenuButton(child: Text('New Team')),
+      MenuDivider(), MenuButton(child: Text('GitHub')), MenuButton(child: Text('Support')), MenuButton(enabled: false, child: Text('API')), MenuButton(child: Text('Log out')),
+    ]))).future.then((_) => print('Closed'));
+  },
+  child: const Text('Open'),
+);
+
+KeyboardDisplay
+
+const Column(children: [
+  KeyboardDisplay(keys: [LogicalKeyboardKey.control, LogicalKeyboardKey.alt, LogicalKeyboardKey.delete]),
+  Gap(24),
+  KeyboardDisplay.fromActivator(activator: SingleActivator(LogicalKeyboardKey.keyA, control: true, shift: true)),
+]).textSmall();
+
+OverflowMarquee
+
+const SizedBox(width: 200, child: OverflowMarquee(child: Text('Lorem ipsum dolor sit amet, consectetur adipiscing elit...')));
+
+RefreshTrigger
+
+final _refreshKey = GlobalKey<RefreshTriggerState>();
+
+RefreshTrigger(
+  key: _refreshKey,
+  onRefresh: () async => Future.delayed(const Duration(seconds: 2)),
+  child: SingleChildScrollView(child: Container(
+    height: 800, padding: const EdgeInsets.only(top: 32), alignment: Alignment.topCenter,
+    child: Column(children: [
+      const Text('Pull Me'), const Gap(16),
+      PrimaryButton(onPressed: () => _refreshKey.currentState!.refresh(), child: const Text('Refresh')),
+    ]),
+  )),
+);
+
+Patterns
+	•	One overlay visible at a time per stack; nested calls create a stack. Use closeOverlay/closeSheet to unwind.
+	•	Prefer ModalContainer inside popovers for spacing and scroll behavior.
+	•	Use SelectedButton and Toggle to control overlay configuration in demos.
+	•	Keep overlay content lightweight; defer heavy work until shown.
+
+Gotchas
+	•	Use the correct position enums: start/end/top/bottom. Some helpers also accept left/right; map to start/end in RTL.
+	•	Dispose controllers used in overlay forms if you allocate them outside a widget’s lifecycle.
+	•	ContextMenu items with autoClose:false will keep the menu open; set thoughtfully.

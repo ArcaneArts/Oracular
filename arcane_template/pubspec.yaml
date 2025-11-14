@@ -1,0 +1,64 @@
+name: arcane_template
+description: "A New Arcane project thats Designed with Arcane"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  arcane: ^6.5.2
+  arcane_fluf: ^1.3.0
+  arcane_auth: ^1.8.1
+  arcane_user: ^1.1.0
+  toxic_flutter: ^1.1.0
+  toxic: ^1.3.8
+  fire_crud: ^3.1.14
+  pylon: ^3.2.0
+  rxdart: ^0.28.0
+  #  fire_api_flutter: ^1.5.1
+  #  fire_api: ^1.5.1
+  #  firebase_core: ^4.0.0
+  #  firebase_auth: ^6.0.0
+  #  cloud_firestore: ^6.0.0
+  #  firebase_analytics: ^12.0.0
+  #  firebase_crashlytics: ^5.0.0
+  #  firebase_performance: ^0.11.0
+  #  firebase_storage: ^13.0.0
+  #  google_sign_in: ^6.3.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  flutter_native_splash: ^2.4.7
+  serviced: ^1.0.3
+  fast_log: ^1.0.7
+  http: ^1.6.0
+  convert: ^3.1.2
+  universal_io: ^2.2.2
+  intl: ^0.20.2
+  duration: ^4.0.3
+  decimal: ^3.2.4
+  rational: ^2.2.3
+  timeago: ^3.7.1
+  crypto: ^3.0.7
+  tinycolor2: ^3.0.1
+  url_launcher: ^6.3.2
+  email_validator: ^3.0.0
+  tryhard: ^1.0.1
+  throttled: ^1.0.1
+  cached_network_image: ^3.4.1
+  faker: ^2.2.0
+  artifact: ^1.0.19
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+flutter:
+
+  uses-material-design: true

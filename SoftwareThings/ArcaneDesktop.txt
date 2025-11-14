@@ -1,0 +1,166 @@
+========================================================
+                  Arcane Desktop Cheat Sheet
+========================================================
+
+ArcaneDesktop lets you build desktop Flutter apps with:
+- System tray icon + context menu
+- Custom draggable title bar
+- Acrylic / Mica window effects
+- One-call initialization via MagicInitializer
+
+--------------------------------------------------------
+Quick Start
+--------------------------------------------------------
+void main() => runMagicApp(
+  ArcaneWindow(
+    tray: ArcaneTray(
+      iconPath: 'assets/tray/icon.png',
+      tooltip: 'Arcane Desktop',
+      menu: [MenuItem(key: 'settings', label: 'Settings')],
+    ),
+    windowOptions: const WindowOptions(
+      titleBarStyle: TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+      size: Size(1100, 720),
+      center: true,
+    ),
+    windowEffect: WindowEffect.acrylic,
+    windowColor: const Color(0x66000000),
+    barLeading: (ctx) => const Icon(Icons.menu),
+    barTitle:  (ctx) => const Text('My App'),
+    child: MyRoot(),
+  ),
+);
+
+--------------------------------------------------------
+ArcaneWindow
+--------------------------------------------------------
+Widget that wraps your app and wires everything up.
+
+Parameters:
+- tray: optional ArcaneTray (close hides instead of quits)
+- windowListener: hook WindowListener events
+- windowOptions: WindowOptions (size, style, etc.)
+- windowEffect / windowColor: acrylic or mica effect
+- barTitle / barLeading: builders for custom TitleBar
+- child: your app
+
+TitleBar actions:
+- Drag → windowManager.startDragging()
+- Minimize / Maximize / Restore
+- Close → hide if tray exists, else quit
+
+Initialization sequence:
+1. WidgetsFlutterBinding.ensureInitialized()
+2. Save barTitle/barLeading into AWM
+3. windowManager.ensureInitialized()
+4. tray?.init()
+5. Window.initialize()
+6. windowManager.waitUntilReadyToShow(...)
+   - set transparent background
+   - Window.setEffect(...)
+
+--------------------------------------------------------
+ArcaneTray
+--------------------------------------------------------
+Provides system tray integration.
+
+ArcaneTray(iconPath, tooltip, menu)
+- init(): sets icon, tooltip, context menu, adds listener
+- Menu always includes Exit item
+
+Behavior:
+- Left click: windowManager.show()
+- Right click (macOS): trayManager.popUpContextMenu()
+- Menu click:
+  - key == 'exit' → destroy + exit(0)
+  - handle custom keys yourself
+
+Extend menu at runtime:
+final items = [...AWM.trayMenu!.items, MenuItem(key:'recent', label:'Recent')];
+final menu = Menu(items: items);
+AWM.trayMenu = menu;
+trayManager.setContextMenu(menu);
+
+--------------------------------------------------------
+ArcaneTrayListener
+--------------------------------------------------------
+class ArcaneTrayListener with TrayListener {
+  @override
+  void onTrayIconMouseDown() => windowManager.show();
+
+  @override
+  void onTrayIconRightMouseDown() {
+    if (Platform.isMacOS) trayManager.popUpContextMenu();
+  }
+
+  @override
+  void onTrayMenuItemClick(MenuItem item) {
+    if (item.key == 'exit') windowManager.destroy().then((_) => exit(0));
+    if (item.key == 'settings') {/* open settings */}
+  }
+}
+
+--------------------------------------------------------
+AWM (Globals)
+--------------------------------------------------------
+Shared references:
+- AWM.tray → trayManager instance
+- AWM.trayMenu → current tray menu
+- AWM.barTitle / AWM.barLeading → title bar builders
+
+--------------------------------------------------------
+Platform Notes
+--------------------------------------------------------
+macOS:
+- Right click tray icon shows menu
+- Use hidden title bar style
+
+Windows:
+- Prefer WindowEffect.mica or acrylic
+- windowButtonVisibility: false
+
+Linux:
+- Tray support depends on environment
+- Always keep Exit in menu
+
+--------------------------------------------------------
+Recipes
+--------------------------------------------------------
+Hide on close, quit from tray:
+- Provide a tray; close hides window
+- Use Exit menu item to quit
+
+Start minimized to tray:
+- After waitUntilReadyToShow, call windowManager.hide()
+
+Toggle effects at runtime:
+await Window.setEffect(
+  effect: on ? WindowEffect.mica : WindowEffect.disabled,
+  color: on ? const Color(0x33000000) : const Color(0x00000000),
+);
+
+--------------------------------------------------------
+Pairing with Arcane UI
+--------------------------------------------------------
+- Use ArcaneScreen / NavigationScreen / Bar for consistent desktop UI
+- Manage lightweight state with Pylon / MutablePylon
+  context.pylon<int>()
+  context.setPylon<int>(...)
+
+--------------------------------------------------------
+Minimal Example
+--------------------------------------------------------
+class MyRoot extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ArcaneScreen(
+      header: Bar(
+        titleText: 'Home',
+        trailing: [IconButton(icon: const Icon(Icons.close),
+                              onPressed: () => windowManager.hide())],
+      ),
+      child: const Center(child: Text('Hello Desktop')),
+    );
+  }
+}

@@ -1,0 +1,284 @@
+========================================================
+                  FIRE_CRUD CHEAT SHEET
+========================================================
+
+This cheat sheet provides a quick-reference guide to the fire_crud Dart library,
+which simplifies CRUD operations with Firestore. It includes core classes,
+methods for managing models and collections, and practical examples. Detailed
+code snippets are provided at the end. Updated based on latest source code (includes pylon codec integration, parent model utilities, and modelForPath). Also includes a new section for fire_crud_flutter widgets and extensions.
+
+--------------------------------------------------------
+1. WHAT IS FIRE_CRUD?
+--------------------------------------------------------
+- A Dart library for streamlined Firestore CRUD operations in Flutter apps.
+- Provides a structured way to define models and perform create, read, update,
+  and delete (CRUD) operations on Firestore documents and collections.
+- Key Features:
+  • Model-based data management with FireModel<T> and ModelCrud mixin.
+  • Singleton FireCrud instance for global access.
+  • Support for nested models, collections, and exclusive documents.
+  • Utilities for streaming, pagination, and atomic updates.
+  • Integration with collection_walker, fire_api, and pylon_codec packages.
+
+--------------------------------------------------------
+2. CORE CLASSES
+--------------------------------------------------------
+
+(1) FireCrud
+  • Singleton class (FireCrud.instance()) for managing Firestore operations.
+  • Entry point for registering models and performing CRUD actions.
+  • Key Methods:
+      registerModel(FireModel root) - Registers a root model.
+      model<T>([String? id]) - Creates a model instance for a document.
+      modelUnique<T>() - Creates a model for an exclusive document.
+      get<T>(String id) - Fetches a document by ID.
+      set<T>(String id, T model) - Sets a document’s data.
+      add<T>(T model) - Adds a new document to a collection.
+      stream<T>(String id) - Streams a document’s data.
+      getAll<T>() - Fetches all documents in a collection.
+      modelForPath<T>(String realPath) - Creates a model from a full path.
+
+(2) FireModel<T extends ModelCrud>
+  • Defines a model’s structure and serialization for Firestore.
+  • Properties:
+      collection (String) - The Firestore collection name.
+      exclusiveDocumentId (String?) - Optional fixed document ID.
+      model (T) - The model instance.
+      toMap (Function) - Converts model to Firestore data.
+      fromMap (Function) - Converts Firestore data to model.
+  • Methods:
+      cloneWithPath(String path) - Clones the model with a document path.
+      withPath(Map<String, dynamic>? data, String path) - Hydrates model from data.
+      registerTypeModels() - Registers child models recursively.
+
+(3) ModelCrud (Mixin)
+  • Mixin for models to inherit CRUD capabilities. Implements ModelAccessor and PylonCodec<ModelCrud>.
+  • Properties: documentPath, documentId, parentDocumentPath, parentDocumentId, parentCollectionPath, childModels.
+  • Key Methods:
+      getSelf<T>() - Fetches the current document.
+      setSelf<T>(T self) - Updates the current document.
+      deleteSelf<T>() - Deletes the current document.
+      model<T>([String? id]) - Creates a child model instance.
+      streamSelf<T>() - Streams the current document.
+      parentModel<T>() - Returns the parent model instance.
+      parentModelPath() - Returns iterable of parent models to root.
+      pylonEncode(ModelCrud value) - Encodes to document path.
+      pylonDecode(String value) - Decodes from path via Firestore get.
+
+(4) CollectionViewer<T extends ModelCrud>
+  • Views and paginates a Firestore collection with windowed streaming.
+  • Key Methods:
+      getAt(int index) - Fetches a model at a specific index.
+      getSize() - Returns the collection size.
+      updateStreamWindow() - Adjusts the streaming window.
+      stream - BehaviorSubject emitting viewer updates.
+
+(5) CollectionWalker<T extends ModelCrud>
+  • Walks a Firestore collection with custom queries.
+  • Integrates with collection_walker for advanced traversal.
+
+--------------------------------------------------------
+3. KEY METHODS OVERVIEW
+--------------------------------------------------------
+Below are the primary methods grouped by functionality. Wrap calls in try/catch
+for error handling where needed.
+
+-------------------------
+  A) GLOBAL CRUD (FireCrud)
+-------------------------
+1) registerModel(FireModel root)
+   • Registers a root model with the FireCrud singleton.
+
+2) model<T>([String? id])
+   • Returns a model instance for a document at collection/id.
+
+3) modelUnique<T>()
+   • Returns a model for an exclusive document (no ID needed).
+
+4) get<T>(String id)
+   • Fetches a document by ID as T.
+
+5) set<T>(String id, T model)
+   • Sets a document’s data at collection/id.
+
+6) add<T>(T model)
+   • Adds a new document to the collection, returns T with assigned ID.
+
+7) delete<T>(String id)
+   • Deletes a document by ID.
+
+8) stream<T>(String id)
+   • Streams a document as T?.
+
+9) getAll<T>([query])
+   • Fetches all documents in a collection with optional query.
+
+10) streamAll<T>([query])
+    • Streams all documents in a collection.
+
+11) ensureExists<T>(String id, T model)
+    • Sets the model if it doesn’t exist, otherwise returns existing.
+
+12) setAtomic<T>(String id, T Function(T? data) txn)
+    • Atomically updates a document with a transaction function.
+
+-------------------------
+  B) MODEL OPERATIONS (ModelCrud)
+-------------------------
+1) getSelf<T>()
+   • Fetches the current document as T.
+
+2) setSelf<T>(T self)
+   • Updates the current document.
+
+3) deleteSelf<T>()
+   • Deletes the current document.
+
+4) streamSelf<T>()
+   • Streams the current document as T.
+
+5) model<T>([String? id])
+   • Creates a child model instance.
+
+6) modelInCollection<T>(String collection, [String? id])
+   • Creates a model in a specific subcollection.
+
+7) parentModel<T>()
+   • Returns the parent model instance.
+
+8) get<T>(String id)
+   • Fetches a child document by ID.
+
+9) add<T>(T model)
+   • Adds a child document to a subcollection.
+
+-------------------------
+  C) COLLECTION MANAGEMENT
+-------------------------
+1) walk<T>([query])
+   • Returns a CollectionWalker<T> for traversing a collection.
+
+2) view<T>([query])
+   • Returns a CollectionViewer<T> for viewing a collection.
+
+3) getAll<T>([query])
+   • Fetches all documents in a collection/subcollection.
+
+4) streamAll<T>([query])
+   • Streams all documents in a collection/subcollection.
+
+5) count<T>([query])
+   • Returns the number of documents in a collection.
+
+-------------------------
+  D) UTILITY
+-------------------------
+1) exists<T>(String id)
+   • Checks if a document exists.
+
+2) setIfAbsent<T>(String id, T model)
+   • Sets a document only if it doesn’t exist.
+
+3) findModel<T>()
+   • Finds a model of type T in the hierarchy.
+
+--------------------------------------------------------
+4. PRIMARY DATA MODELS
+--------------------------------------------------------
+(1) FireModel<T>
+  • Defines a model’s Firestore mapping and hierarchy.
+
+(2) ModelCrud
+  • Mixin providing CRUD operations and path utilities.
+
+(3) ExclusiveModel<T>
+  • Extends Model<T> for exclusive documents with a fixed ID.
+
+(4) FireCrudGenerator<T>
+  • Utility class to generate FireCrud configurations with child models.
+
+--------------------------------------------------------
+5. ERROR HANDLING
+--------------------------------------------------------
+- Methods throw standard Dart exceptions (e.g., FirebaseException) on failure.
+- Use try/catch for async operations:
+try {
+await $crud.set('users/1', userModel);
+} catch (e) {
+print('Error: $e');
+}
+
+
+--------------------------------------------------------
+6. QUICK USAGE FLOW
+--------------------------------------------------------
+1) Define a model with ModelCrud:
+ class User with ModelCrud { ... }
+2) Create a FireModel:
+ final userModel = FireModel<User>(collection: 'users', ...);
+3) Register with FireCrud:
+ FireCrud.instance().registerModel(userModel);
+4) Perform CRUD:
+ await $crud.add(userInstance);
+ final user = await $crud.get<User>('users/1');
+5) Stream data:
+ $crud.stream<User>('users/1').listen((user) => print(user));
+
+--------------------------------------------------------
+7. EXAMPLES
+--------------------------------------------------------
+
+[Examples remain unchanged as they align with new code.]
+
+========================================================
+              FIRE_CRUD_FLUTTER CHEAT SHEET
+========================================================
+
+fire_crud_flutter provides Flutter widgets and extensions for fire_crud integration, including data views, lists, grids, editors, and Pylon support.
+
+--------------------------------------------------------
+1. CORE WIDGETS
+--------------------------------------------------------
+
+(1) FireGrid<T extends ModelCrud>
+  • GridView builder for collections with pagination and streaming.
+  • Key Props: viewerBuilder, builder (item builder), gridDelegate, loading, failed, empty, filter.
+
+(2) FireSliverGrid<T>
+  • SliverGrid version for CustomScrollView.
+
+(3) FireList<T>
+  • ListView builder for collections.
+
+(4) FireSliverList<T>
+  • SliverList version.
+
+(5) ModelView<T>
+  • Displays a single model with optional streaming/initial data.
+
+(6) AbsoluteModelList<T>
+  • Absolute list loader with streaming/initial data.
+
+(7) ModelWrap<T>, ModelRow<T>, ModelColumn<T>
+  • Wrap/Row/Column builders for model lists.
+
+(8) ModelEditor<T>
+  • Editable model view with throttling.
+
+(9) ModelList<T>, ModelGrid<T>, ModelSliverList<T>, ModelListAbsolute<T>
+  • Convenience wrappers using implicit models/Pylons.
+
+--------------------------------------------------------
+2. EXTENSIONS
+--------------------------------------------------------
+
+- On ModelAccessor: editor<T>(id, builder), restreamPylon, pylon.
+- On BuildContext: implicitModel<T>([id]) - Infers model from Pylons or hierarchy.
+
+--------------------------------------------------------
+3. QUICK USAGE
+--------------------------------------------------------
+Use with Pylon for state management:
+Pylon<T>(value: model, builder: (context) => FireList<T>(viewerBuilder: () => context.pylon<ModelCrud>().view<T>(), builder: (c, data) => Text(data.name)));
+
+Wrap in try/catch for errors.

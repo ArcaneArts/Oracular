@@ -1,0 +1,170 @@
+========================================================
+                  ARTIFACT CHEAT SHEET
+========================================================
+
+This cheat sheet provides a quick-reference guide to the artifact Dart library,
+which handles data serialization, type codecs, and utility extensions for maps, iterables, lists, and sets. It includes core classes, annotations, extensions, and codec utilities. Detailed code snippets are provided at the end.
+
+--------------------------------------------------------
+1. WHAT IS ARTIFACT?
+--------------------------------------------------------
+- A Dart library for data encoding/decoding with codecs, schema generation, and shorthand extensions for collections.
+- Supports custom type conversions, JSON handling, and primitive checks.
+- Key Features:
+  • Codec system for encoding/decoding between types (e.g., DateTime to String).
+  • Annotations for metadata like descriptions, renaming, and attachments.
+  • Utility extensions for concise map/iterable operations.
+  • Integration with fast_log for warnings.
+  • Built-in codecs for common types like DateTime, Duration.
+
+--------------------------------------------------------
+2. CORE CLASSES & ANNOTATIONS
+--------------------------------------------------------
+
+(1) Artifact
+  • Main entry point constant: const Artifact artifact = Artifact();
+  • Properties:
+      generateSchema (bool) - Enables schema generation (default: false).
+
+(2) codec
+  • Annotation to attach an ArtifactCodec instance.
+  • Constructor: codec(ArtifactCodec c).
+
+(3) describe
+  • Annotation for adding a description string.
+  • Constructor: describe(String description).
+
+(4) rename
+  • Annotation for renaming (e.g., fields).
+  • Constructor: rename(String newName).
+
+(5) attach<T>
+  • Annotation to attach arbitrary data of type T.
+  • Constructor: attach(T data).
+
+(6) ArtifactCodec<E, D>
+  • Abstract class for type codecs (encode from D to E, decode from E to D).
+  • Methods:
+      encode(D? value) -> E? - Encodes value.
+      decode(E? value) -> D? - Decodes value.
+      $register() - Registers codec in global map.
+  • Built-in Implementations:
+      ANOOPCodec - No-op for primitives.
+      IntToDoubleCodec - int <-> double (warns on precision loss).
+      ADateTimeCodec - String <-> DateTime (ISO8601).
+      ADurationCodec - int <-> Duration (milliseconds).
+
+(7) ArtifactCodecUtil
+  • Static utilities for codec operations and JSON handling.
+  • Key Methods:
+      a<T, R>(T t, List<$At> a) - Filters $At by data == t, maps to value.
+      j(bool p, Map<String, dynamic> Function() map) - JSON encodes (pretty if p true).
+      o(String j) - JSON decodes to map.
+      p<T>(dynamic l) - Parses primitive (String/int/double/bool) from l.
+      e(List<dynamic> e, dynamic i) - Finds element in list by index or string match.
+      r(List<ArtifactCodec> c) - Registers list of codecs.
+      ea(Object? o) - Encodes o using registered codecs (warns if missing).
+      fe<K, V>(Iterable<MapEntry<K, V>> entries) - Builds map from entries.
+      da(Object? o, Type into) - Decodes o to type into.
+      ef<E, D>(D? d) - Encodes d to E.
+      df<E, D>(E? e) - Decodes e to D.
+
+(8) $At<T, R>
+  • Helper class for associating data T with value R.
+  • Constructor: $At(T data, R value).
+
+--------------------------------------------------------
+3. EXTENSIONS
+--------------------------------------------------------
+
+(1) XMap<K, V> on Map<K, V>
+  • $c(K key) - containsKey(key).
+  • $e - entries.
+  • $m<K2, V2>(MapEntry<K2, V2> convert(K, V)) - map(convert).
+  • $nn - Removes null values (modifies or creates new map).
+
+(2) XIterable<V> on Iterable<V>
+  • $m<J>(J Function(V) f) - map(f).
+  • $l - toList().
+  • $s - toSet().
+  • $f - firstOrNull.
+
+(3) XList<V> on List<V>
+  • $u(List<V>? a, List<V>? r) - Adds a (if not empty) or removes r (if not empty).
+
+(4) XSet<V> on Set<V>
+  • $u(Set<V>? a, Set<V>? r) - Adds a (if not empty) or removes r (if not empty).
+
+--------------------------------------------------------
+4. GLOBAL UTILITIES
+--------------------------------------------------------
+- $artifactCodecs: Map<(Type, Type), ArtifactCodec> - Global codec registry.
+- $isPrimitive(Object? o): bool - Checks if o is null, String, int, double, or bool.
+- Pre-registered Codecs: ADateTimeCodec, ADurationCodec (via global init).
+
+--------------------------------------------------------
+5. ERROR HANDLING
+--------------------------------------------------------
+- Codecs warn via fast_log if missing for non-primitive types.
+- Parsing throws ArgumentError on invalid primitive conversions.
+- Use try/catch for JSON decode/encode operations.
+
+--------------------------------------------------------
+6. QUICK USAGE FLOW
+--------------------------------------------------------
+1) Define a custom codec: class MyCodec extends ArtifactCodec<String, MyType> { ... }
+2) Register: ArtifactCodecUtil.r([MyCodec()]);
+3) Annotate fields/classes: @codec(MyCodec()) or @describe('Info').
+4) Encode/Decode: ArtifactCodecUtil.ea(myObject) or da(encoded, MyType).
+5) Use extensions: map.$nn or list.$u(addList, removeList).
+6) JSON: ArtifactCodecUtil.j(true, () => {'key': value}).
+
+--------------------------------------------------------
+7. EXAMPLES
+--------------------------------------------------------
+
+-------------------------
+EXAMPLE 1: Custom Codec
+-------------------------
+class MyType {
+  final String value;
+  MyType(this.value);
+}
+
+class MyCodec extends ArtifactCodec<String, MyType> {
+  const MyCodec();
+  @override String? encode(MyType? value) => value?.value;
+  @override MyType? decode(String? value) => value == null ? null : MyType(value);
+}
+
+void main() {
+  ArtifactCodecUtil.r([MyCodec()]);
+  MyType obj = MyType('test');
+  String? encoded = ArtifactCodecUtil.ea(obj);  // 'test'
+  MyType? decoded = ArtifactCodecUtil.da(encoded, MyType);  // MyType('test')
+}
+
+-------------------------
+EXAMPLE 2: Extensions
+-------------------------
+Map<String, int?> m = {'a': 1, 'b': null};
+Map<String, int> nn = m.$nn;  // {'a': 1}
+
+List<int> l = [1, 2];
+List<int> updated = l.$u([3], [2]);  // [1, 3]
+
+Iterable<int> i = [1, 2, 3];
+List<int> list = i.$l;  // [1, 2, 3]
+int? first = i.$f;  // 1
+
+-------------------------
+EXAMPLE 3: JSON Utilities
+-------------------------
+String json = ArtifactCodecUtil.j(true, () => {'key': 'value'});  // Pretty JSON
+Map<String, dynamic> map = ArtifactCodecUtil.o(json);  // Decoded map
+
+-------------------------
+EXAMPLE 4: Primitive Parsing
+-------------------------
+int parsed = ArtifactCodecUtil.p<int>('42');  // 42
+bool boolVal = ArtifactCodecUtil.p<bool>('true');  // true
