@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:arcane/arcane.dart';
+import 'package:arcane/arcane.dart' hide Window, MenuItem;
 import 'package:fast_log/fast_log.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -163,7 +163,7 @@ class WindowManager {
   }
 
   /// Exit the application
-  static Future<void> exit() async {
+  static Future<void> exit(int i) async {
     verbose("Exiting application");
     await wm.windowManager.destroy();
     exit(0);
@@ -207,7 +207,7 @@ class ArcaneDockTrayListener implements TrayListener {
         WindowManager.show();
         break;
       case 'exit':
-        WindowManager.exit();
+        WindowManager.exit(0);
         break;
       default:
         warn("Unknown menu item: ${menuItem.key}");

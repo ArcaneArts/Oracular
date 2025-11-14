@@ -8,14 +8,17 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # ARCANE - specific. (arcane_desktop, arcane, arcane_auth, and related.)
+  # ARCANE - Core UI Framework
   arcane: ^6.5.2
-  arcane_fluf: ^1.3.0
-  arcane_auth: ^1.8.1
   arcane_user: ^1.1.0
+
+  # ARCANE - Firebase Integration (added automatically if Firebase is enabled)
+  # arcane_fluf: ^1.3.0
+  # arcane_auth: ^1.8.1
+  #  fire_crud: ^3.1.14
+
   toxic_flutter: ^1.1.0
   toxic: ^1.3.8
-  fire_crud: ^3.1.14
   pylon: ^3.2.0
   package_info_plus: ^9.0.0
   fast_log: ^1.0.7

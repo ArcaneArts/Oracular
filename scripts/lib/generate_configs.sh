@@ -222,15 +222,15 @@ update_pubspec_for_assets() {
 
     local pubspec="$app_name/pubspec.yaml"
 
-    # Check if assets section already exists
-    if grep -q "flutter_native_splash:" "$pubspec"; then
-        log_info "pubspec.yaml already configured for assets"
+    # Check if asset configuration already exists (template pubspecs already have these)
+    if grep -q "flutter_launcher_icons:" "$pubspec"; then
+        log_info "pubspec.yaml already configured for assets (from template)"
         return 0
     fi
 
     log_info "Adding asset configuration to pubspec.yaml..."
 
-    # Add assets and configuration
+    # Add assets and configuration (only if not already present)
     cat >> "$pubspec" << 'EOF'
 
   assets:

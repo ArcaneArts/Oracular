@@ -25,6 +25,36 @@ CONFIG_FILE="config/setup_config.env"
 
 # Main setup function
 
+load_existing_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        return 1
+    fi
+
+    # Source the config file to load variables
+    source "$CONFIG_FILE"
+
+    # Validate required variables are set
+    if [ -z "$APP_NAME" ] || [ -z "$ORG_DOMAIN" ] || [ -z "$TEMPLATE_NAME" ]; then
+        log_error "Invalid configuration file - missing required variables"
+        return 1
+    fi
+
+    # Set TEMPLATE_DIR based on TEMPLATE_NAME
+    TEMPLATE_DIR="$SCRIPT_DIR/$TEMPLATE_NAME"
+
+    # Set defaults for optional variables if not present
+    CREATE_MODELS="${CREATE_MODELS:-no}"
+    CREATE_SERVER="${CREATE_SERVER:-no}"
+    USE_FIREBASE="${USE_FIREBASE:-no}"
+    SETUP_CLOUD_RUN="${SETUP_CLOUD_RUN:-no}"
+    FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-}"
+    BASE_CLASS_NAME="${BASE_CLASS_NAME:-$(snake_to_pascal "$APP_NAME")}"
+    PLATFORMS="${PLATFORMS:-android,ios,web,linux,windows,macos}"
+
+    log_success "Configuration loaded successfully"
+    return 0
+}
+
 select_working_directory() {
     log_info "Current directory: $(pwd)"
     log_instruction "Projects will be created as subdirectories in this location."
@@ -81,20 +111,143 @@ select_working_directory() {
     fi
 }
 
+show_help() {
+    cat << EOF
+Arcane Template Setup Wizard
+
+Usage: ./setup.sh [OPTIONS]
+
+OPTIONS:
+    --rebuild, -r     Hint to check for existing configuration (optional)
+                      The script will always check for config/setup_config.env in the
+                      selected directory and offer to rebuild if found
+
+    --help, -h        Show this help message
+
+EXAMPLES:
+    # Create a new project (interactive mode)
+    ./setup.sh
+
+    # Suggest rebuild mode (still asks for directory)
+    ./setup.sh --rebuild
+
+    # Show help
+    ./setup.sh --help
+
+HOW IT WORKS:
+    1. Select working directory (always prompted)
+    2. Check for config/setup_config.env in that directory
+    3. If found: offer to rebuild with those settings
+    4. If not found OR you decline rebuild: run interactive setup
+    5. Configuration saved to config/setup_config.env for next time
+
+REBUILD FLOW:
+    - Shows summary of saved configuration
+    - Asks if you want to rebuild with these settings
+    - If yes: warns about deleting existing directories
+    - If confirmed: deletes old projects and rebuilds
+    - If declined: proceeds with fresh interactive setup
+
+NOTES:
+    - Configuration is saved to config/setup_config.env after each run
+    - Rebuild will prompt before deleting existing project directories
+    - You can always do a fresh setup even with existing config (it will be overwritten)
+
+EOF
+}
+
 main() {
+    # Check for help flag
+    if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+        show_help
+        exit 0
+    fi
+
     print_banner
 
-    log_info "Welcome to the Arcane Template Setup Wizard!"
-    log_info "This wizard will guide you through creating a complete Flutter app"
-    log_info "with the Arcane UI framework, including client, models, and server."
-    echo ""
+    # Check for rebuild flag (used as a hint)
+    local REBUILD_HINT=false
+    if [ "$1" = "--rebuild" ] || [ "$1" = "-r" ]; then
+        REBUILD_HINT=true
+        log_info "Rebuild mode - will check for existing configuration after selecting directory"
+        echo ""
+    else
+        log_info "Welcome to the Arcane Template Setup Wizard!"
+        log_info "This wizard will guide you through creating a complete Flutter app"
+        log_info "with the Arcane UI framework, including client, models, and server."
+        echo ""
+    fi
 
-    # Select working directory
+    # Set defaults for optional components
+    CREATE_MODELS="no"
+    CREATE_SERVER="no"
+    USE_FIREBASE="no"
+    SETUP_CLOUD_RUN="no"
+
+    # Always select working directory first
     select_working_directory
 
     log_info "Working directory: $(pwd)"
-    log_instruction "All projects will be created here."
     echo ""
+
+    # Check if configuration exists in this directory
+    local REBUILD_MODE=false
+    if [ -f "$CONFIG_FILE" ]; then
+        log_warning "Found existing configuration: $CONFIG_FILE"
+        echo ""
+
+        if load_existing_config; then
+            log_success "Configuration loaded successfully"
+            echo ""
+            show_configuration_summary
+            echo ""
+
+            if confirm "Do you want to rebuild the project with these settings?"; then
+                REBUILD_MODE=true
+
+                # Check if old project directories exist
+                local projects_exist=false
+                if [ -d "$APP_NAME" ]; then
+                    projects_exist=true
+                fi
+                if [ "$CREATE_MODELS" = "yes" ] && [ -d "${APP_NAME}_models" ]; then
+                    projects_exist=true
+                fi
+                if [ "$CREATE_SERVER" = "yes" ] && [ -d "${APP_NAME}_server" ]; then
+                    projects_exist=true
+                fi
+
+                if [ "$projects_exist" = true ]; then
+                    log_warning "Existing project directories found!"
+                    echo ""
+                    if ! confirm "⚠️  This will DELETE and recreate the projects. Continue?"; then
+                        log_warning "Rebuild cancelled by user"
+                        exit 0
+                    fi
+
+                    # Delete existing directories
+                    log_info "Removing existing project directories..."
+                    rm -rf "$APP_NAME" 2>/dev/null || true
+                    [ "$CREATE_MODELS" = "yes" ] && rm -rf "${APP_NAME}_models" 2>/dev/null || true
+                    [ "$CREATE_SERVER" = "yes" ] && rm -rf "${APP_NAME}_server" 2>/dev/null || true
+                    log_success "Old directories removed"
+                    echo ""
+                fi
+            else
+                log_info "Starting fresh setup - existing configuration will be overwritten"
+                echo ""
+                REBUILD_MODE=false
+            fi
+        else
+            log_warning "Could not load existing configuration - starting fresh setup"
+            echo ""
+            REBUILD_MODE=false
+        fi
+    else
+        log_info "No existing configuration found - starting fresh setup"
+        echo ""
+        REBUILD_MODE=false
+    fi
 
     if ! confirm "Ready to continue?"; then
         log_warning "Setup cancelled by user"
@@ -105,78 +258,106 @@ main() {
     print_header "Step 1: Checking CLI Tools"
     check_cli_tools || exit 1
 
-    # Step 2: Gather project information
-    print_header "Step 2: Project Configuration"
-    gather_project_info
+    # Skip interactive prompts if in rebuild mode
+    if [ "$REBUILD_MODE" != true ]; then
+        # Step 2: Gather project information
+        print_header "Step 2: Project Configuration"
+        gather_project_info
 
-    # Step 3: Optional Firebase setup
-    print_header "Step 3: Firebase Configuration (Optional)"
-    configure_firebase_options
+        # Step 3: Project structure options
+        print_header "Step 3: Project Structure (Optional)"
+        configure_project_structure
 
-    # Step 4: Asset generation options
-    print_header "Step 4: Asset Generation Options"
-    configure_asset_generation
+        # Step 4: Optional Firebase setup
+        print_header "Step 4: Firebase Configuration (Optional)"
+        configure_firebase_options
 
-    # Step 5: Show summary and confirm
-    print_header "Step 5: Configuration Summary"
-    show_configuration_summary
+        # Step 5: Show summary and confirm
+        print_header "Step 5: Configuration Summary"
+        show_configuration_summary
 
-    if ! confirm "Proceed with these settings?"; then
-        log_warning "Setup cancelled by user"
-        exit 0
+        if ! confirm "Proceed with these settings?"; then
+            log_warning "Setup cancelled by user"
+            exit 0
+        fi
+
+        # Save configuration
+        save_configuration
+    else
+        log_info "Using existing configuration - skipping interactive setup"
+        echo ""
     fi
 
-    # Save configuration
-    save_configuration
+    # Step 7: Create client project
+    print_header "Step 7: Creating Client Project"
+    create_client_app "$APP_NAME" "$ORG_DOMAIN" "$PLATFORMS" || exit 1
 
-    # Step 6: Create projects
-    print_header "Step 6: Creating Projects"
-    create_all_projects "$APP_NAME" "$ORG_DOMAIN" "$PLATFORMS" || exit 1
+    # Step 8: Create models and server (if requested)
+    if [ "$CREATE_MODELS" = "yes" ]; then
+        print_header "Step 8: Creating Models Package"
+        create_models_package "$APP_NAME" || exit 1
+    fi
 
-    # Step 6.5: Copy models and server templates
-    print_header "Step 6.5: Copying Models & Server Templates"
-    copy_models_template "$APP_NAME" "$SCRIPT_DIR" || exit 1
-    copy_server_template "$APP_NAME" "$SCRIPT_DIR" "$FIREBASE_PROJECT_ID" || exit 1
+    if [ "$CREATE_SERVER" = "yes" ]; then
+        print_header "Step 9: Creating Server App"
+        create_server_app "$APP_NAME" "$ORG_DOMAIN" || exit 1
+    fi
 
-    # Step 6.6: Copy template pubspec to preserve comments and configuration
-    print_header "Step 6.6: Copying Client Template Configuration"
-    copy_template_pubspec "$APP_NAME" "$TEMPLATE_DIR" || exit 1
+    # Step 10: Link models to projects (if models package exists)
+    if [ "$CREATE_MODELS" = "yes" ]; then
+        print_header "Step 10: Linking Models Package"
+        link_models_to_projects "$APP_NAME" "$CREATE_SERVER" || exit 1
+    fi
 
-    # Step 7: Add dependencies
-    print_header "Step 7: Adding Dependencies"
-    add_all_dependencies "$APP_NAME" "$USE_FIREBASE" || exit 1
+    # Step 11: Copy models and server templates
+    if [ "$CREATE_MODELS" = "yes" ]; then
+        print_header "Step 11: Copying Models Template"
+        copy_models_template "$APP_NAME" "$SCRIPT_DIR" || exit 1
+    fi
 
-    # Step 8: Setup Firebase (if enabled)
+    if [ "$CREATE_SERVER" = "yes" ]; then
+        print_header "Step 12: Copying Server Template"
+        copy_server_template "$APP_NAME" "$SCRIPT_DIR" "$FIREBASE_PROJECT_ID" || exit 1
+    fi
+
+    # Step 13: Copy template files (lib/, pubspec.yaml, assets/, etc.)
+    print_header "Step 13: Copying Template Files"
+    copy_template_files "$APP_NAME" "$TEMPLATE_DIR" || exit 1
+
+    # Step 14: Add dependencies
+    print_header "Step 14: Adding Dependencies"
+    add_all_dependencies "$APP_NAME" "$USE_FIREBASE" "$CREATE_MODELS" "$CREATE_SERVER" || exit 1
+
+    # Step 15: Setup Firebase (if enabled)
     if [ "$USE_FIREBASE" = "yes" ]; then
-        print_header "Step 8: Setting Up Firebase"
+        print_header "Step 15: Setting Up Firebase"
         setup_firebase_integration
     fi
 
-    # Step 9: Generate configuration files
-    print_header "Step 9: Generating Configuration Files"
+    # Step 16: Generate configuration files
+    print_header "Step 16: Generating Configuration Files"
     if [ "$USE_FIREBASE" = "yes" ]; then
         generate_all_configs "$APP_NAME" "$FIREBASE_PROJECT_ID"
     fi
 
-    # Step 10: Copy template assets
-    print_header "Step 10: Setting Up Assets"
+    # Step 17: Copy template assets
+    print_header "Step 17: Setting Up Assets"
     copy_template_assets "$APP_NAME" "$TEMPLATE_DIR"
     update_pubspec_for_assets "$APP_NAME"
 
-    # Step 11: Configure platform versions and generate assets
-    print_header "Step 11: Generating App Icons and Splash Screens"
-    generate_all_assets "$APP_NAME" "$GENERATE_ICONS" "$GENERATE_SPLASH"
+    # Step 18: Setup server
+    if [ "$CREATE_SERVER" = "yes" ]; then
+        print_header "Step 18: Setting Up Server"
+        setup_server "$APP_NAME"
+    fi
 
-    # Step 12: Setup server
-    print_header "Step 12: Setting Up Server"
-    setup_server "$APP_NAME"
+    # Step 19: Clean up test folders
+    print_header "Step 19: Cleaning Up Test Folders"
+    delete_test_folders "$APP_NAME" "$CREATE_MODELS" "$CREATE_SERVER"
 
-    # Step 13: Clean up test folders
-    delete_test_folders "$APP_NAME"
-
-    # Step 14: Optional Firebase deployment
+    # Step 20: Optional Firebase deployment
     if [ "$USE_FIREBASE" = "yes" ]; then
-        print_header "Step 14: Firebase Deployment (Optional)"
+        print_header "Step 20: Firebase Deployment (Optional)"
         if confirm "Do you want to deploy Firebase resources now?"; then
             deploy_all_firebase "$APP_NAME"
         else
@@ -257,6 +438,31 @@ gather_project_info() {
     esac
 
     log_success "Template selected: $TEMPLATE_NAME"
+}
+
+configure_project_structure() {
+    log_step "Project Structure Configuration"
+
+    log_info "The setup can create a 3-project architecture:"
+    log_instruction "• Client app (always created)"
+    log_instruction "• Models package (shared data models for client and server)"
+    log_instruction "• Server app (backend with Shelf router and Firebase Admin)"
+    echo ""
+
+    if confirm "Do you want to create the models package?"; then
+        CREATE_MODELS="yes"
+    else
+        CREATE_MODELS="no"
+        log_info "Skipping models package creation"
+    fi
+
+    echo ""
+    if confirm "Do you want to create the server app?"; then
+        CREATE_SERVER="yes"
+    else
+        CREATE_SERVER="no"
+        log_info "Skipping server app creation"
+    fi
 }
 
 configure_firebase_options() {
@@ -344,19 +550,24 @@ configure_firebase_options() {
         fi
 
         echo ""
-        if confirm "Do you want to setup Google Cloud Run for server deployment?"; then
-            SETUP_CLOUD_RUN="yes"
+        if [ "$CREATE_SERVER" = "yes" ]; then
+            if confirm "Do you want to setup Google Cloud Run for server deployment?"; then
+                SETUP_CLOUD_RUN="yes"
 
-            log_instruction "You'll need to create an Artifact Registry:"
-            log_instruction "1. Go to: https://console.cloud.google.com/artifacts/create-repo?project=$FIREBASE_PROJECT_ID"
-            log_instruction "2. Name: cloud-run-source-deploy"
-            log_instruction "3. Format: Docker, Region: us-central1"
-            log_instruction "4. Add cleanup policies (keep 2 versions, delete old)"
-            echo ""
+                log_instruction "You'll need to create an Artifact Registry:"
+                log_instruction "1. Go to: https://console.cloud.google.com/artifacts/create-repo?project=$FIREBASE_PROJECT_ID"
+                log_instruction "2. Name: cloud-run-source-deploy"
+                log_instruction "3. Format: Docker, Region: us-central1"
+                log_instruction "4. Add cleanup policies (keep 2 versions, delete old)"
+                echo ""
 
-            press_enter "Press Enter when you've created the Artifact Registry"
+                press_enter "Press Enter when you've created the Artifact Registry"
+            else
+                SETUP_CLOUD_RUN="no"
+            fi
         else
             SETUP_CLOUD_RUN="no"
+            log_info "Skipping Cloud Run setup (no server app selected)"
         fi
 
     else
@@ -366,29 +577,6 @@ configure_firebase_options() {
     fi
 }
 
-configure_asset_generation() {
-    log_step "Asset Generation Configuration"
-
-    log_info "The setup can automatically generate app icons and splash screens."
-    log_instruction "• App icons: Generated for all platforms from a 1024x1024 PNG"
-    log_instruction "• Splash screens: Generated for all platforms from your splash image"
-    echo ""
-
-    if confirm "Do you want to generate app icons?"; then
-        GENERATE_ICONS="yes"
-    else
-        GENERATE_ICONS="no"
-        log_info "Skipping icon generation (you can run it manually later)"
-    fi
-
-    echo ""
-    if confirm "Do you want to generate splash screens?"; then
-        GENERATE_SPLASH="yes"
-    else
-        GENERATE_SPLASH="no"
-        log_info "Skipping splash generation (you can run it manually later)"
-    fi
-}
 
 show_configuration_summary() {
     log_step "Configuration Summary"
@@ -403,9 +591,13 @@ show_configuration_summary() {
     echo ""
 
     log_info "Projects to be created:"
-    log_instruction "  $(pwd)/$APP_NAME"
-    log_instruction "  $(pwd)/${APP_NAME}_models"
-    log_instruction "  $(pwd)/${APP_NAME}_server"
+    log_instruction "  $(pwd)/$APP_NAME (client app)"
+    if [ "$CREATE_MODELS" = "yes" ]; then
+        log_instruction "  $(pwd)/${APP_NAME}_models (shared models)"
+    fi
+    if [ "$CREATE_SERVER" = "yes" ]; then
+        log_instruction "  $(pwd)/${APP_NAME}_server (backend server)"
+    fi
     echo ""
 
     if [ "$USE_FIREBASE" = "yes" ]; then
@@ -415,11 +607,6 @@ show_configuration_summary() {
     else
         log_info "Firebase: Not configured"
     fi
-    echo ""
-
-    log_info "Asset Generation:"
-    log_instruction "  App Icons: $GENERATE_ICONS"
-    log_instruction "  Splash Screens: $GENERATE_SPLASH"
     echo ""
 }
 
@@ -438,11 +625,11 @@ BASE_CLASS_NAME=$BASE_CLASS_NAME
 TEMPLATE_DIR=$TEMPLATE_DIR
 TEMPLATE_NAME=$TEMPLATE_NAME
 PLATFORMS=$PLATFORMS
+CREATE_MODELS=$CREATE_MODELS
+CREATE_SERVER=$CREATE_SERVER
 USE_FIREBASE=$USE_FIREBASE
 FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID
 SETUP_CLOUD_RUN=$SETUP_CLOUD_RUN
-GENERATE_ICONS=$GENERATE_ICONS
-GENERATE_SPLASH=$GENERATE_SPLASH
 EOF
 
     log_success "Configuration saved to $CONFIG_FILE"
@@ -468,9 +655,15 @@ show_final_summary() {
     echo ""
     log_success "Project Structure:"
     log_instruction "  $APP_NAME/              - Client application"
-    log_instruction "  ${APP_NAME}_models/     - Shared models package"
-    log_instruction "  ${APP_NAME}_server/     - Server application"
-    log_instruction "  config/                 - Configuration files"
+    if [ "$CREATE_MODELS" = "yes" ]; then
+        log_instruction "  ${APP_NAME}_models/     - Shared models package"
+    fi
+    if [ "$CREATE_SERVER" = "yes" ]; then
+        log_instruction "  ${APP_NAME}_server/     - Server application"
+    fi
+    if [ "$USE_FIREBASE" = "yes" ]; then
+        log_instruction "  config/                 - Configuration files"
+    fi
     echo ""
 
     log_info "Next Steps:"
@@ -481,25 +674,13 @@ show_final_summary() {
     log_instruction "   flutter run"
     echo ""
 
-    if [ "$GENERATE_ICONS" = "no" ] || [ "$GENERATE_SPLASH" = "no" ]; then
-        log_instruction "2. Generate app icons and splash screens (skipped during setup):"
-        if [ "$GENERATE_ICONS" = "no" ]; then
-            log_instruction "   • Add your icon: $APP_NAME/assets/icon/icon.png (1024x1024)"
-            log_instruction "   • Run: cd $APP_NAME && dart run flutter_launcher_icons"
-        fi
-        if [ "$GENERATE_SPLASH" = "no" ]; then
-            log_instruction "   • Add your splash: $APP_NAME/assets/icon/splash.png"
-            log_instruction "   • Run: cd $APP_NAME && dart run flutter_native_splash:create"
-        fi
-        echo ""
-    else
-        log_instruction "2. Customize your app icons and splash screen (optional):"
-        log_instruction "   • Replace $APP_NAME/assets/icon/icon.png (1024x1024)"
-        log_instruction "   • Replace $APP_NAME/assets/icon/splash.png"
-        log_instruction "   • Re-run: cd $APP_NAME && dart run flutter_launcher_icons"
-        log_instruction "   • Re-run: cd $APP_NAME && dart run flutter_native_splash:create"
-        echo ""
-    fi
+    log_instruction "2. Generate app icons and splash screens (when ready):"
+    log_instruction "   • Add your icon: $APP_NAME/assets/icon/icon.png (1024x1024)"
+    log_instruction "   • Add your splash: $APP_NAME/assets/icon/splash.png"
+    log_instruction "   • Generate icons: cd $APP_NAME && dart run gen_icons"
+    log_instruction "   • Generate splash: cd $APP_NAME && dart run gen_splash"
+    log_instruction "   • Or generate both: cd $APP_NAME && dart run gen_assets"
+    echo ""
 
     if [ "$USE_FIREBASE" = "yes" ]; then
         log_instruction "3. Deploy to Firebase Hosting:"
@@ -509,7 +690,7 @@ show_final_summary() {
         log_instruction "   firebase deploy --only hosting"
         echo ""
 
-        if [ "$SETUP_CLOUD_RUN" = "yes" ]; then
+        if [ "$SETUP_CLOUD_RUN" = "yes" ] && [ "$CREATE_SERVER" = "yes" ]; then
             log_instruction "4. Deploy server to Google Cloud Run:"
             log_instruction "   cd ${APP_NAME}_server"
             log_instruction "   gcloud builds submit --tag us-central1-docker.pkg.dev/$FIREBASE_PROJECT_ID/cloud-run-source-deploy/${APP_NAME}_server"
@@ -522,6 +703,16 @@ show_final_summary() {
     log_instruction "• Setup Guide: $TEMPLATE_DIR/SETUP.md"
     log_instruction "• README: $TEMPLATE_DIR/README.md"
     log_instruction "• Helper Scripts: scripts/README.md"
+    echo ""
+
+    log_info "Quick Rebuild:"
+    log_instruction "To rebuild this project with the same settings later:"
+    log_instruction "  $(cd "$SCRIPT_DIR" && pwd)/setup.sh"
+    log_instruction "  (select '$(pwd)' as the directory)"
+    log_instruction "  (choose 'yes' when asked to rebuild)"
+    log_instruction ""
+    log_instruction "Or run: $(cd "$SCRIPT_DIR" && pwd)/setup.sh --rebuild"
+    log_instruction "  (still asks for directory, but hints rebuild mode)"
     echo ""
 
     log_success "Enjoy building with Arcane! 🚀"

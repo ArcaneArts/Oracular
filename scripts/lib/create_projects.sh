@@ -91,10 +91,14 @@ create_server_app() {
 
 link_models_to_projects() {
     local app_name="$1"
+    local create_server="${2:-yes}"
     local models_name="${app_name}_models"
     local server_name="${app_name}_server"
 
-    log_step "Linking Models Package to Client and Server"
+    log_step "Linking Models Package to Client"
+    if [ "$create_server" = "yes" ]; then
+        log_step "Linking Models Package to Client and Server"
+    fi
 
     # Add models dependency to client app
     log_info "Adding models dependency to $app_name..."
@@ -123,28 +127,30 @@ link_models_to_projects() {
         return 1
     fi
 
-    # Add models dependency to server app
-    log_info "Adding models dependency to $server_name..."
+    # Add models dependency to server app (if server is being created)
+    if [ "$create_server" = "yes" ]; then
+        log_info "Adding models dependency to $server_name..."
 
-    insert_line=$(grep -n "^dev_dependencies:" "$server_name/pubspec.yaml" | cut -d: -f1)
-    if [ -z "$insert_line" ]; then
-        insert_line=$(grep -n "^flutter:" "$server_name/pubspec.yaml" | cut -d: -f1)
-    fi
+        insert_line=$(grep -n "^dev_dependencies:" "$server_name/pubspec.yaml" | cut -d: -f1)
+        if [ -z "$insert_line" ]; then
+            insert_line=$(grep -n "^flutter:" "$server_name/pubspec.yaml" | cut -d: -f1)
+        fi
 
-    if [ -n "$insert_line" ]; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' "${insert_line}i\\
+        if [ -n "$insert_line" ]; then
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "${insert_line}i\\
 \\
   $models_name:\\
     path: ../$models_name
 " "$server_name/pubspec.yaml"
+            else
+                sed -i "${insert_line}i\\\\n  $models_name:\\n    path: ../$models_name" "$server_name/pubspec.yaml"
+            fi
+            log_success "Added models dependency to server app"
         else
-            sed -i "${insert_line}i\\\\n  $models_name:\\n    path: ../$models_name" "$server_name/pubspec.yaml"
+            log_error "Could not find insertion point in pubspec.yaml"
+            return 1
         fi
-        log_success "Added models dependency to server app"
-    else
-        log_error "Could not find insertion point in pubspec.yaml"
-        return 1
     fi
 
     return 0
@@ -184,6 +190,97 @@ create_all_projects() {
     return 0
 }
 
+copy_template_files() {
+    local app_name="$1"
+    local template_dir="$2"
+    local template_name="$(basename "$template_dir")"
+
+    log_step "Copying Template Files"
+
+    if [ ! -d "$template_dir" ]; then
+        log_error "Template directory not found: $template_dir"
+        return 1
+    fi
+
+    # Copy lib directory (the source code)
+    if [ -d "$template_dir/lib" ]; then
+        log_info "Copying lib/ directory from template..."
+        rm -rf "$app_name/lib"
+        cp -r "$template_dir/lib" "$app_name/"
+
+        # Replace template package name with actual app name in imports
+        find "$app_name/lib" -type f -name "*.dart" -exec \
+            sed -i.bak "s/package:$template_name/package:$app_name/g" {} \; -exec rm {}.bak \;
+
+        log_success "Template lib/ copied"
+    fi
+
+    # Copy pubspec.yaml
+    if [ -f "$template_dir/pubspec.yaml" ]; then
+        log_info "Copying pubspec.yaml from template..."
+        cp "$template_dir/pubspec.yaml" "$app_name/pubspec.yaml"
+
+        # Update name in pubspec
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/^name: .*/name: $app_name/" "$app_name/pubspec.yaml"
+        else
+            sed -i "s/^name: .*/name: $app_name/" "$app_name/pubspec.yaml"
+        fi
+
+        log_success "Template pubspec.yaml copied"
+    fi
+
+    # Copy analysis_options.yaml if exists
+    if [ -f "$template_dir/analysis_options.yaml" ]; then
+        log_info "Copying analysis_options.yaml..."
+        cp "$template_dir/analysis_options.yaml" "$app_name/"
+    fi
+
+    # Copy README if exists
+    if [ -f "$template_dir/README.md" ]; then
+        log_info "Copying README.md..."
+        cp "$template_dir/README.md" "$app_name/"
+    fi
+
+    # Copy assets directory if exists
+    if [ -d "$template_dir/assets" ]; then
+        log_info "Copying assets/ directory..."
+        rm -rf "$app_name/assets"
+        cp -r "$template_dir/assets" "$app_name/"
+    fi
+
+    # Copy platform-specific configurations (for templates like arcane_dock)
+    for platform_dir in macos ios android web linux windows; do
+        if [ -d "$template_dir/$platform_dir" ]; then
+            log_info "Copying $platform_dir/ platform configuration..."
+            # Only copy specific files to avoid overwriting critical flutter-generated files
+
+            if [ "$platform_dir" = "macos" ]; then
+                # Copy macOS Runner files (Info.plist, entitlements, etc.)
+                if [ -f "$template_dir/macos/Runner/Info.plist" ]; then
+                    cp "$template_dir/macos/Runner/Info.plist" "$app_name/macos/Runner/" 2>/dev/null || true
+                fi
+                if [ -f "$template_dir/macos/Runner/DebugProfile.entitlements" ]; then
+                    cp "$template_dir/macos/Runner/DebugProfile.entitlements" "$app_name/macos/Runner/" 2>/dev/null || true
+                fi
+                if [ -f "$template_dir/macos/Runner/Release.entitlements" ]; then
+                    cp "$template_dir/macos/Runner/Release.entitlements" "$app_name/macos/Runner/" 2>/dev/null || true
+                fi
+            fi
+
+            if [ "$platform_dir" = "linux" ]; then
+                # Copy Linux runner files if they exist
+                if [ -f "$template_dir/linux/flutter/CMakeLists.txt" ]; then
+                    cp "$template_dir/linux/flutter/CMakeLists.txt" "$app_name/linux/flutter/" 2>/dev/null || true
+                fi
+            fi
+        fi
+    done
+
+    log_success "Template files copied successfully"
+    return 0
+}
+
 copy_template_pubspec() {
     local app_name="$1"
     local template_dir="$2"
@@ -216,24 +313,33 @@ copy_template_pubspec() {
 
 delete_test_folders() {
     local app_name="$1"
+    local create_models="${2:-yes}"
+    local create_server="${3:-yes}"
     local models_name="${app_name}_models"
     local server_name="${app_name}_server"
 
     log_step "Cleaning Up Test Folders"
 
-    local test_folders=(
-        "$models_name/test"
-        "$app_name/test"
-        "$server_name/test"
-    )
+    # Always delete client app test folder
+    if [ -d "$app_name/test" ]; then
+        log_info "Removing $app_name/test..."
+        rm -rf "$app_name/test"
+        log_success "Removed $app_name/test"
+    fi
 
-    for folder in "${test_folders[@]}"; do
-        if [ -d "$folder" ]; then
-            log_info "Removing $folder..."
-            rm -rf "$folder"
-            log_success "Removed $folder"
-        fi
-    done
+    # Delete models test folder if models package was created
+    if [ "$create_models" = "yes" ] && [ -d "$models_name/test" ]; then
+        log_info "Removing $models_name/test..."
+        rm -rf "$models_name/test"
+        log_success "Removed $models_name/test"
+    fi
+
+    # Delete server test folder if server app was created
+    if [ "$create_server" = "yes" ] && [ -d "$server_name/test" ]; then
+        log_info "Removing $server_name/test..."
+        rm -rf "$server_name/test"
+        log_success "Removed $server_name/test"
+    fi
 
     return 0
 }

@@ -21,6 +21,17 @@ add_client_dependencies() {
     if [ "$use_firebase" = "yes" ]; then
         log_info "Adding Firebase dependencies to pubspec.yaml..."
 
+        # Uncomment Firebase-related Arcane packages
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|  # arcane_fluf:|  arcane_fluf:|" pubspec.yaml
+            sed -i '' "s|  # arcane_auth:|  arcane_auth:|" pubspec.yaml
+            sed -i '' "s|  # fire_crud:|  fire_crud:|" pubspec.yaml
+        else
+            sed -i "s|  # arcane_fluf:|  arcane_fluf:|" pubspec.yaml
+            sed -i "s|  # arcane_auth:|  arcane_auth:|" pubspec.yaml
+            sed -i "s|  # fire_crud:|  fire_crud:|" pubspec.yaml
+        fi
+
         # Find the Firebase placeholder line and replace it
         local firebase_deps="  fire_api_flutter: ^1.5.1\n  fire_api: ^1.5.1\n  firebase_core: ^4.0.0\n  firebase_auth: ^6.0.0\n  cloud_firestore: ^6.0.0\n  firebase_analytics: ^12.0.0\n  firebase_crashlytics: ^5.0.0\n  firebase_performance: ^0.11.0\n  firebase_storage: ^13.0.0\n  google_sign_in: ^6.3.0"
 
@@ -30,7 +41,9 @@ add_client_dependencies() {
             sed -i "s|# {all firebase dependencies here}|$firebase_deps|" pubspec.yaml
         fi
 
-        log_success "Firebase dependencies added"
+        log_success "Firebase dependencies added (including arcane_fluf, arcane_auth, and fire_crud)"
+    else
+        log_info "Firebase not enabled - arcane_fluf, arcane_auth, and fire_crud will remain commented out"
     fi
 
     # Run flutter pub get to fetch all dependencies
@@ -129,18 +142,28 @@ add_server_dependencies() {
 add_all_dependencies() {
     local app_name="$1"
     local use_firebase="${2:-no}"
+    local create_models="${3:-yes}"
+    local create_server="${4:-yes}"
 
-    log_info "Adding dependencies to all projects..."
+    log_info "Adding dependencies to projects..."
     echo ""
 
-    # Add to client app
+    # Add to client app (always)
     add_client_dependencies "$app_name" "$use_firebase" || return 1
 
-    # Add to models package
-    add_models_dependencies "$app_name" "$use_firebase" || return 1
+    # Add to models package (if created)
+    if [ "$create_models" = "yes" ]; then
+        add_models_dependencies "$app_name" "$use_firebase" || return 1
+    else
+        log_info "Skipping models dependencies (no models package)"
+    fi
 
-    # Add to server app
-    add_server_dependencies "$app_name" "$use_firebase" || return 1
+    # Add to server app (if created)
+    if [ "$create_server" = "yes" ]; then
+        add_server_dependencies "$app_name" "$use_firebase" || return 1
+    else
+        log_info "Skipping server dependencies (no server app)"
+    fi
 
     log_success "All dependencies added successfully!"
 
