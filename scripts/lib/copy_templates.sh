@@ -10,6 +10,7 @@ source "$LIB_DIR/utils.sh"
 copy_models_template() {
     local app_name="$1"
     local template_root="$2"
+    local firebase_project_id="${3:-}"
     local models_name="${app_name}_models"
 
     log_step "Copying Models Template"
@@ -42,6 +43,14 @@ copy_models_template() {
     # Replace APPNAME with actual app name in all files
     find "$models_name" -type f \( -name "*.dart" -o -name "*.md" -o -name "*.yaml" \) -exec \
         sed -i.bak "s/APPNAME/$app_name/g" {} \; -exec rm {}.bak \;
+
+    # Replace FIREBASE_PROJECT_ID if provided
+    if [ -n "$firebase_project_id" ]; then
+        log_info "Replacing FIREBASE_PROJECT_ID placeholder in models..."
+        find "$models_name" -type f \( -name "*.dart" -o -name "*.yaml" \) -exec \
+            sed -i.bak "s/FIREBASE_PROJECT_ID/$firebase_project_id/g" {} \; -exec rm {}.bak \;
+        log_success "Firebase project ID configured in models"
+    fi
 
     # Rename the main library file
     if [ -f "$models_name/lib/APPNAME_models.dart" ]; then
@@ -140,6 +149,6 @@ if [ "${BASH_SOURCE[0]}" -ef "$0" ]; then
         exit 1
     fi
 
-    copy_models_template "$1" "$2"
+    copy_models_template "$1" "$2" "${3:-}"
     copy_server_template "$1" "$2" "${3:-FIREBASE_PROJECT_ID}"
 fi

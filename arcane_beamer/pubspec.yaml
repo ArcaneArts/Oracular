@@ -34,7 +34,7 @@ dependencies:
   flutter_native_splash: ^2.4.7
   tinycolor2: ^3.0.1
   tryhard: ^1.0.1
-  universal_io: ^2.2.2
+  universal_io: ^2.3.1
 
   # Utility
   rxdart: ^0.28.0
@@ -42,7 +42,7 @@ dependencies:
   hive_flutter: ^1.1.0
   serviced: ^1.0.3
   file_picker: ^10.3.6
-  jiffy: ^6.4.3
+  jiffy: ^6.4.4
   http: ^1.6.0
   throttled: ^1.0.1
   crypto: ^3.0.7
@@ -101,5 +101,22 @@ flutter_launcher_icons:
     generate: true
 
 scripts:
-  pod_install_mac: cd macos && rm Podfile.lock && pod install --repo-update
-  pod_install_ios: cd ios && rm Podfile.lock && pod install --repo-update
+  # Firebase Deployment
+  deploy_firebase: flutter build web --release && cd .. && firebase deploy --project FIREBASE_PROJECT_ID
+  deploy_firestore: cd .. && firebase deploy --only firestore --project FIREBASE_PROJECT_ID
+  deploy_storage: cd .. && firebase deploy --only storage --project FIREBASE_PROJECT_ID
+  deploy_hosting: flutter build web --release && cd .. && firebase deploy --only hosting:release --project FIREBASE_PROJECT_ID
+  deploy_hosting_beta: flutter build web --release && cd .. && firebase deploy --only hosting:beta --project FIREBASE_PROJECT_ID
+
+  # Build & Deploy Web
+  build_web: flutter build web --release
+  deploy_web: flutter build web --release && cd .. && firebase deploy --only hosting:release --project FIREBASE_PROJECT_ID
+
+  # Asset Generation
+  gen_icons: dart run flutter_launcher_icons
+  gen_splash: dart run flutter_native_splash:create
+  gen_assets: dart run flutter_launcher_icons && dart run flutter_native_splash:create
+
+  # Platform Setup
+  pod_install_ios: cd ios && rm -f Podfile.lock && pod install --repo-update && cd ..
+  pod_install_macos: cd macos && rm -f Podfile.lock && pod install --repo-update && cd ..

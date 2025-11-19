@@ -724,7 +724,7 @@ main() {
     # Step 11: Copy models and server templates
     if [ "$CREATE_MODELS" = "yes" ]; then
         print_header "Step 11: Copying Models Template"
-        copy_models_template "$APP_NAME" "$SCRIPT_DIR" || exit 1
+        copy_models_template "$APP_NAME" "$SCRIPT_DIR" "$FIREBASE_PROJECT_ID" || exit 1
     fi
 
     if [ "$CREATE_SERVER" = "yes" ]; then
@@ -734,7 +734,7 @@ main() {
 
     # Step 13: Copy template files (lib/, pubspec.yaml, assets/, etc.)
     print_header "Step 13: Copying Template Files"
-    copy_template_files "$APP_NAME" "$TEMPLATE_DIR" || exit 1
+    copy_template_files "$APP_NAME" "$TEMPLATE_DIR" "$FIREBASE_PROJECT_ID" || exit 1
 
     # Step 14: Add dependencies
     print_header "Step 14: Adding Dependencies"

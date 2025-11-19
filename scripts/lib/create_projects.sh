@@ -193,6 +193,7 @@ create_all_projects() {
 copy_template_files() {
     local app_name="$1"
     local template_dir="$2"
+    local firebase_project_id="${3:-}"
     local template_name="$(basename "$template_dir")"
 
     log_step "Copying Template Files"
@@ -225,6 +226,17 @@ copy_template_files() {
             sed -i '' "s/^name: .*/name: $app_name/" "$app_name/pubspec.yaml"
         else
             sed -i "s/^name: .*/name: $app_name/" "$app_name/pubspec.yaml"
+        fi
+
+        # Replace FIREBASE_PROJECT_ID placeholder if provided
+        if [ -n "$firebase_project_id" ]; then
+            log_info "Replacing FIREBASE_PROJECT_ID placeholder in pubspec.yaml..."
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "s/FIREBASE_PROJECT_ID/$firebase_project_id/g" "$app_name/pubspec.yaml"
+            else
+                sed -i "s/FIREBASE_PROJECT_ID/$firebase_project_id/g" "$app_name/pubspec.yaml"
+            fi
+            log_success "Firebase project ID configured in pubspec.yaml"
         fi
 
         log_success "Template pubspec.yaml copied"
