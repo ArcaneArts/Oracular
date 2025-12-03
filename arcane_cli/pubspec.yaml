@@ -1,7 +1,34 @@
-name: APPNAME_cli
+name: APPNAME
 description: "Command-line interface for APPNAME"
-publish_to: 'none'
 version: 1.0.0
+
+# ============================================================================
+# PUBLISHING TO PUB.DEV
+# ============================================================================
+# To publish this CLI globally (so anyone can run: dart pub global activate APPNAME_cli):
+#
+# 1. Remove or comment out the 'publish_to: none' line below
+# 2. Fill in the repository/homepage fields
+# 3. Run: dart pub publish --dry-run (to verify)
+# 4. Run: dart pub publish (to publish)
+#
+# Once published, anyone can install with:
+#   dart pub global activate APPNAME_cli
+#   APPNAME --help
+#
+# Uncomment this line to PREVENT publishing (keeps it private):
+# publish_to: 'none'
+
+# Uncomment and fill these in before publishing:
+# homepage: https://github.com/YOUR_USERNAME/APPNAME_cli
+# repository: https://github.com/YOUR_USERNAME/APPNAME_cli
+# issue_tracker: https://github.com/YOUR_USERNAME/APPNAME_cli/issues
+
+# Optional: Add topics for discoverability on pub.dev
+# topics:
+#   - cli
+#   - command-line
+#   - tools
 
 environment:
   sdk: ^3.10.0
@@ -44,6 +71,10 @@ scripts:
   watch: dart run build_runner watch -d
   run: dart run bin/main.dart
 
-  # Installation
+  # Local Installation (for development)
   activate: dart pub global activate . --source=path
-  deactivate: dart pub global deactivate APPNAME_cli
+  deactivate: dart pub global deactivate APPNAME
+
+  # Publishing to pub.dev
+  publish_dry: dart pub publish --dry-run
+  publish: dart pub publish

@@ -622,7 +622,7 @@ main() {
                 local projects_exist=false
                 # Check for CLI or client app directory
                 if [ "$TEMPLATE_NAME" = "arcane_cli" ]; then
-                    if [ -d "${APP_NAME}_cli" ]; then
+                    if [ -d "${APP_NAME}" ]; then
                         projects_exist=true
                     fi
                 else
@@ -647,11 +647,7 @@ main() {
 
                     # Delete existing directories
                     log_info "Removing existing project directories..."
-                    if [ "$TEMPLATE_NAME" = "arcane_cli" ]; then
-                        rm -rf "${APP_NAME}_cli" 2>/dev/null || true
-                    else
-                        rm -rf "$APP_NAME" 2>/dev/null || true
-                    fi
+                    rm -rf "$APP_NAME" 2>/dev/null || true
                     [ "$CREATE_MODELS" = "yes" ] && rm -rf "${APP_NAME}_models" 2>/dev/null || true
                     [ "$CREATE_SERVER" = "yes" ] && rm -rf "${APP_NAME}_server" 2>/dev/null || true
                     log_success "Old directories removed"
@@ -1104,7 +1100,7 @@ show_configuration_summary() {
 
     log_info "Projects to be created:"
     if [ "$TEMPLATE_NAME" = "arcane_cli" ]; then
-        log_instruction "  $(pwd)/${APP_NAME}_cli (CLI app)"
+        log_instruction "  $(pwd)/${APP_NAME} (CLI app)"
     else
         log_instruction "  $(pwd)/$APP_NAME (client app)"
     fi
@@ -1177,7 +1173,7 @@ show_final_summary() {
     log_success "Project Structure:"
 
     if [ "$TEMPLATE_NAME" = "arcane_cli" ]; then
-        log_instruction "  ${APP_NAME}_cli/        - CLI application"
+        log_instruction "  ${APP_NAME}/            - CLI application"
     else
         log_instruction "  $APP_NAME/              - Client application"
     fi
@@ -1198,19 +1194,29 @@ show_final_summary() {
 
     if [ "$TEMPLATE_NAME" = "arcane_cli" ]; then
         log_instruction "1. Generate CLI code and run your app:"
-        log_instruction "   cd ${APP_NAME}_cli"
+        log_instruction "   cd ${APP_NAME}"
         log_instruction "   dart run build_runner build --delete-conflicting-outputs"
         log_instruction "   dart run bin/main.dart --help"
         echo ""
 
-        log_instruction "2. Optionally activate globally:"
-        log_instruction "   cd ${APP_NAME}_cli"
+        log_instruction "2. Local global activation (for YOUR machine):"
+        log_instruction "   cd ${APP_NAME}"
         log_instruction "   dart pub global activate . --source=path"
         log_instruction "   $APP_NAME --help"
         echo ""
 
+        log_instruction "3. Publish to pub.dev (so ANYONE can install):"
+        log_instruction "   cd ${APP_NAME}"
+        log_instruction "   # Edit pubspec.yaml: add homepage, repository, topics"
+        log_instruction "   dart pub publish --dry-run  # Verify first"
+        log_instruction "   dart pub publish            # Publish!"
+        log_instruction ""
+        log_instruction "   Then anyone can install with:"
+        log_instruction "   dart pub global activate ${APP_NAME}"
+        echo ""
+
         if [ "$USE_FIREBASE" = "yes" ]; then
-            log_instruction "3. Setup Firebase service account key:"
+            log_instruction "4. Setup Firebase service account key:"
             log_instruction "   • Place service account key in config/keys/service-account-key.json"
             log_instruction "   • Or ~/.${APP_NAME}/service-account-key.json"
             echo ""

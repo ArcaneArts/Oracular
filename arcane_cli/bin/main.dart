@@ -1,4 +1,4 @@
-import 'package:APPNAME_cli/APPNAME_cli.dart';
+import 'package:APPNAME/APPNAME.dart';
 
 /// Entry point for APPNAME CLI application
 void main(List<String> arguments) async {

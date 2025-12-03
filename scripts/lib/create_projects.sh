@@ -91,12 +91,11 @@ create_server_app() {
 
 create_cli_app() {
     local app_name="$1"
-    local cli_name="${app_name}_cli"
 
-    log_step "Creating CLI App: $cli_name"
+    log_step "Creating CLI App: $app_name"
 
-    if [ -d "$cli_name" ]; then
-        log_warning "Directory $cli_name already exists"
+    if [ -d "$app_name" ]; then
+        log_warning "Directory $app_name already exists"
         if ! confirm "Do you want to overwrite it?"; then
             log_error "Cannot continue without creating the CLI app"
             return 1
@@ -107,30 +106,29 @@ create_cli_app() {
     retry_command "Create CLI app" dart create \
         -t console \
         --force \
-        "$cli_name"
+        "$app_name"
     return $?
 }
 
 link_models_to_projects() {
     local app_name="$1"
     local create_server="${2:-yes}"
-    local create_cli="${3:-no}"
+    local is_cli="${3:-no}"
     local models_name="${app_name}_models"
     local server_name="${app_name}_server"
-    local cli_name="${app_name}_cli"
 
     # Build log message based on what's being created
     local targets="Client"
     [ "$create_server" = "yes" ] && targets="$targets and Server"
-    [ "$create_cli" = "yes" ] && targets="$targets and CLI"
+    [ "$is_cli" = "yes" ] && targets="CLI"
 
     log_step "Linking Models Package to $targets"
 
-    # Add models dependency to client app (unless it's a CLI-only project)
-    if [ "$create_cli" = "yes" ]; then
-        log_info "Adding models dependency to $cli_name..."
+    # Add models dependency to client/CLI app
+    if [ "$is_cli" = "yes" ]; then
+        log_info "Adding models dependency to $app_name (CLI)..."
 
-        insert_line=$(grep -n "^dev_dependencies:" "$cli_name/pubspec.yaml" | cut -d: -f1)
+        insert_line=$(grep -n "^dev_dependencies:" "$app_name/pubspec.yaml" | cut -d: -f1)
 
         if [ -n "$insert_line" ]; then
             if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -138,9 +136,9 @@ link_models_to_projects() {
 \\
   $models_name:\\
     path: ../$models_name
-" "$cli_name/pubspec.yaml"
+" "$app_name/pubspec.yaml"
             else
-                sed -i "${insert_line}i\\\\n  $models_name:\\n    path: ../$models_name" "$cli_name/pubspec.yaml"
+                sed -i "${insert_line}i\\\\n  $models_name:\\n    path: ../$models_name" "$app_name/pubspec.yaml"
             fi
             log_success "Added models dependency to CLI app"
         else
@@ -382,22 +380,14 @@ delete_test_folders() {
     local is_cli="${4:-no}"
     local models_name="${app_name}_models"
     local server_name="${app_name}_server"
-    local cli_name="${app_name}_cli"
 
     log_step "Cleaning Up Test Folders"
 
-    # Delete client app test folder (if not CLI template)
-    if [ "$is_cli" != "yes" ] && [ -d "$app_name/test" ]; then
+    # Delete main app test folder (client or CLI)
+    if [ -d "$app_name/test" ]; then
         log_info "Removing $app_name/test..."
         rm -rf "$app_name/test"
         log_success "Removed $app_name/test"
-    fi
-
-    # Delete CLI test folder (if CLI template)
-    if [ "$is_cli" = "yes" ] && [ -d "$cli_name/test" ]; then
-        log_info "Removing $cli_name/test..."
-        rm -rf "$cli_name/test"
-        log_success "Removed $cli_name/test"
     fi
 
     # Delete models test folder if models package was created

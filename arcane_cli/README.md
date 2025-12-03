@@ -30,17 +30,100 @@ dart run build_runner build --delete-conflicting-outputs
 dart run bin/main.dart --help
 ```
 
-### Global Activation (Optional)
+### Local Global Activation (Development)
 
-To use `APPNAME` command globally:
+To use `APPNAME` command globally on your machine during development:
 
 ```bash
-# Activate globally
+# Activate from local path
 dart pub global activate . --source=path
 
-# Now use anywhere
+# Now use anywhere on YOUR machine
 APPNAME --help
 APPNAME hello greet "World"
+
+# Deactivate when done
+dart pub global deactivate APPNAME
+```
+
+## Publishing to pub.dev
+
+To share your CLI so **anyone** can install it with a single command:
+
+### 1. Prepare for Publishing
+
+Edit `pubspec.yaml`:
+
+```yaml
+name: APPNAME
+description: "A useful CLI tool that does X, Y, Z"  # Update this!
+version: 1.0.0
+
+# Add your repo info:
+homepage: https://github.com/YOUR_USERNAME/APPNAME
+repository: https://github.com/YOUR_USERNAME/APPNAME
+issue_tracker: https://github.com/YOUR_USERNAME/APPNAME/issues
+
+# Optional but recommended for discoverability:
+topics:
+  - cli
+  - command-line
+  - tools
+```
+
+### 2. Verify Before Publishing
+
+```bash
+# Check for any issues
+dart pub publish --dry-run
+```
+
+Fix any warnings or errors before proceeding.
+
+### 3. Publish to pub.dev
+
+```bash
+# Publish (requires pub.dev account)
+dart pub publish
+```
+
+You'll need to authenticate with your Google account linked to pub.dev.
+
+### 4. Users Can Now Install Globally!
+
+Once published, anyone in the world can install your CLI:
+
+```bash
+# Install from pub.dev (works on any machine!)
+dart pub global activate APPNAME
+
+# Run your CLI
+APPNAME --help
+APPNAME hello greet "World"
+```
+
+### PATH Configuration
+
+Users may need to add the pub cache bin to their PATH:
+
+```bash
+# macOS/Linux - add to ~/.bashrc or ~/.zshrc:
+export PATH="$PATH:$HOME/.pub-cache/bin"
+
+# Windows - add to PATH:
+%LOCALAPPDATA%\Pub\Cache\bin
+```
+
+### Updating Published Versions
+
+```bash
+# Bump version in pubspec.yaml, then:
+dart pub publish
+```
+
+Users update with:
+```bash
+dart pub global activate APPNAME  # Gets latest version
 ```
 
 ## Available Commands
@@ -163,11 +246,11 @@ APPNAME server test
 ### Project Structure
 
 ```
-APPNAME_cli/
+APPNAME/
 ├── bin/
 │   └── main.dart              # Entry point
 ├── lib/
-│   ├── APPNAME_cli.dart       # Main CLI runner
+│   ├── APPNAME.dart           # Main CLI runner
 │   └── commands/              # Command implementations
 │       ├── hello_command.dart
 │       ├── config_command.dart
@@ -198,7 +281,7 @@ class MyCommand extends _$MyCommand {
 }
 ```
 
-2. **Register in Runner** (`lib/APPNAME_cli.dart`):
+2. **Register in Runner** (`lib/APPNAME.dart`):
 
 ```dart
 import 'commands/my_command.dart';

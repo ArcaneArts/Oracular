@@ -1,4 +1,4 @@
-library APPNAME_cli;
+library APPNAME;
 
 import 'package:cli_annotations/cli_annotations.dart';
 import 'package:fast_log/fast_log.dart';
@@ -13,7 +13,7 @@ import 'commands/hello_command.dart';
 import 'commands/config_command.dart';
 // SERVER_COMMAND_IMPORT: import 'commands/server_command.dart';
 
-part 'APPNAME_cli.g.dart';
+part 'APPNAME.g.dart';
 
 /// CLI application for APPNAME
 ///
