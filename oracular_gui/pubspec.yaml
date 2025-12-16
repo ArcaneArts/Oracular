@@ -1,0 +1,33 @@
+name: oracular_gui
+description: "Oracular GUI - Visual project creation wizard for Arcane Templates"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Arcane UI Framework
+  arcane: ^6.5.3
+  pylon: ^3.2.0
+  toxic: ^1.3.8
+  toxic_flutter: ^1.1.0
+  fast_log: ^1.0.7
+
+  # File system and process
+  path: ^1.9.1
+
+  # File picker for output directory
+  file_picker: ^10.3.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: false

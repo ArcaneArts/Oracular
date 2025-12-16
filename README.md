@@ -1,255 +1,151 @@
-# Arcane Templates
-
-Production-ready Flutter project templates using the Arcane UI framework. Material Design-free architecture with complete backend infrastructure.
-
-## Quick Start
-
-Run the interactive setup wizard:
-
-```bash
-./setup.sh
+```
+ ██████╗ ██████╗  █████╗  ██████╗██╗   ██╗██╗      █████╗ ██████╗
+██╔═══██╗██╔══██╗██╔══██╗██╔════╝██║   ██║██║     ██╔══██╗██╔══██╗
+██║   ██║██████╔╝███████║██║     ██║   ██║██║     ███████║██████╔╝
+██║   ██║██╔══██╗██╔══██║██║     ██║   ██║██║     ██╔══██║██╔══██╗
+╚██████╔╝██║  ██║██║  ██║╚██████╗╚██████╔╝███████╗██║  ██║██║  ██║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
 ```
 
-The wizard creates a complete 3-project architecture: client app, shared models package, and backend server.
-
-## Available Templates
-
-### arcane_template
-Pure Arcane UI with multi-platform support. Best for apps with simple navigation or custom routing.
-
-**Platforms:** Web, iOS, Android, Linux, macOS, Windows
-**Navigation:** None (bring your own)
-**Use cases:** Single-screen apps, PWAs, custom navigation requirements
-
-### arcane_beamer
-Arcane UI with Beamer navigation. Best for web-first apps with complex routing and deep linking.
-
-**Platforms:** Web, iOS, Android, Linux, macOS, Windows
-**Navigation:** Beamer (declarative routing, clean URLs)
-**Use cases:** Multi-screen apps, shareable URLs, complex navigation flows
-
-### arcane_dock
-Arcane UI for system tray/menu bar applications. Desktop-only template with window management.
-
-**Platforms:** macOS, Linux, Windows
-**Navigation:** None (single-window popup)
-**Use cases:** System utilities, menu bar tools, background services with UI
-
-## Project Architecture
-
-```
-your-project/
-├── your_app/              # Client application
-│   ├── lib/
-│   ├── android/
-│   ├── ios/
-│   ├── web/
-│   ├── macos/
-│   ├── linux/
-│   ├── windows/
-│   └── pubspec.yaml
-├── your_app_models/       # Shared data models (optional)
-│   ├── lib/models/
-│   └── pubspec.yaml
-├── your_app_server/       # Backend server (optional)
-│   ├── lib/
-│   ├── Dockerfile
-│   ├── script_deploy.sh
-│   └── pubspec.yaml
-├── config/                # Firebase configuration (optional)
-│   ├── firestore.rules
-│   ├── storage.rules
-│   └── keys/
-└── firebase.json
-```
-
-## What's Included
-
-**UI Framework**
-- Arcane components (Screen, Bar, Collection, Section, Tile, Card, Gap, Buttons)
-- Theme system (light/dark/system with context extensions)
-- No Material Design dependency
-
-**State Management**
-- Pylon (immutable and mutable state with reactive rebuilds)
-- RxDart (reactive programming support)
-
-**Data Layer**
-- FireCrud (type-safe Firestore CRUD operations, optional)
-- Hive (local storage and caching)
-- Artifact (data serialization and codecs)
-
-**Backend (Server Template)**
-- Shelf Router (HTTP routing and middleware)
-- Firebase Admin (server-side Firestore/Storage access)
-- Request authentication (signature-based with timing attack protection)
-- Docker (production-ready containerization)
-- Cloud Run deployment scripts
-
-**Utilities**
-- Toxic (Flutter extensions: pad, sized, centered, etc.)
-- Fast Log (production logging)
-- Serviced (service layer management)
+Project scaffolding and script runner for Arcane-based Flutter and Dart applications.
 
 ## Features
 
-- Pure Arcane UI (no Material Design)
-- Optional Firebase integration (Auth, Firestore, Storage, Analytics)
-- Multi-platform support (Web, iOS, Android, Desktop)
-- Server deployment (Docker + Google Cloud Run)
-- Dart run scripts for common tasks
-- Pre-configured security rules
-- Type-safe architecture
+- **Project Scaffolding** - Create production-ready Flutter and Dart projects
+- **Script Runner** - Execute pubspec.yaml scripts with fuzzy matching
+- **Multi-Project Architecture** - Client, models, and server packages
+- **Firebase Integration** - Automated setup and deployment
+- **Platform Selection** - Choose which platforms to target
 
-## Dart Run Scripts
+## Structure
 
-After setup, your client app includes convenience scripts:
-
-```bash
-# Firebase deployment
-dart run deploy_firebase
-dart run deploy_firestore
-dart run deploy_hosting
-
-# Web build and deploy
-dart run build_web
-dart run deploy_web
-
-# Asset generation
-dart run gen_icons
-dart run gen_splash
-dart run gen_assets
-
-# Platform setup
-dart run pod_install_ios
-dart run pod_install_macos
+```
+Oracular/
+├── oracular/          Dart CLI tool
+├── oracular_gui/      Flutter GUI wizard
+└── templates/       Project templates (editable)
+    ├── arcane_app/         Basic multi-platform Flutter app
+    ├── arcane_beamer_app/  Beamer navigation Flutter app
+    ├── arcane_dock_app/    Desktop system tray app
+    ├── arcane_cli_app/     Dart CLI application
+    ├── arcane_models/      Shared data models package
+    └── arcane_server/      Shelf-based REST API server
 ```
 
-## Prerequisites
+## Installation
 
-**Required:**
-- Flutter SDK (latest stable)
-- Dart SDK (included with Flutter)
-
-**Optional (based on features):**
-- Firebase CLI (for Firebase integration)
-- FlutterFire CLI (for Firebase configuration)
-- Google Cloud CLI (for server deployment)
-- Docker (for server containerization)
-- CocoaPods (for iOS/macOS development)
-
-The setup wizard checks prerequisites and provides installation instructions.
-
-## Example Workflow
-
-**Create project:**
 ```bash
-./setup.sh
+dart pub global activate oracular
 ```
 
-Follow prompts to select template, configure Firebase, and choose project structure.
+## Quick Start
 
-**Run app:**
 ```bash
-cd my_app
-flutter run
+# Interactive wizard
+oracular
+
+# Launch GUI wizard
+oracular gui
+
+# Create project directly
+oracular create app --name my_app --org com.example
 ```
 
-**Generate assets:**
+## Commands
+
+### Project Creation
+
 ```bash
-cd my_app
-dart run gen_assets
+oracular                          # Interactive wizard
+oracular gui                      # Launch GUI wizard
+oracular create app               # Create project with prompts
+oracular create templates         # List available templates
 ```
 
-**Deploy to Firebase:**
+### Script Runner
+
+Run scripts defined in your `pubspec.yaml`:
+
 ```bash
-cd my_app
-dart run deploy_web
+oracular scripts list             # List all scripts
+oracular scripts exec build       # Run a script
+oracular scripts exec br          # Abbreviation (build_runner)
+oracular scripts exec tv          # Abbreviation (test_verbose)
 ```
 
-**Deploy server to Cloud Run:**
+Supports fuzzy matching and abbreviations (first letter of each word).
+
+### Tool Verification
+
 ```bash
-cd my_app_server
-./script_deploy.sh
+oracular check tools              # Verify all CLI tools
+oracular check flutter            # Check Flutter installation
+oracular check firebase           # Check Firebase CLI
+oracular check docker             # Check Docker
+oracular check gcloud             # Check Google Cloud SDK
+oracular check doctor             # Run flutter doctor
 ```
 
-## Documentation
+### Firebase Deployment
 
-**Setup & Configuration:**
-- [Setup Script Documentation](scripts/README.md) - Complete wizard guide
-- [Models Template Guide](models_template/README.md) - Shared models package
-- [Server Template Guide](server_template/README.md) - Backend server setup
+```bash
+oracular deploy all               # Deploy all Firebase resources
+oracular deploy firestore         # Deploy Firestore rules
+oracular deploy storage           # Deploy Storage rules
+oracular deploy hosting           # Deploy to release hosting
+oracular deploy hosting-beta      # Deploy to beta hosting
+oracular deploy firebase-setup    # Initial Firebase setup
+```
 
-**Library References:**
+### Server Deployment
 
-UI & Design:
-- [ArcaneDesign.txt](references/ArcaneDesign.txt) - Complete component reference
-- [ArcaneShadDesign.txt](references/ArcaneShadDesign.txt) - Advanced patterns
-- [ArcaneDesktop.txt](references/ArcaneDesktop.txt) - Desktop-specific features
-- [ArcaneSourcecode.txt](references/ArcaneSourcecode.txt) - Internal architecture
+```bash
+oracular deploy server-setup      # Generate Docker configs
+oracular deploy server-build      # Build Docker image
+```
 
-State & Data:
-- [Pylon.txt](references/Pylon.txt) - State management guide
-- [FireCrud.txt](references/FireCrud.txt) - Firestore CRUD operations
-- [Artifact.txt](references/Artifact.txt) - Data serialization
+## Templates
 
-Utilities:
-- [Toxic.txt](references/Toxic.txt) - Flutter utility extensions
+| Template | Type | Platforms | Description |
+|----------|------|-----------|-------------|
+| Basic Arcane | Flutter | All | Multi-platform app with Arcane UI |
+| Beamer Navigation | Flutter | All | Declarative routing with Beamer |
+| Desktop Tray | Flutter | Desktop | System tray/menu bar application |
+| Dart CLI | Dart | - | Command-line interface app |
 
-## Key Differences
+### Additional Packages
 
-**vs. Standard Flutter Templates:**
-- No Material Design - pure Arcane UI framework
-- Production-ready 3-project architecture
-- Firebase pre-configured with security rules
-- Backend server included
-- Complete automation via setup wizard
-- Dart run scripts for common tasks
+- **Models Package** - Shared data models for client and server
+- **Server App** - Shelf-based REST API with Firebase integration
 
-**vs. Other Templates:**
-- Real-world patterns from production applications
-- User system included (User, settings, capabilities)
-- Signature-based server authentication
-- Docker + Cloud Run deployment ready
-- Security best practices (Firestore/Storage rules included)
+## Script Runner Examples
 
-## Troubleshooting
+Add scripts to your `pubspec.yaml`:
 
-**Setup Issues:**
+```yaml
+scripts:
+  build: flutter build web --release
+  deploy: firebase deploy --project my-project
+  build_runner: dart run build_runner build --delete-conflicting-outputs
+  test_verbose: dart test --reporter=expanded
+  pod_install: cd ios && pod install --repo-update
+```
 
-Command not found errors: The wizard checks prerequisites and provides installation instructions.
+Then run with abbreviations:
 
-Flutter pub get failures: Automatic retry logic included. Check internet connection or run `flutter pub cache repair`.
+```bash
+oracular scripts exec b           # build (unique prefix)
+oracular scripts exec br          # build_runner
+oracular scripts exec tv          # test_verbose
+oracular scripts exec pi          # pod_install
+```
 
-Firebase login issues: Run `firebase login --reauth` and ensure you have Owner or Editor role.
+## Development
 
-**Build Issues:**
-
-Android: Run `cd my_app/android && ./gradlew clean && cd .. && flutter clean && flutter pub get`
-
-iOS/macOS pods: Run `cd my_app && dart run pod_install_ios` (or pod_install_macos)
-
-Web: Clear browser cache and run `flutter clean && flutter pub get`
-
-**Server Deployment:**
-
-Docker: Ensure Docker daemon is running and sufficient disk space available.
-
-Cloud Run: Check authentication (`gcloud auth list`), verify project (`gcloud config get-value project`), and ensure Cloud Run API is enabled.
+See individual package READMEs:
+- [CLI Development](oracular/README.md)
+- [GUI Development](oracular_gui/README.md)
 
 ## License
 
-See LICENSE file for details.
-
-## Acknowledgments
-
-- Arcane Framework - Material Design-free Flutter UI
-- Beamer Navigation - Declarative routing
-- Flutter Team - Amazing framework
-- Occult CLI - Original inspiration for project automation
-
-## Support
-
-- Issues: GitHub Issues
-- Flutter Community: flutter.dev/community
-- Stack Overflow: Tag with `flutter` and `arcane`
+MIT

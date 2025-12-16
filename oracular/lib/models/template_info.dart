@@ -1,0 +1,158 @@
+/// Available template types
+enum TemplateType { arcaneTemplate, arcaneBeamer, arcaneDock, arcaneCli }
+
+/// Extension for template metadata
+extension TemplateTypeExtension on TemplateType {
+  /// Get the display name for the template
+  String get displayName {
+    switch (this) {
+      case TemplateType.arcaneTemplate:
+        return 'Arcane Template (Basic)';
+      case TemplateType.arcaneBeamer:
+        return 'Arcane Beamer (With Navigation)';
+      case TemplateType.arcaneDock:
+        return 'Arcane Dock (Desktop System Tray)';
+      case TemplateType.arcaneCli:
+        return 'Arcane CLI (Command-Line App)';
+    }
+  }
+
+  /// Get the directory name for the template (in sibling templates/ folder)
+  String get directoryName {
+    switch (this) {
+      case TemplateType.arcaneTemplate:
+        return 'arcane_app';
+      case TemplateType.arcaneBeamer:
+        return 'arcane_beamer_app';
+      case TemplateType.arcaneDock:
+        return 'arcane_dock_app';
+      case TemplateType.arcaneCli:
+        return 'arcane_cli_app';
+    }
+  }
+
+  /// Get the canonical package name used in the template
+  String get canonicalPackageName {
+    switch (this) {
+      case TemplateType.arcaneTemplate:
+        return 'arcane_app';
+      case TemplateType.arcaneBeamer:
+        return 'arcane_beamer_app';
+      case TemplateType.arcaneDock:
+        return 'arcane_dock_app';
+      case TemplateType.arcaneCli:
+        return 'arcane_cli_app';
+    }
+  }
+
+  /// Get a short description of the template
+  String get description {
+    switch (this) {
+      case TemplateType.arcaneTemplate:
+        return 'Pure Arcane UI with multi-platform support. No navigation framework.';
+      case TemplateType.arcaneBeamer:
+        return 'Arcane UI with Beamer declarative navigation for multi-screen apps.';
+      case TemplateType.arcaneDock:
+        return 'Desktop system tray/menu bar application (macOS, Linux, Windows only).';
+      case TemplateType.arcaneCli:
+        return 'Command-line interface application (Dart-only, not Flutter).';
+    }
+  }
+
+  /// Get supported platforms for this template
+  List<String> get supportedPlatforms {
+    switch (this) {
+      case TemplateType.arcaneTemplate:
+      case TemplateType.arcaneBeamer:
+        return ['android', 'ios', 'web', 'linux', 'macos', 'windows'];
+      case TemplateType.arcaneDock:
+        return ['linux', 'macos', 'windows'];
+      case TemplateType.arcaneCli:
+        return []; // CLI has no Flutter platforms
+    }
+  }
+
+  /// Whether this template is a Flutter app
+  bool get isFlutterApp {
+    return this != TemplateType.arcaneCli;
+  }
+
+  /// Whether this template is a Dart-only CLI
+  bool get isDartCli {
+    return this == TemplateType.arcaneCli;
+  }
+
+  /// Whether models package can be created with this template
+  bool get supportsModels {
+    return true; // All templates support models
+  }
+
+  /// Whether server app can be created with this template
+  bool get supportsServer {
+    return true; // All templates support server
+  }
+
+  /// Get the template number (1-4)
+  int get number {
+    return index + 1;
+  }
+
+  /// Parse from string (number or name)
+  static TemplateType? parse(String input) {
+    final String lower = input.toLowerCase().trim();
+
+    // Try parsing as number
+    switch (lower) {
+      case '1':
+        return TemplateType.arcaneTemplate;
+      case '2':
+        return TemplateType.arcaneBeamer;
+      case '3':
+        return TemplateType.arcaneDock;
+      case '4':
+        return TemplateType.arcaneCli;
+    }
+
+    // Try parsing as name
+    for (final TemplateType template in TemplateType.values) {
+      if (template.directoryName == lower ||
+          template.name.toLowerCase() == lower) {
+        return template;
+      }
+    }
+
+    return null;
+  }
+}
+
+/// Information about a template
+class TemplateInfo {
+  final TemplateType type;
+  final String name;
+  final String description;
+  final List<String> platforms;
+  final bool isFlutter;
+
+  TemplateInfo({
+    required this.type,
+    required this.name,
+    required this.description,
+    required this.platforms,
+    required this.isFlutter,
+  });
+
+  factory TemplateInfo.fromType(TemplateType type) {
+    return TemplateInfo(
+      type: type,
+      name: type.displayName,
+      description: type.description,
+      platforms: type.supportedPlatforms,
+      isFlutter: type.isFlutterApp,
+    );
+  }
+
+  /// Get all available templates
+  static List<TemplateInfo> get all {
+    return TemplateType.values.map((TemplateType t) => TemplateInfo.fromType(t)).toList();
+  }
+}
