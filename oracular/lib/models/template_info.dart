@@ -1,5 +1,11 @@
 /// Available template types
-enum TemplateType { arcaneTemplate, arcaneBeamer, arcaneDock, arcaneCli }
+enum TemplateType {
+  // Flutter templates
+  arcaneTemplate,
+  arcaneBeamer,
+  arcaneDock,
+  arcaneCli,
+}
 
 /// Extension for template metadata
 extension TemplateTypeExtension on TemplateType {
@@ -68,13 +74,20 @@ extension TemplateTypeExtension on TemplateType {
       case TemplateType.arcaneDock:
         return ['linux', 'macos', 'windows'];
       case TemplateType.arcaneCli:
-        return []; // CLI has no Flutter platforms
+        return []; // Non-Flutter templates have no Flutter platforms
     }
   }
 
   /// Whether this template is a Flutter app
   bool get isFlutterApp {
-    return this != TemplateType.arcaneCli;
+    switch (this) {
+      case TemplateType.arcaneTemplate:
+      case TemplateType.arcaneBeamer:
+      case TemplateType.arcaneDock:
+        return true;
+      case TemplateType.arcaneCli:
+        return false;
+    }
   }
 
   /// Whether this template is a Dart-only CLI

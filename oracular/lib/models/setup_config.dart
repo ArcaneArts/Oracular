@@ -184,19 +184,19 @@ ${serviceAccountKeyPath != null ? 'SERVICE_ACCOUNT_KEY=$serviceAccountKeyPath' :
 
   /// Convert to YAML string for display
   String toYamlString() {
-    return '''
-app_name: $appName
-org_domain: $orgDomain
-base_class_name: $baseClassName
-template: ${template.displayName}
-output_dir: $outputDir
-platforms: ${platforms.join(', ')}
-create_models: $createModels
-create_server: $createServer
-use_firebase: $useFirebase
-firebase_project_id: ${firebaseProjectId ?? 'N/A'}
-setup_cloud_run: $setupCloudRun
-''';
+    final buffer = StringBuffer();
+    buffer.writeln('app_name: $appName');
+    buffer.writeln('org_domain: $orgDomain');
+    buffer.writeln('base_class_name: $baseClassName');
+    buffer.writeln('template: ${template.displayName}');
+    buffer.writeln('output_dir: $outputDir');
+    buffer.writeln('platforms: ${platforms.join(', ')}');
+    buffer.writeln('create_models: $createModels');
+    buffer.writeln('create_server: $createServer');
+    buffer.writeln('use_firebase: $useFirebase');
+    buffer.writeln('firebase_project_id: ${firebaseProjectId ?? 'N/A'}');
+    buffer.writeln('setup_cloud_run: $setupCloudRun');
+    return buffer.toString();
   }
 
   /// Convert to map for display

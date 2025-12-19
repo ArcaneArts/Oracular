@@ -23,13 +23,13 @@ Project scaffolding and script runner for Arcane-based Flutter and Dart applicat
 Oracular/
 ├── oracular/          Dart CLI tool
 ├── oracular_gui/      Flutter GUI wizard
-└── templates/       Project templates (editable)
-    ├── arcane_app/         Basic multi-platform Flutter app
-    ├── arcane_beamer_app/  Beamer navigation Flutter app
-    ├── arcane_dock_app/    Desktop system tray app
-    ├── arcane_cli_app/     Dart CLI application
-    ├── arcane_models/      Shared data models package
-    └── arcane_server/      Shelf-based REST API server
+└── templates/         Project templates (editable)
+    ├── arcane_app/           Basic multi-platform Flutter app
+    ├── arcane_beamer_app/    Beamer navigation Flutter app
+    ├── arcane_dock_app/      Desktop system tray app
+    ├── arcane_cli_app/       Dart CLI application
+    ├── arcane_models/        Shared data models package
+    └── arcane_server/        Shelf-based REST API server
 ```
 
 ## Installation
@@ -106,12 +106,19 @@ oracular deploy server-build      # Build Docker image
 
 ## Templates
 
-| Template | Type | Platforms | Description |
-|----------|------|-----------|-------------|
-| Basic Arcane | Flutter | All | Multi-platform app with Arcane UI |
-| Beamer Navigation | Flutter | All | Declarative routing with Beamer |
-| Desktop Tray | Flutter | Desktop | System tray/menu bar application |
-| Dart CLI | Dart | - | Command-line interface app |
+### Flutter Templates
+
+| Template | Platforms | Description |
+|----------|-----------|-------------|
+| Basic Arcane | All | Multi-platform app with Arcane UI |
+| Beamer Navigation | All | Declarative routing with Beamer |
+| Desktop Tray | Desktop | System tray/menu bar application |
+
+### Dart Templates
+
+| Template | Description |
+|----------|-------------|
+| Dart CLI | Command-line interface application |
 
 ### Additional Packages
 

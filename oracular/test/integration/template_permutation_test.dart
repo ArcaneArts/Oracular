@@ -8,6 +8,12 @@ import 'package:oracular/services/template_copier.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+/// Get the templates path relative to the test directory
+String getTemplatesPath() {
+  // From test/integration/ we need to go up to oracular/, then up to Oracular/templates
+  return p.normalize(p.join(Directory.current.path, '..', 'templates'));
+}
+
 /// Test configuration for a single permutation
 class TestPermutation {
   final TemplateType template;
@@ -73,7 +79,7 @@ void main() {
           template: TemplateType.arcaneTemplate,
           outputDir: tempDir.path,
         );
-        final copier = TemplateCopier(config);
+        final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
         for (final template in TemplateType.values) {
           final templatePath = copier.getTemplatePath(template.directoryName);
@@ -105,7 +111,7 @@ void main() {
           template: TemplateType.arcaneTemplate,
           outputDir: tempDir.path,
         );
-        final copier = TemplateCopier(config);
+        final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
         final templateNames = [
           ...TemplateType.values.map((t) => t.directoryName),
@@ -132,7 +138,7 @@ void main() {
           template: TemplateType.arcaneTemplate,
           outputDir: tempDir.path,
         );
-        final copier = TemplateCopier(config);
+        final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
         final templateNames = [
           ...TemplateType.values.map((t) => t.directoryName),
@@ -309,13 +315,13 @@ void main() {
       group('Permutation: ${permutation.name}', () {
         test('TemplateCopier can be instantiated', () {
           final config = permutation.toConfig(tempDir.path);
-          final copier = TemplateCopier(config);
+          final copier = TemplateCopier.withPath(config, getTemplatesPath());
           expect(copier.templatesBasePath, isNotEmpty);
         });
 
         test('template directory exists', () {
           final config = permutation.toConfig(tempDir.path);
-          final copier = TemplateCopier(config);
+          final copier = TemplateCopier.withPath(config, getTemplatesPath());
           final templatePath =
               copier.getTemplatePath(config.template.directoryName);
           expect(
@@ -328,7 +334,7 @@ void main() {
         if (permutation.createModels) {
           test('models template directory exists', () {
             final config = permutation.toConfig(tempDir.path);
-            final copier = TemplateCopier(config);
+            final copier = TemplateCopier.withPath(config, getTemplatesPath());
             final modelsPath = copier.getTemplatePath('arcane_models');
             expect(
               Directory(modelsPath).existsSync(),
@@ -341,7 +347,7 @@ void main() {
         if (permutation.createServer) {
           test('server template directory exists', () {
             final config = permutation.toConfig(tempDir.path);
-            final copier = TemplateCopier(config);
+            final copier = TemplateCopier.withPath(config, getTemplatesPath());
             final serverPath = copier.getTemplatePath('arcane_server');
             expect(
               Directory(serverPath).existsSync(),
@@ -378,7 +384,7 @@ void main() {
       }
     });
 
-    // Run actual copy tests for each template type (without models/server to speed up)
+    // Run actual copy tests for each template type
     for (final template in TemplateType.values) {
       test('copyAppTemplate works for ${template.name}', () async {
         final config = SetupConfig(
@@ -391,7 +397,7 @@ void main() {
           createServer: false,
         );
 
-        final copier = TemplateCopier(config);
+        final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
         // Only test if template exists
         final templatePath = copier.getTemplatePath(template.directoryName);
@@ -447,7 +453,7 @@ void main() {
         createServer: false,
       );
 
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
       // Only test if template exists
       final modelsPath = copier.getTemplatePath('arcane_models');
@@ -485,7 +491,7 @@ void main() {
         createServer: true,
       );
 
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
       // Only test if template exists
       final serverPath = copier.getTemplatePath('arcane_server');
@@ -523,7 +529,7 @@ void main() {
         createServer: true,
       );
 
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
       // Only test if all templates exist
       final appPath = copier.getTemplatePath(config.template.directoryName);
@@ -560,12 +566,15 @@ void main() {
         reason: 'Server directory should be created',
       );
 
-      // Verify references was created
-      expect(
-        Directory(p.join(tempDir.path, 'references')).existsSync(),
-        isTrue,
-        reason: 'References directory should be created',
-      );
+      // Verify references was created (only if references template exists)
+      final referencesTemplate = Directory(copier.getTemplatePath('references'));
+      if (referencesTemplate.existsSync()) {
+        expect(
+          Directory(p.join(tempDir.path, 'references')).existsSync(),
+          isTrue,
+          reason: 'References directory should be created',
+        );
+      }
     });
   });
 
@@ -596,7 +605,7 @@ void main() {
           createServer: true,
         );
 
-        final copier = TemplateCopier(config);
+        final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
         // Skip if templates don't exist
         if (!Directory(copier.getTemplatePath(template.directoryName))

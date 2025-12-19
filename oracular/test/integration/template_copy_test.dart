@@ -11,6 +11,7 @@ import 'package:test/test.dart';
 void main() {
   late Directory tempDir;
   late SetupConfig config;
+  late String templatesPath;
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('oracular_integration_');
@@ -25,6 +26,8 @@ void main() {
       useFirebase: true,
       firebaseProjectId: 'test-project',
     );
+    // Find templates path relative to test file
+    templatesPath = p.normalize(p.join(Directory.current.path, '..', 'templates'));
   });
 
   tearDown(() async {
@@ -35,19 +38,19 @@ void main() {
 
   group('TemplateCopier', () {
     test('finds templates directory', () {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       expect(copier.templatesBasePath, isNotEmpty);
       expect(Directory(copier.templatesBasePath).existsSync(), isTrue);
     });
 
     test('getTemplatePath returns correct path', () {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final path = copier.getTemplatePath('arcane_app');
       expect(path, contains('arcane_app'));
     });
 
     test('templates directory contains expected subdirectories', () {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final templatesDir = Directory(copier.templatesBasePath);
 
       expect(
@@ -167,7 +170,7 @@ class ArcaneServer {
 
   group('Template directory structure', () {
     test('arcane_app exists and has required files', () {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final templateDir = Directory(copier.getTemplatePath('arcane_app'));
 
       if (templateDir.existsSync()) {
@@ -181,7 +184,7 @@ class ArcaneServer {
     });
 
     test('arcane_models exists and has required files', () {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final templateDir = Directory(copier.getTemplatePath('arcane_models'));
 
       if (templateDir.existsSync()) {
@@ -194,7 +197,7 @@ class ArcaneServer {
     });
 
     test('arcane_server exists and has required files', () {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final templateDir = Directory(copier.getTemplatePath('arcane_server'));
 
       if (templateDir.existsSync()) {
@@ -209,7 +212,7 @@ class ArcaneServer {
 
   group('Template content validation', () {
     test('arcane_app pubspec has correct name', () async {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final pubspec =
           File(p.join(copier.getTemplatePath('arcane_app'), 'pubspec.yaml'));
 
@@ -220,7 +223,7 @@ class ArcaneServer {
     });
 
     test('arcane_cli_app pubspec has correct name', () async {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final pubspec = File(
           p.join(copier.getTemplatePath('arcane_cli_app'), 'pubspec.yaml'));
 
@@ -231,7 +234,7 @@ class ArcaneServer {
     });
 
     test('arcane_models pubspec has correct name', () async {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final pubspec =
           File(p.join(copier.getTemplatePath('arcane_models'), 'pubspec.yaml'));
 
@@ -242,7 +245,7 @@ class ArcaneServer {
     });
 
     test('arcane_server pubspec has correct name', () async {
-      final copier = TemplateCopier(config);
+      final copier = TemplateCopier.withPath(config, templatesPath);
       final pubspec =
           File(p.join(copier.getTemplatePath('arcane_server'), 'pubspec.yaml'));
 

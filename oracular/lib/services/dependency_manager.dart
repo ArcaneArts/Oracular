@@ -87,11 +87,13 @@ class DependencyManager {
   Future<bool> getAppDependencies() async {
     final String projectPath = p.join(config.outputDir, config.appName);
 
-    if (config.template == TemplateType.arcaneCli) {
+    // CLI templates use dart pub get
+    if (config.template.isDartCli) {
       return await dartPubGet(projectPath);
-    } else {
-      return await flutterPubGet(projectPath);
     }
+
+    // Flutter templates use flutter pub get
+    return await flutterPubGet(projectPath);
   }
 
   /// Get dependencies for the models package

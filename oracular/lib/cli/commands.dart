@@ -13,7 +13,7 @@ final List<DartedCommand> commandsTree = [
   // Create command
   DartedCommand(
     name: 'create',
-    helperDescription: 'Create new Arcane projects',
+    helperDescription: 'Create new Arcane projects (Flutter or Dart)',
     arguments: [
       DartedArgument(name: 'app-name', abbreviation: 'n'),
       DartedArgument(name: 'org', abbreviation: 'o', defaultValue: 'com.example'),
@@ -254,7 +254,7 @@ final List<DartedCommand> commandsTree = [
     name: 'version',
     helperDescription: 'Show version information',
     callback: (_, __) {
-      print('Oracular CLI v2.0.0');  // Keep in sync with pubspec.yaml
+      print('Oracular CLI v2.1.0');  // Keep in sync with pubspec.yaml
       print('Arcane Template System');
     },
   ),

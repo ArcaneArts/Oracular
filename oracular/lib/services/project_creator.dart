@@ -185,12 +185,12 @@ class ProjectCreator {
   Future<bool> createAllProjects() async {
     info('Creating projects...');
 
-    // Create main app (Flutter or CLI)
+    // Create main app based on template type
     if (config.template.isFlutterApp) {
       if (!await createFlutterApp()) {
         return false;
       }
-    } else {
+    } else if (config.template.isDartCli) {
       if (!await createDartCli()) {
         return false;
       }

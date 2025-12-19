@@ -4,7 +4,6 @@ import 'package:fast_log/fast_log.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/setup_config.dart';
-import '../models/template_info.dart';
 import '../utils/user_prompt.dart';
 import 'placeholder_replacer.dart';
 import 'template_downloader.dart';
@@ -223,6 +222,7 @@ class TemplateCopier {
       '.gradle',
       'Pods',
     ];
+
     return skipDirs.contains(dirName);
   }
 
@@ -245,6 +245,12 @@ class TemplateCopier {
 
   /// Copy all templates based on config with progress tracking
   Future<void> copyAll() async {
+    // Create output directory if needed
+    final Directory outputDir = Directory(config.outputDir);
+    if (!outputDir.existsSync()) {
+      await outputDir.create(recursive: true);
+    }
+
     // Build list of templates to copy
     final List<(String, Future<void> Function())> templates = <(String, Future<void> Function())>[
       ('Main app', copyAppTemplate),
@@ -257,12 +263,6 @@ class TemplateCopier {
       templates.add(('Server app', copyServerTemplate));
     }
     templates.add(('References', copyReferences));
-
-    // Create output directory if needed
-    final Directory outputDir = Directory(config.outputDir);
-    if (!outputDir.existsSync()) {
-      await outputDir.create(recursive: true);
-    }
 
     // Copy each template with progress
     for (int i = 0; i < templates.length; i++) {

@@ -64,6 +64,7 @@ class PlaceholderReplacer {
     result = result.replaceAll('ArcaneRunner', config.runnerClassName);
 
     // 2. Replace package imports - order matters, longer names first
+    // Flutter templates
     // package:arcane_beamer_app/ -> package:my_app/
     result = result.replaceAll(
       'package:arcane_beamer_app/',
@@ -97,6 +98,7 @@ class PlaceholderReplacer {
 
     // 5. Replace app names in various contexts (order matters - longer names first)
     // These are the canonical template names
+    // Flutter templates
     result = result.replaceAll('arcane_beamer_app', config.appName);
     result = result.replaceAll('arcane_dock_app', config.appName);
     result = result.replaceAll('arcane_cli_app', config.appName);
@@ -135,6 +137,7 @@ class PlaceholderReplacer {
     // arcane_models.dart -> my_app_models.dart
     result = result.replaceAll('arcane_models', config.modelsPackageName);
 
+    // Flutter templates
     // arcane_cli_app.dart -> my_app.dart (and .g.dart files)
     result = result.replaceAll('arcane_cli_app', config.appName);
     result = result.replaceAll('arcane_beamer_app', config.appName);

@@ -1,3 +1,9 @@
+## 2.1.0
+
+- **CLI Improvements**:
+  - Interactive prompts for project configuration
+  - Template-specific next steps in success message
+
 ## 2.0.0
 
 - **Template Distribution**: Templates are now downloaded from GitHub at runtime

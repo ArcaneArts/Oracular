@@ -19,10 +19,13 @@ import 'tool_checker.dart';
 /// Interactive wizard for project setup
 class InteractiveWizard {
   final ToolChecker _toolChecker = ToolChecker();
+  final bool verbose;
 
   // Wizard step tracking
   static const int _totalSteps = 5;
   int _currentStep = 0;
+
+  InteractiveWizard({this.verbose = false});
 
   /// Run the full interactive wizard
   Future<void> run() async {
@@ -71,7 +74,7 @@ class InteractiveWizard {
     UserPrompt.clearScreen();
     UserPrompt.printBanner(
       'Welcome to Oracular Setup Wizard',
-      subtitle: 'Arcane Template System v2.0',
+      subtitle: 'Arcane Template System v2.1',
     );
     info('This wizard will help you create a new Arcane project.');
     print('');
@@ -147,8 +150,15 @@ class InteractiveWizard {
     );
 
     // ── Section 3: Platform Selection ──
+    // Only show for Flutter apps that have platform choices
+    // Skip for: Dart CLI, arcaneDock (fixed platforms)
     List<String> selectedPlatforms = template.supportedPlatforms;
-    if (template.isFlutterApp && template != TemplateType.arcaneDock) {
+
+    final bool showPlatformSelection = template.isFlutterApp &&
+        template != TemplateType.arcaneDock &&
+        template.supportedPlatforms.length > 1;
+
+    if (showPlatformSelection) {
       UserPrompt.printDivider(title: 'Target Platforms');
       print('  Select the platforms you want to target:');
 
@@ -181,20 +191,40 @@ class InteractiveWizard {
           );
         }
       }
+    } else if (template == TemplateType.arcaneDock) {
+      // Dock app: desktop platforms only
+      info('Desktop dock app targets: macOS, Linux, Windows');
+    } else if (template.isDartCli) {
+      // Dart CLI: no platforms needed
+      info('Dart CLI app - no platform selection needed');
     }
 
     // ── Section 4: Additional Packages ──
-    UserPrompt.printDivider(title: 'Additional Packages');
+    // Customize options based on template type
+    bool createModels = false;
+    bool createServer = false;
 
-    // Multi-select for additional features
-    final additionalFeatures = await UserPrompt.askMultiSelectNames(
-      'Select additional packages to create',
-      ['Shared Models Package', 'Server Application'],
-      defaultSelected: ['Shared Models Package'],
-    );
+    if (template.isDartCli) {
+      // Dart CLI: only offer models package (server is unusual for CLI)
+      UserPrompt.printDivider(title: 'Additional Packages');
+      createModels = await UserPrompt.askYesNo(
+        'Create shared models package?',
+        defaultValue: true,
+      );
+      // Skip server for CLI apps
+    } else {
+      // Flutter apps: offer both models and server
+      UserPrompt.printDivider(title: 'Additional Packages');
 
-    final createModels = additionalFeatures.contains('Shared Models Package');
-    final createServer = additionalFeatures.contains('Server Application');
+      final additionalFeatures = await UserPrompt.askMultiSelectNames(
+        'Select additional packages to create',
+        ['Shared Models Package', 'Server Application'],
+        defaultSelected: ['Shared Models Package'],
+      );
+
+      createModels = additionalFeatures.contains('Shared Models Package');
+      createServer = additionalFeatures.contains('Server Application');
+    }
 
     // ── Section 5: Firebase Integration ──
     UserPrompt.printDivider(title: 'Cloud Services');
@@ -418,9 +448,9 @@ class InteractiveWizard {
     UserPrompt.printBanner('Project Created Successfully!');
 
     // List created packages
-    final createdItems = <String>[
-      '${config.appName}/ - Main application',
-    ];
+    final createdItems = <String>[];
+
+    createdItems.add('${config.appName}/ - Main application');
     if (config.createModels) {
       createdItems.add('${config.modelsPackageName}/ - Shared models package');
     }
@@ -436,10 +466,9 @@ class InteractiveWizard {
     // Next steps
     UserPrompt.printDivider(title: 'Next Steps');
 
-    final nextSteps = <String>[
-      'cd ${config.outputDir}/${config.appName}',
-    ];
+    final nextSteps = <String>[];
 
+    nextSteps.add('cd ${config.outputDir}/${config.appName}');
     if (config.template.isFlutterApp) {
       nextSteps.add('flutter run');
     } else {
