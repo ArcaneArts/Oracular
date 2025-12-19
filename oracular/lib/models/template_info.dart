@@ -5,6 +5,8 @@ enum TemplateType {
   arcaneBeamer,
   arcaneDock,
   arcaneCli,
+  // Jaspr web template
+  arcaneJaspr,
 }
 
 /// Extension for template metadata
@@ -20,6 +22,8 @@ extension TemplateTypeExtension on TemplateType {
         return 'Arcane Dock (Desktop System Tray)';
       case TemplateType.arcaneCli:
         return 'Arcane CLI (Command-Line App)';
+      case TemplateType.arcaneJaspr:
+        return 'Arcane Jaspr (Web App)';
     }
   }
 
@@ -34,6 +38,8 @@ extension TemplateTypeExtension on TemplateType {
         return 'arcane_dock_app';
       case TemplateType.arcaneCli:
         return 'arcane_cli_app';
+      case TemplateType.arcaneJaspr:
+        return 'arcane_jaspr_app';
     }
   }
 
@@ -48,6 +54,8 @@ extension TemplateTypeExtension on TemplateType {
         return 'arcane_dock_app';
       case TemplateType.arcaneCli:
         return 'arcane_cli_app';
+      case TemplateType.arcaneJaspr:
+        return 'arcane_jaspr_app';
     }
   }
 
@@ -62,6 +70,8 @@ extension TemplateTypeExtension on TemplateType {
         return 'Desktop system tray/menu bar application (macOS, Linux, Windows only).';
       case TemplateType.arcaneCli:
         return 'Command-line interface application (Dart-only, not Flutter).';
+      case TemplateType.arcaneJaspr:
+        return 'Jaspr web application with Arcane design (Web-only, not Flutter).';
     }
   }
 
@@ -74,6 +84,7 @@ extension TemplateTypeExtension on TemplateType {
       case TemplateType.arcaneDock:
         return ['linux', 'macos', 'windows'];
       case TemplateType.arcaneCli:
+      case TemplateType.arcaneJaspr:
         return []; // Non-Flutter templates have no Flutter platforms
     }
   }
@@ -86,6 +97,7 @@ extension TemplateTypeExtension on TemplateType {
       case TemplateType.arcaneDock:
         return true;
       case TemplateType.arcaneCli:
+      case TemplateType.arcaneJaspr:
         return false;
     }
   }
@@ -93,6 +105,11 @@ extension TemplateTypeExtension on TemplateType {
   /// Whether this template is a Dart-only CLI
   bool get isDartCli {
     return this == TemplateType.arcaneCli;
+  }
+
+  /// Whether this template is a Jaspr web app
+  bool get isJasprApp {
+    return this == TemplateType.arcaneJaspr;
   }
 
   /// Whether models package can be created with this template
@@ -124,6 +141,8 @@ extension TemplateTypeExtension on TemplateType {
         return TemplateType.arcaneDock;
       case '4':
         return TemplateType.arcaneCli;
+      case '5':
+        return TemplateType.arcaneJaspr;
     }
 
     // Try parsing as name

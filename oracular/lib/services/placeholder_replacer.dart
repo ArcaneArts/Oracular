@@ -63,7 +63,16 @@ class PlaceholderReplacer {
     // ArcaneRunner -> MyAppRunner
     result = result.replaceAll('ArcaneRunner', config.runnerClassName);
 
+    // ArcaneJasprApp -> MyAppWeb (for Jaspr templates)
+    result = result.replaceAll('ArcaneJasprApp', config.webClassName);
+
     // 2. Replace package imports - order matters, longer names first
+    // Jaspr web template
+    // package:arcane_jaspr_app/ -> package:my_app_web/
+    result = result.replaceAll(
+      'package:arcane_jaspr_app/',
+      'package:${config.webPackageName}/',
+    );
     // Flutter templates
     // package:arcane_beamer_app/ -> package:my_app/
     result = result.replaceAll(
@@ -97,6 +106,8 @@ class PlaceholderReplacer {
     result = result.replaceAll('arcane_server', config.serverPackageName);
 
     // 5. Replace app names in various contexts (order matters - longer names first)
+    // Jaspr web template - must be before other arcane_ patterns
+    result = result.replaceAll('arcane_jaspr_app', config.webPackageName);
     // These are the canonical template names
     // Flutter templates
     result = result.replaceAll('arcane_beamer_app', config.appName);
@@ -126,6 +137,7 @@ class PlaceholderReplacer {
     result = result.replaceAll('Arcane Beamer', config.baseClassName);
     result = result.replaceAll('Arcane Dock', config.baseClassName);
     result = result.replaceAll('Arcane CLI', config.baseClassName);
+    result = result.replaceAll('Arcane Jaspr', config.baseClassName);
 
     return result;
   }
@@ -136,6 +148,10 @@ class PlaceholderReplacer {
 
     // arcane_models.dart -> my_app_models.dart
     result = result.replaceAll('arcane_models', config.modelsPackageName);
+
+    // Jaspr web template (must be before arcane_app)
+    // arcane_jaspr_app.dart -> my_app_web.dart
+    result = result.replaceAll('arcane_jaspr_app', config.webPackageName);
 
     // Flutter templates
     // arcane_cli_app.dart -> my_app.dart (and .g.dart files)

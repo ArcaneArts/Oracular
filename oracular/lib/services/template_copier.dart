@@ -4,6 +4,7 @@ import 'package:fast_log/fast_log.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/setup_config.dart';
+import '../models/template_info.dart';
 import '../utils/user_prompt.dart';
 import 'placeholder_replacer.dart';
 import 'template_downloader.dart';
@@ -78,7 +79,11 @@ class TemplateCopier {
     final Directory templateDir = Directory(
       getTemplatePath(config.template.directoryName),
     );
-    final Directory targetDir = Directory(p.join(config.outputDir, config.appName));
+
+    // For Jaspr templates, use webPackageName; for others, use appName
+    final String targetName =
+        config.template.isJasprApp ? config.webPackageName : config.appName;
+    final Directory targetDir = Directory(p.join(config.outputDir, targetName));
 
     if (!templateDir.existsSync()) {
       throw Exception('Template not found: ${templateDir.path}');
@@ -92,9 +97,9 @@ class TemplateCopier {
     // Process placeholders
     await _replacer.processDirectory(targetDir);
 
-    // Update pubspec
+    // Update pubspec with correct package name
     final File pubspecFile = File(p.join(targetDir.path, 'pubspec.yaml'));
-    await _replacer.updatePubspec(pubspecFile, config.appName);
+    await _replacer.updatePubspec(pubspecFile, targetName);
 
     // Add models dependency if needed
     if (config.createModels) {

@@ -9,10 +9,31 @@ import '../../services/firebase_service.dart';
 import '../../services/server_setup.dart';
 import '../../utils/user_prompt.dart';
 
-/// Load configuration from the current directory
+/// Load configuration from project directory
+/// Searches in multiple locations to handle different working directories
 Future<SetupConfig?> _loadConfig() async {
-  final configPath = p.join(Directory.current.path, 'config', 'setup_config.env');
-  return await SetupConfig.loadFromFile(configPath);
+  final currentDir = Directory.current.path;
+
+  // List of potential config locations to search
+  final searchPaths = <String>[
+    // Direct location in current directory
+    p.join(currentDir, 'config', 'setup_config.env'),
+    // Parent directory (if running from within app folder)
+    p.join(currentDir, '..', 'config', 'setup_config.env'),
+    // Check if we're in a nested project folder
+    p.join(currentDir, '..', '..', 'config', 'setup_config.env'),
+  ];
+
+  for (final path in searchPaths) {
+    final normalizedPath = p.normalize(path);
+    final config = await SetupConfig.loadFromFile(normalizedPath);
+    if (config != null) {
+      verbose('Loaded config from: $normalizedPath');
+      return config;
+    }
+  }
+
+  return null;
 }
 
 /// Deploy Firestore rules and indexes

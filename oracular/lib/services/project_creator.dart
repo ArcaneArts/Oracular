@@ -97,6 +97,45 @@ class ProjectCreator {
     return true;
   }
 
+  /// Create a Jaspr web app project
+  Future<bool> createJasprApp() async {
+    if (!config.template.isJasprApp) {
+      return false;
+    }
+
+    final String projectPath = p.join(config.outputDir, config.webPackageName);
+
+    info('Creating Jaspr web app: ${config.webPackageName}');
+
+    // Use dart create -t package as base structure for Jaspr
+    final List<String> args = <String>[
+      'create',
+      '-t',
+      'package',
+      projectPath,
+    ];
+
+    final ProcessResult? result = await _runner.runWithRetry(
+      'dart',
+      args,
+      operationName: 'Dart create (Jaspr)',
+    );
+
+    if (result == null || !result.success) {
+      error('Failed to create Jaspr app');
+      return false;
+    }
+
+    // Delete the generated lib folder to replace with template
+    final Directory libDir = Directory(p.join(projectPath, 'lib'));
+    if (libDir.existsSync()) {
+      await libDir.delete(recursive: true);
+    }
+
+    success('Jaspr app created at: $projectPath');
+    return true;
+  }
+
   /// Create a models package
   Future<bool> createModelsPackage() async {
     if (!config.createModels) {
@@ -194,6 +233,10 @@ class ProjectCreator {
       if (!await createDartCli()) {
         return false;
       }
+    } else if (config.template.isJasprApp) {
+      if (!await createJasprApp()) {
+        return false;
+      }
     }
 
     // Create models package if enabled
@@ -218,8 +261,13 @@ class ProjectCreator {
   Future<void> deleteTestFolders() async {
     info('Cleaning up test folders...');
 
+    // Determine main app path based on template type
+    final String mainAppPath = config.template.isJasprApp
+        ? p.join(config.outputDir, config.webPackageName)
+        : p.join(config.outputDir, config.appName);
+
     final projectPaths = [
-      p.join(config.outputDir, config.appName),
+      mainAppPath,
       if (config.createModels)
         p.join(config.outputDir, config.modelsPackageName),
       if (config.createServer)

@@ -1,0 +1,103 @@
+/* Arcane Jaspr App Styles */
+
+/* CSS Variables - Arcane Dark Theme */
+:root {
+  /* Background colors */
+  --background: #09090b;
+  --foreground: #fafafa;
+
+  /* Card colors */
+  --card: #18181b;
+  --card-foreground: #fafafa;
+
+  /* Muted colors */
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+
+  /* Primary (violet accent) */
+  --primary: #8b5cf6;
+  --primary-foreground: #fafafa;
+
+  /* Border */
+  --border: #27272a;
+
+  /* Ring */
+  --ring: #8b5cf6;
+}
+
+/* Utility classes - matches Tailwind conventions */
+.min-h-screen { min-height: 100vh; }
+.bg-background { background-color: var(--background); }
+.bg-card { background-color: var(--card); }
+.bg-primary { background-color: var(--primary); }
+
+.text-foreground { color: var(--foreground); }
+.text-card-foreground { color: var(--card-foreground); }
+.text-muted-foreground { color: var(--muted-foreground); }
+.text-primary { color: var(--primary); }
+.text-primary-foreground { color: var(--primary-foreground); }
+
+.border-border { border-color: var(--border); }
+.border { border-width: 1px; border-style: solid; }
+
+/* Layout */
+.container { width: 100%; max-width: 1280px; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+.py-16 { padding-top: 4rem; padding-bottom: 4rem; }
+.py-24 { padding-top: 6rem; padding-bottom: 6rem; }
+.p-6 { padding: 1.5rem; }
+.mb-2 { margin-bottom: 0.5rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+.mb-8 { margin-bottom: 2rem; }
+.mb-12 { margin-bottom: 3rem; }
+.mt-8 { margin-top: 2rem; }
+.gap-4 { gap: 1rem; }
+.gap-8 { gap: 2rem; }
+.space-y-2 > * + * { margin-top: 0.5rem; }
+
+/* Flexbox */
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+
+/* Grid */
+.grid { display: grid; }
+@media (min-width: 768px) {
+  .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Typography */
+.text-center { text-align: center; }
+.text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+.text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+.text-4xl { font-size: 2.25rem; line-height: 2.5rem; }
+.text-5xl { font-size: 3rem; line-height: 1; }
+.text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+.font-bold { font-weight: 700; }
+.font-semibold { font-weight: 600; }
+.max-w-2xl { max-width: 42rem; }
+.max-w-3xl { max-width: 48rem; }
+
+/* Components */
+.rounded-lg { border-radius: 0.5rem; }
+
+/* Lists */
+.list-disc { list-style-type: disc; }
+.list-inside { list-style-position: inside; }
+
+/* Interactive */
+.hover\:text-foreground:hover { color: var(--foreground); }
+.hover\:underline:hover { text-decoration: underline; }
+.hover\:opacity-90:hover { opacity: 0.9; }
+
+/* Links */
+a { text-decoration: none; transition: color 0.2s ease; }
+
+/* Prose (for content) */
+.prose { line-height: 1.75; }
+.prose-invert { color: var(--foreground); }

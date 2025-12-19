@@ -8,6 +8,7 @@ void main() {
       expect(TemplateType.arcaneBeamer.displayName, contains('Navigation'));
       expect(TemplateType.arcaneDock.displayName, contains('Desktop'));
       expect(TemplateType.arcaneCli.displayName, contains('CLI'));
+      expect(TemplateType.arcaneJaspr.displayName, contains('Jaspr'));
     });
 
     test('has correct directory names (new canonical names)', () {
@@ -18,6 +19,7 @@ void main() {
       expect(TemplateType.arcaneBeamer.directoryName, equals('arcane_beamer_app'));
       expect(TemplateType.arcaneDock.directoryName, equals('arcane_dock_app'));
       expect(TemplateType.arcaneCli.directoryName, equals('arcane_cli_app'));
+      expect(TemplateType.arcaneJaspr.directoryName, equals('arcane_jaspr_app'));
     });
 
     test('has correct canonical package names', () {
@@ -36,6 +38,10 @@ void main() {
       expect(
         TemplateType.arcaneCli.canonicalPackageName,
         equals('arcane_cli_app'),
+      );
+      expect(
+        TemplateType.arcaneJaspr.canonicalPackageName,
+        equals('arcane_jaspr_app'),
       );
     });
 
@@ -59,16 +65,25 @@ void main() {
 
       // arcane_cli has no Flutter platforms
       expect(TemplateType.arcaneCli.supportedPlatforms, isEmpty);
+
+      // arcane_jaspr has no Flutter platforms (web-only but not Flutter)
+      expect(TemplateType.arcaneJaspr.supportedPlatforms, isEmpty);
     });
 
-    test('identifies Flutter vs CLI correctly', () {
+    test('identifies Flutter vs CLI vs Jaspr correctly', () {
       expect(TemplateType.arcaneTemplate.isFlutterApp, isTrue);
       expect(TemplateType.arcaneBeamer.isFlutterApp, isTrue);
       expect(TemplateType.arcaneDock.isFlutterApp, isTrue);
       expect(TemplateType.arcaneCli.isFlutterApp, isFalse);
+      expect(TemplateType.arcaneJaspr.isFlutterApp, isFalse);
 
       expect(TemplateType.arcaneCli.isDartCli, isTrue);
       expect(TemplateType.arcaneTemplate.isDartCli, isFalse);
+      expect(TemplateType.arcaneJaspr.isDartCli, isFalse);
+
+      expect(TemplateType.arcaneJaspr.isJasprApp, isTrue);
+      expect(TemplateType.arcaneTemplate.isJasprApp, isFalse);
+      expect(TemplateType.arcaneCli.isJasprApp, isFalse);
     });
 
     test('has correct numbers', () {
@@ -76,6 +91,7 @@ void main() {
       expect(TemplateType.arcaneBeamer.number, equals(2));
       expect(TemplateType.arcaneDock.number, equals(3));
       expect(TemplateType.arcaneCli.number, equals(4));
+      expect(TemplateType.arcaneJaspr.number, equals(5));
     });
   });
 
@@ -91,6 +107,7 @@ void main() {
       );
       expect(TemplateTypeExtension.parse('3'), equals(TemplateType.arcaneDock));
       expect(TemplateTypeExtension.parse('4'), equals(TemplateType.arcaneCli));
+      expect(TemplateTypeExtension.parse('5'), equals(TemplateType.arcaneJaspr));
     });
 
     test('parses new directory names correctly', () {
@@ -109,6 +126,10 @@ void main() {
       expect(
         TemplateTypeExtension.parse('arcane_cli_app'),
         equals(TemplateType.arcaneCli),
+      );
+      expect(
+        TemplateTypeExtension.parse('arcane_jaspr_app'),
+        equals(TemplateType.arcaneJaspr),
       );
     });
 
@@ -129,6 +150,10 @@ void main() {
         TemplateTypeExtension.parse('arcanecli'),
         equals(TemplateType.arcaneCli),
       );
+      expect(
+        TemplateTypeExtension.parse('arcanejaspr'),
+        equals(TemplateType.arcaneJaspr),
+      );
     });
 
     test('is case insensitive', () {
@@ -143,7 +168,7 @@ void main() {
     });
 
     test('returns null for invalid input', () {
-      expect(TemplateTypeExtension.parse('5'), isNull);
+      expect(TemplateTypeExtension.parse('6'), isNull);
       expect(TemplateTypeExtension.parse('invalid'), isNull);
       expect(TemplateTypeExtension.parse(''), isNull);
     });

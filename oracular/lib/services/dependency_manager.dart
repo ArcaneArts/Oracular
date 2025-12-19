@@ -85,10 +85,13 @@ class DependencyManager {
 
   /// Get dependencies for the main app
   Future<bool> getAppDependencies() async {
-    final String projectPath = p.join(config.outputDir, config.appName);
+    // Determine project path based on template type
+    final String projectPath = config.template.isJasprApp
+        ? p.join(config.outputDir, config.webPackageName)
+        : p.join(config.outputDir, config.appName);
 
-    // CLI templates use dart pub get
-    if (config.template.isDartCli) {
+    // CLI and Jaspr templates use dart pub get
+    if (config.template.isDartCli || config.template.isJasprApp) {
       return await dartPubGet(projectPath);
     }
 
@@ -120,7 +123,11 @@ class DependencyManager {
     if (config.createModels) {
       packages.add(('Models', getModelsDependencies));
     }
-    packages.add(('Main app', getAppDependencies));
+
+    // Use appropriate label for main app
+    final String appLabel = config.template.isJasprApp ? 'Web app' : 'Main app';
+    packages.add((appLabel, getAppDependencies));
+
     if (config.createServer) {
       packages.add(('Server', getServerDependencies));
     }
@@ -192,9 +199,12 @@ class DependencyManager {
 
     final String modelsPath = '../${config.modelsPackageName}';
 
-    // Link to main app
+    // Link to main app (use webPackageName for Jaspr templates)
+    final String mainAppDir = config.template.isJasprApp
+        ? config.webPackageName
+        : config.appName;
     final File appPubspec = File(
-      p.join(config.outputDir, config.appName, 'pubspec.yaml'),
+      p.join(config.outputDir, mainAppDir, 'pubspec.yaml'),
     );
     await _addPathDependency(appPubspec, config.modelsPackageName, modelsPath);
 

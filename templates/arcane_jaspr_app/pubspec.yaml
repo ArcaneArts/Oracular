@@ -1,0 +1,54 @@
+name: arcane_jaspr_app
+description: "Arcane Jaspr web application"
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  web: ^1.1.0
+  jaspr: ^0.22.0
+  arcane_jaspr: ^1.0.0
+  fast_log: ^1.0.7
+  shelf: ^1.4.2
+  http: ^1.6.0
+
+  # Shared models (added automatically when models enabled)
+  # arcane_models:
+  #   path: ../arcane_models
+
+  # Firebase Auth (added automatically when Firebase enabled)
+  # arcane_auth_jaspr: ^0.5.0
+
+dev_dependencies:
+  build_runner: ^2.10.4
+  build_web_compilers: ^4.4.6
+  jaspr_builder: ^0.22.0
+  artifact_gen: ^1.2.1
+  fire_crud_gen: ^1.1.4
+  lints: ^6.0.0
+
+jaspr:
+  mode: client
+
+scripts:
+  # Development
+  serve: jaspr serve
+  serve_release: jaspr serve --release
+
+  # Build
+  build: jaspr build
+
+  # Clean
+  clean: jaspr clean
+
+  # Kill running servers
+  killall: pkill -f "jaspr serve" || true
+
+  # Code Generation
+  build_runner: dart run build_runner build --delete-conflicting-outputs
+  watch: dart run build_runner watch --delete-conflicting-outputs
+
+  # Firebase Deployment (run from parent directory)
+  firebase_deploy: jaspr build && cd .. && firebase deploy --only hosting --project FIREBASE_PROJECT_ID

@@ -111,11 +111,17 @@ class SetupConfig {
   /// Get the app name for the server
   String get serverPackageName => '${appName}_server';
 
+  /// Get the app name for the web package (Jaspr)
+  String get webPackageName => '${appName}_web';
+
   /// Get the server class name (PascalCase + Server)
   String get serverClassName => '${baseClassName}Server';
 
   /// Get the runner class name (PascalCase + Runner)
   String get runnerClassName => '${baseClassName}Runner';
+
+  /// Get the web class name (PascalCase + Web)
+  String get webClassName => '${baseClassName}Web';
 
   /// Save configuration to file
   Future<void> saveToFile(String path) async {
@@ -207,7 +213,8 @@ ${serviceAccountKeyPath != null ? 'SERVICE_ACCOUNT_KEY=$serviceAccountKeyPath' :
       'Class Name': baseClassName,
       'Template': template.displayName,
       'Output Dir': outputDir,
-      'Platforms': platforms.join(', '),
+      // Only show platforms for Flutter templates
+      if (template.isFlutterApp) 'Platforms': platforms.join(', '),
       'Models Package': createModels ? 'Yes' : 'No',
       'Server App': createServer ? 'Yes' : 'No',
       'Firebase': useFirebase ? 'Yes' : 'No',

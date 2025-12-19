@@ -237,6 +237,7 @@ class InteractiveWizard {
 
     String? firebaseProjectId;
     bool setupCloudRun = false;
+    String? serviceAccountKeyPath;
 
     if (useFirebase) {
       firebaseProjectId = await UserPrompt.askString(
@@ -254,6 +255,48 @@ class InteractiveWizard {
       }
     }
 
+    // Service account key (needed for server deployment)
+    if (createServer && useFirebase && firebaseProjectId != null) {
+      print('');
+      info('Server deployment requires a Firebase service account key.');
+      print('');
+      print('  1. Opening Firebase Console for you...');
+      print('  2. Click "Generate new private key"');
+      print('  3. Copy the downloaded file to the folder that will open');
+      print('  4. Rename it to: service-account.json');
+      print('');
+
+      // Create the server directory
+      final serverDir = Directory(p.join(outputDir, '${appName}_server'));
+      if (!serverDir.existsSync()) {
+        await serverDir.create(recursive: true);
+      }
+
+      // Open Firebase Console
+      final consoleUrl =
+          'https://console.firebase.google.com/project/$firebaseProjectId/settings/serviceaccounts/adminsdk';
+      await Process.run('open', [consoleUrl]);
+
+      // Small delay then open the folder
+      await Future.delayed(const Duration(milliseconds: 500));
+      await Process.run('open', [serverDir.path]);
+
+      // Wait for user to confirm
+      await UserPrompt.askYesNo(
+        'Press Enter when you have copied service-account.json',
+        defaultValue: true,
+      );
+
+      // Check if file exists
+      final keyFile = File(p.join(serverDir.path, 'service-account.json'));
+      if (keyFile.existsSync()) {
+        serviceAccountKeyPath = keyFile.path;
+        success('Service account key found!');
+      } else {
+        warn('service-account.json not found - you can add it later');
+      }
+    }
+
     return SetupConfig(
       appName: appName,
       orgDomain: orgDomain,
@@ -265,6 +308,7 @@ class InteractiveWizard {
       useFirebase: useFirebase,
       firebaseProjectId: firebaseProjectId,
       setupCloudRun: setupCloudRun,
+      serviceAccountKeyPath: serviceAccountKeyPath,
       platforms: selectedPlatforms,
     );
   }

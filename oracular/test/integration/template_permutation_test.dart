@@ -173,11 +173,15 @@ void main() {
           final input =
               "import 'package:${template.canonicalPackageName}/main.dart';";
           final result = replacer.replaceInContent(input);
+
+          // Jaspr templates use webPackageName (my_cool_app_web), others use appName
+          final expectedPackage =
+              template.isJasprApp ? 'my_cool_app_web' : 'my_cool_app';
           expect(
             result,
-            equals("import 'package:my_cool_app/main.dart';"),
+            equals("import 'package:$expectedPackage/main.dart';"),
             reason:
-                'Should replace ${template.canonicalPackageName} with my_cool_app',
+                'Should replace ${template.canonicalPackageName} with $expectedPackage',
           );
         });
       }
@@ -291,7 +295,11 @@ void main() {
 
           final result =
               replacer.replaceInFilename('${template.canonicalPackageName}.dart');
-          expect(result, equals('my_app.dart'));
+
+          // Jaspr templates use webPackageName (my_app_web), others use appName
+          final expectedFilename =
+              template.isJasprApp ? 'my_app_web.dart' : 'my_app.dart';
+          expect(result, equals(expectedFilename));
         });
       }
 
@@ -365,7 +373,11 @@ void main() {
           final canonicalName = config.template.canonicalPackageName;
           final input = "import 'package:$canonicalName/main.dart';";
           final result = replacer.replaceInContent(input);
-          expect(result, equals("import 'package:test_app/main.dart';"));
+
+          // Jaspr templates use webPackageName (test_app_web), others use appName
+          final expectedPackage =
+              config.template.isJasprApp ? 'test_app_web' : 'test_app';
+          expect(result, equals("import 'package:$expectedPackage/main.dart';"));
         });
       });
     }
@@ -409,7 +421,10 @@ void main() {
         await copier.copyAppTemplate();
 
         // Verify output directory was created
-        final outputDir = Directory(p.join(tempDir.path, config.appName));
+        // For Jaspr templates, use webPackageName; for others, use appName
+        final expectedDirName =
+            template.isJasprApp ? config.webPackageName : config.appName;
+        final outputDir = Directory(p.join(tempDir.path, expectedDirName));
         expect(outputDir.existsSync(), isTrue,
             reason: 'Output directory should be created');
 
@@ -419,7 +434,7 @@ void main() {
             reason: 'pubspec.yaml should exist');
 
         final pubspecContent = await pubspec.readAsString();
-        expect(pubspecContent, contains('name: ${config.appName}'),
+        expect(pubspecContent, contains('name: $expectedDirName'),
             reason: 'pubspec should have correct name');
 
         // Verify lib directory exists

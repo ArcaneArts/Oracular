@@ -195,6 +195,49 @@ Future<SetupConfig> _gatherConfig({
     finalWithCloudRun = await UserPrompt.askYesNo('Setup Cloud Run for server?', defaultValue: false);
   }
 
+  // Service account key (for server deployment)
+  String? finalServiceAccountKey = serviceAccountKey;
+  if (finalWithServer && interactive && serviceAccountKey == null && finalFirebaseProjectId != null) {
+    print('');
+    info('Server deployment requires a Firebase service account key.');
+    print('');
+    print('  1. Opening Firebase Console for you...');
+    print('  2. Click "Generate new private key"');
+    print('  3. Copy the downloaded file to the folder that will open');
+    print('  4. Rename it to: service-account.json');
+    print('');
+
+    // Create the server directory
+    final serverDir = Directory(p.join(finalOutputDir, '${finalAppName}_server'));
+    if (!serverDir.existsSync()) {
+      await serverDir.create(recursive: true);
+    }
+
+    // Open Firebase Console
+    final consoleUrl =
+        'https://console.firebase.google.com/project/$finalFirebaseProjectId/settings/serviceaccounts/adminsdk';
+    await Process.run('open', [consoleUrl]);
+
+    // Small delay then open the folder
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    await Process.run('open', [serverDir.path]);
+
+    // Wait for user to confirm
+    await UserPrompt.askYesNo(
+      'Press Enter when you have copied service-account.json',
+      defaultValue: true,
+    );
+
+    // Check if file exists
+    final keyFile = File(p.join(serverDir.path, 'service-account.json'));
+    if (keyFile.existsSync()) {
+      finalServiceAccountKey = keyFile.path;
+      success('Service account key found!');
+    } else {
+      warn('service-account.json not found - you can add it later');
+    }
+  }
+
   return SetupConfig(
     appName: finalAppName,
     orgDomain: finalOrg,
@@ -206,7 +249,7 @@ Future<SetupConfig> _gatherConfig({
     useFirebase: finalWithFirebase,
     firebaseProjectId: finalFirebaseProjectId,
     setupCloudRun: finalWithCloudRun,
-    serviceAccountKeyPath: serviceAccountKey,
+    serviceAccountKeyPath: finalServiceAccountKey,
     platforms: finalTemplate.supportedPlatforms,
   );
 }
@@ -254,7 +297,14 @@ Future<void> _executeCreation(SetupConfig config) async {
   success('\u2713 Project created successfully!');
   print('');
   print('Created projects:');
-  print('  \u2022 ${config.appName}/ - Main app');
+
+  // Determine main app name based on template type
+  final String mainAppName =
+      config.template.isJasprApp ? config.webPackageName : config.appName;
+  final String mainAppLabel =
+      config.template.isJasprApp ? 'Web app' : 'Main app';
+
+  print('  \u2022 $mainAppName/ - $mainAppLabel');
   if (config.createModels) {
     print('  \u2022 ${config.modelsPackageName}/ - Models package');
   }
@@ -263,9 +313,11 @@ Future<void> _executeCreation(SetupConfig config) async {
   }
   print('');
   print('Next steps:');
-  print('  cd ${config.outputDir}/${config.appName}');
+  print('  cd ${config.outputDir}/$mainAppName');
   if (config.template.isFlutterApp) {
     print('  flutter run');
+  } else if (config.template.isJasprApp) {
+    print('  jaspr serve');
   } else {
     print('  dart run bin/main.dart --help');
   }

@@ -65,6 +65,39 @@ void main() {
       expect(result, equals('name: my_app'));
     });
 
+    test('replaces arcane_jaspr_app with web package name', () {
+      final jasprConfig = SetupConfig(
+        appName: 'my_app',
+        orgDomain: 'com.example',
+        baseClassName: 'MyApp',
+        template: TemplateType.arcaneJaspr,
+        outputDir: '/tmp/test',
+      );
+      final jasprReplacer = PlaceholderReplacer(jasprConfig);
+      final result = jasprReplacer.replaceInContent('name: arcane_jaspr_app');
+      expect(result, equals('name: my_app_web'));
+    });
+
+    test('replaces ArcaneJasprApp with PascalCase web class name', () {
+      final jasprConfig = SetupConfig(
+        appName: 'my_app',
+        orgDomain: 'com.example',
+        baseClassName: 'MyApp',
+        template: TemplateType.arcaneJaspr,
+        outputDir: '/tmp/test',
+      );
+      final jasprReplacer = PlaceholderReplacer(jasprConfig);
+      final result = jasprReplacer.replaceInContent('class ArcaneJasprApp');
+      expect(result, equals('class MyAppWeb'));
+    });
+
+    test('replaces package imports for arcane_jaspr_app', () {
+      final result = replacer.replaceInContent(
+        "import 'package:arcane_jaspr_app/main.dart';",
+      );
+      expect(result, equals("import 'package:my_app_web/main.dart';"));
+    });
+
     test('replaces ArcaneServer with PascalCase server name', () {
       final result = replacer.replaceInContent('class ArcaneServer');
       expect(result, equals('class MyAppServer'));
@@ -177,6 +210,11 @@ class MyAppServer {
     test('replaces arcane_dock_app.dart', () {
       final result = replacer.replaceInFilename('arcane_dock_app.dart');
       expect(result, equals('my_app.dart'));
+    });
+
+    test('replaces arcane_jaspr_app.dart', () {
+      final result = replacer.replaceInFilename('arcane_jaspr_app.dart');
+      expect(result, equals('my_app_web.dart'));
     });
 
     test('preserves filenames without placeholders', () {
