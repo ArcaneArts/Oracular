@@ -9,7 +9,7 @@ environment:
 dependencies:
   web: ^1.1.0
   jaspr: ^0.22.0
-  arcane_jaspr: ^1.0.0
+  arcane_jaspr: ^2.0.0
   fast_log: ^1.0.7
   shelf: ^1.4.2
   http: ^1.6.0

@@ -593,6 +593,351 @@ void main() {
     });
   });
 
+  group('Template Compilation Tests', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('oracular_compile_');
+    });
+
+    tearDown(() async {
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    for (final template in TemplateType.values) {
+      test(
+        '${template.name} template compiles successfully',
+        () async {
+          final config = SetupConfig(
+            appName: 'compile_test',
+            orgDomain: 'com.test',
+            baseClassName: 'CompileTest',
+            template: template,
+            outputDir: tempDir.path,
+            createModels: false,
+            createServer: false,
+          );
+
+          final copier = TemplateCopier.withPath(config, getTemplatesPath());
+
+          // Skip if template doesn't exist
+          final templatePath = copier.getTemplatePath(template.directoryName);
+          if (!Directory(templatePath).existsSync()) {
+            print('Skipping ${template.name} - template not found');
+            return;
+          }
+
+          // Copy the template
+          await copier.copyAppTemplate();
+
+          // Get output directory name
+          final outputDirName =
+              template.isJasprApp ? config.webPackageName : config.appName;
+          final projectDir = Directory(p.join(tempDir.path, outputDirName));
+          expect(projectDir.existsSync(), isTrue,
+              reason: 'Project directory should exist after copy');
+
+          // Run pub get first
+          late ProcessResult pubResult;
+          if (template.isFlutterApp) {
+            pubResult = await Process.run(
+              'flutter',
+              ['pub', 'get'],
+              workingDirectory: projectDir.path,
+            );
+          } else if (template.isJasprApp) {
+            // For Jaspr, use dart pub get
+            pubResult = await Process.run(
+              'dart',
+              ['pub', 'get'],
+              workingDirectory: projectDir.path,
+            );
+          } else {
+            // Dart CLI
+            pubResult = await Process.run(
+              'dart',
+              ['pub', 'get'],
+              workingDirectory: projectDir.path,
+            );
+          }
+
+          expect(
+            pubResult.exitCode,
+            equals(0),
+            reason:
+                'pub get should succeed for ${template.name}:\n${pubResult.stderr}',
+          );
+
+          // Run analyze/build based on template type
+          late ProcessResult compileResult;
+          if (template.isFlutterApp) {
+            // Flutter analyze checks for compile errors
+            compileResult = await Process.run(
+              'flutter',
+              ['analyze', '--no-fatal-infos', '--no-fatal-warnings'],
+              workingDirectory: projectDir.path,
+            );
+          } else if (template.isJasprApp) {
+            // For Jaspr, run jaspr build to verify it compiles
+            compileResult = await Process.run(
+              'jaspr',
+              ['build'],
+              workingDirectory: projectDir.path,
+            );
+          } else {
+            // Dart CLI - use dart analyze (no --no-fatal-infos flag in dart)
+            compileResult = await Process.run(
+              'dart',
+              ['analyze'],
+              workingDirectory: projectDir.path,
+            );
+          }
+
+          expect(
+            compileResult.exitCode,
+            equals(0),
+            reason:
+                '${template.name} should compile/analyze successfully:\n${compileResult.stdout}\n${compileResult.stderr}',
+          );
+        },
+        timeout: const Timeout(Duration(minutes: 5)),
+      );
+    }
+
+    // Test with models package
+    test(
+      'arcaneTemplate with models compiles successfully',
+      () async {
+        final config = SetupConfig(
+          appName: 'models_test',
+          orgDomain: 'com.test',
+          baseClassName: 'ModelsTest',
+          template: TemplateType.arcaneTemplate,
+          outputDir: tempDir.path,
+          createModels: true,
+          createServer: false,
+        );
+
+        final copier = TemplateCopier.withPath(config, getTemplatesPath());
+
+        // Skip if templates don't exist
+        final appPath = copier.getTemplatePath(config.template.directoryName);
+        final modelsPath = copier.getTemplatePath('arcane_models');
+        if (!Directory(appPath).existsSync() ||
+            !Directory(modelsPath).existsSync()) {
+          print('Skipping models test - templates not found');
+          return;
+        }
+
+        // Copy both templates
+        await copier.copyAppTemplate();
+        await copier.copyModelsTemplate();
+
+        // Verify models package compiles
+        final modelsDir =
+            Directory(p.join(tempDir.path, config.modelsPackageName));
+        expect(modelsDir.existsSync(), isTrue,
+            reason: 'Models directory should exist');
+
+        var pubResult = await Process.run(
+          'dart',
+          ['pub', 'get'],
+          workingDirectory: modelsDir.path,
+        );
+        expect(pubResult.exitCode, equals(0),
+            reason: 'Models pub get should succeed:\n${pubResult.stderr}');
+
+        var analyzeResult = await Process.run(
+          'dart',
+          ['analyze'],
+          workingDirectory: modelsDir.path,
+        );
+        expect(analyzeResult.exitCode, equals(0),
+            reason: 'Models should analyze successfully:\n${analyzeResult.stderr}');
+
+        // Verify app compiles (may have dependency on models)
+        final appDir = Directory(p.join(tempDir.path, config.appName));
+        expect(appDir.existsSync(), isTrue, reason: 'App directory should exist');
+
+        pubResult = await Process.run(
+          'flutter',
+          ['pub', 'get'],
+          workingDirectory: appDir.path,
+        );
+        expect(pubResult.exitCode, equals(0),
+            reason: 'App pub get should succeed:\n${pubResult.stderr}');
+
+        analyzeResult = await Process.run(
+          'flutter',
+          ['analyze', '--no-fatal-infos', '--no-fatal-warnings'],
+          workingDirectory: appDir.path,
+        );
+        expect(analyzeResult.exitCode, equals(0),
+            reason: 'App should analyze successfully:\n${analyzeResult.stderr}');
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
+
+    // Test with server package (requires models since server depends on it)
+    test(
+      'arcaneTemplate with server compiles successfully',
+      () async {
+        final config = SetupConfig(
+          appName: 'server_test',
+          orgDomain: 'com.test',
+          baseClassName: 'ServerTest',
+          template: TemplateType.arcaneTemplate,
+          outputDir: tempDir.path,
+          createModels: true, // Server requires models
+          createServer: true,
+        );
+
+        final copier = TemplateCopier.withPath(config, getTemplatesPath());
+
+        // Skip if templates don't exist
+        final appPath = copier.getTemplatePath(config.template.directoryName);
+        final modelsPath = copier.getTemplatePath('arcane_models');
+        final serverPath = copier.getTemplatePath('arcane_server');
+        if (!Directory(appPath).existsSync() ||
+            !Directory(modelsPath).existsSync() ||
+            !Directory(serverPath).existsSync()) {
+          print('Skipping server test - templates not found');
+          return;
+        }
+
+        // Copy all required templates (server depends on models)
+        await copier.copyAppTemplate();
+        await copier.copyModelsTemplate();
+        await copier.copyServerTemplate();
+
+        // First get and analyze models (server depends on it)
+        final modelsDir =
+            Directory(p.join(tempDir.path, config.modelsPackageName));
+        var pubResult = await Process.run(
+          'dart',
+          ['pub', 'get'],
+          workingDirectory: modelsDir.path,
+        );
+        expect(pubResult.exitCode, equals(0),
+            reason: 'Models pub get should succeed:\n${pubResult.stderr}');
+
+        // Verify server package compiles
+        final serverDir =
+            Directory(p.join(tempDir.path, config.serverPackageName));
+        expect(serverDir.existsSync(), isTrue,
+            reason: 'Server directory should exist');
+
+        pubResult = await Process.run(
+          'dart',
+          ['pub', 'get'],
+          workingDirectory: serverDir.path,
+        );
+        expect(pubResult.exitCode, equals(0),
+            reason: 'Server pub get should succeed:\n${pubResult.stderr}');
+
+        var analyzeResult = await Process.run(
+          'dart',
+          ['analyze'],
+          workingDirectory: serverDir.path,
+        );
+        expect(analyzeResult.exitCode, equals(0),
+            reason: 'Server should analyze successfully:\n${analyzeResult.stderr}');
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
+
+    // Full permutation test with models + server
+    test(
+      'arcaneTemplate with models and server compiles successfully',
+      () async {
+        final config = SetupConfig(
+          appName: 'full_test',
+          orgDomain: 'com.test',
+          baseClassName: 'FullTest',
+          template: TemplateType.arcaneTemplate,
+          outputDir: tempDir.path,
+          createModels: true,
+          createServer: true,
+        );
+
+        final copier = TemplateCopier.withPath(config, getTemplatesPath());
+
+        // Skip if templates don't exist
+        final appPath = copier.getTemplatePath(config.template.directoryName);
+        final modelsPath = copier.getTemplatePath('arcane_models');
+        final serverPath = copier.getTemplatePath('arcane_server');
+        if (!Directory(appPath).existsSync() ||
+            !Directory(modelsPath).existsSync() ||
+            !Directory(serverPath).existsSync()) {
+          print('Skipping full test - templates not found');
+          return;
+        }
+
+        // Copy all templates
+        await copier.copyAll();
+
+        // Verify models compiles first (no dependencies)
+        final modelsDir =
+            Directory(p.join(tempDir.path, config.modelsPackageName));
+        var pubResult = await Process.run(
+          'dart',
+          ['pub', 'get'],
+          workingDirectory: modelsDir.path,
+        );
+        expect(pubResult.exitCode, equals(0),
+            reason: 'Models pub get should succeed');
+
+        var analyzeResult = await Process.run(
+          'dart',
+          ['analyze'],
+          workingDirectory: modelsDir.path,
+        );
+        expect(analyzeResult.exitCode, equals(0),
+            reason: 'Models should analyze successfully');
+
+        // Verify server compiles
+        final serverDir =
+            Directory(p.join(tempDir.path, config.serverPackageName));
+        pubResult = await Process.run(
+          'dart',
+          ['pub', 'get'],
+          workingDirectory: serverDir.path,
+        );
+        expect(pubResult.exitCode, equals(0),
+            reason: 'Server pub get should succeed');
+
+        analyzeResult = await Process.run(
+          'dart',
+          ['analyze'],
+          workingDirectory: serverDir.path,
+        );
+        expect(analyzeResult.exitCode, equals(0),
+            reason: 'Server should analyze successfully');
+
+        // Verify app compiles
+        final appDir = Directory(p.join(tempDir.path, config.appName));
+        pubResult = await Process.run(
+          'flutter',
+          ['pub', 'get'],
+          workingDirectory: appDir.path,
+        );
+        expect(pubResult.exitCode, equals(0),
+            reason: 'App pub get should succeed');
+
+        analyzeResult = await Process.run(
+          'flutter',
+          ['analyze', '--no-fatal-infos', '--no-fatal-warnings'],
+          workingDirectory: appDir.path,
+        );
+        expect(analyzeResult.exitCode, equals(0),
+            reason: 'App should analyze successfully');
+      },
+      timeout: const Timeout(Duration(minutes: 10)),
+    );
+  });
+
   group('No Canonical Names Remaining Tests', () {
     late Directory tempDir;
 

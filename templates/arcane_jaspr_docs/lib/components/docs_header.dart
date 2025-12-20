@@ -8,25 +8,25 @@ class DocsHeader extends StatelessComponent {
 
   @override
   Component build(BuildContext context) {
-    return Bar(
+    return ArcaneBar(
       leading: [
         a(
           href: '/',
           [
-            Div(
-              styles: ArcaneStyleData(
+            ArcaneDiv(
+              styles: const ArcaneStyleData(
                 display: Display.flex,
                 alignItems: AlignItems.center,
                 gap: Gap.sm,
               ),
               children: [
-                Div.child(
-                  styles: ArcaneStyleData(
-                    fontWeight: FontWeightPreset.bold,
-                    fontSize: FontSizePreset.lg,
-                    color: ArcaneColors.text,
+                ArcaneDiv(
+                  styles: const ArcaneStyleData(
+                    fontWeight: FontWeight.bold,
+                    fontSize: FontSize.lg,
+                    textColor: TextColor.primary,
                   ),
-                  child: Text(AppConstants.siteName),
+                  children: [ArcaneText(AppConstants.siteName)],
                 ),
               ],
             ),
@@ -34,25 +34,36 @@ class DocsHeader extends StatelessComponent {
         ),
       ],
       trailing: [
-        ArcaneButton.ghost(
-          label: 'Docs',
-          onPressed: () {},
+        a(
           href: '/docs',
+          [
+            ArcaneButton.ghost(
+              label: 'Docs',
+              onPressed: () {},
+            ),
+          ],
         ),
-        ArcaneButton.ghost(
-          label: 'Guides',
-          onPressed: () {},
+        a(
           href: '/guides',
+          [
+            ArcaneButton.ghost(
+              label: 'Guides',
+              onPressed: () {},
+            ),
+          ],
         ),
         if (AppConstants.githubUrl.isNotEmpty)
-          IconButton(
-            icon: Icons.github,
-            tooltip: 'GitHub',
-            onPressed: () {},
+          a(
             href: AppConstants.githubUrl,
+            attributes: {'target': '_blank', 'rel': 'noopener'},
+            [
+              ArcaneButton.ghost(
+                label: 'GitHub',
+                onPressed: () {},
+              ),
+            ],
           ),
       ],
-      sticky: true,
     );
   }
 }

@@ -1,6 +1,5 @@
 // GENERATED – do not modify.
 import "package:arcane_models/arcane_models.dart";
-import "package:arcane_models/gen/artifacts.gen.dart";
 import "dart:core";
 import "package:fire_crud/fire_crud.dart";
 import "package:fire_api/fire_api.dart";

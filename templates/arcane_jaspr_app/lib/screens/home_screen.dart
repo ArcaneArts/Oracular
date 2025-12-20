@@ -8,93 +8,129 @@ class HomeScreen extends StatelessComponent {
 
   @override
   Component build(BuildContext context) {
-    return div(
-      classes: 'min-h-screen bg-background',
-      [
+    return ArcaneDiv(
+      styles: const ArcaneStyleData(
+        minHeight: '100vh',
+        background: Background.background,
+        textColor: TextColor.primary,
+        fontFamily: FontFamily.sans,
+      ),
+      children: [
         // Header
-        header(
-          classes: 'container mx-auto px-4 py-6',
-          [
-            nav(
-              classes: 'flex items-center justify-between',
+        _Header(),
+
+        // Hero section
+        _HeroSection(),
+
+        // Features section
+        _FeaturesSection(),
+      ],
+    );
+  }
+}
+
+class _Header extends StatelessComponent {
+  const _Header();
+
+  @override
+  Component build(BuildContext context) {
+    return ArcaneDiv(
+      styles: const ArcaneStyleData(
+        padding: PaddingPreset.lg,
+        border: BorderPreset.subtle,
+      ),
+      children: [
+        ArcaneRow(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Logo/Brand
+            a(
+              href: AppRoutes.home,
               [
-                a(
-                  href: AppRoutes.home,
-                  classes: 'text-xl font-bold text-foreground',
-                  [text('ArcaneJasprApp')],
+                ArcaneDiv(
+                  styles: const ArcaneStyleData(
+                    fontSize: FontSize.xl,
+                    fontWeight: FontWeight.bold,
+                    textColor: TextColor.primary,
+                  ),
+                  children: [ArcaneText('ArcaneJasprApp')],
                 ),
-                div(
-                  classes: 'flex gap-4',
-                  [
-                    a(
-                      href: AppRoutes.home,
-                      classes: 'text-muted-foreground hover:text-foreground',
-                      [text('Home')],
-                    ),
-                    a(
-                      href: AppRoutes.about,
-                      classes: 'text-muted-foreground hover:text-foreground',
-                      [text('About')],
-                    ),
-                  ],
-                ),
+              ],
+            ),
+
+            // Navigation
+            ArcaneRow(
+              style: const ArcaneStyleData(gap: Gap.lg),
+              children: [
+                a(href: AppRoutes.home, [
+                  ArcaneButton.ghost(
+                    label: 'Home',
+                    onPressed: () {},
+                  ),
+                ]),
+                a(href: AppRoutes.about, [
+                  ArcaneButton.ghost(
+                    label: 'About',
+                    onPressed: () {},
+                  ),
+                ]),
               ],
             ),
           ],
         ),
+      ],
+    );
+  }
+}
 
-        // Hero section
-        section(
-          classes: 'container mx-auto px-4 py-24 text-center',
-          [
-            h1(
-              classes: 'text-5xl font-bold text-foreground mb-6',
-              [text('Welcome to ArcaneJasprApp')],
+class _HeroSection extends StatelessComponent {
+  const _HeroSection();
+
+  @override
+  Component build(BuildContext context) {
+    return ArcaneDiv(
+      styles: const ArcaneStyleData(
+        padding: PaddingPreset.heroY,
+        textAlign: TextAlign.center,
+      ),
+      children: [
+        ArcaneColumn(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          style: const ArcaneStyleData(gap: Gap.lg),
+          children: [
+            ArcaneDiv(
+              styles: const ArcaneStyleData(
+                fontSize: FontSize.mega,
+                fontWeight: FontWeight.w800,
+                textColor: TextColor.primary,
+                lineHeight: LineHeight.tight,
+              ),
+              children: [ArcaneText('Welcome to ArcaneJasprApp')],
             ),
-            p(
-              classes: 'text-xl text-muted-foreground mb-8 max-w-2xl mx-auto',
-              [
-                text(
+            ArcaneDiv(
+              styles: const ArcaneStyleData(
+                fontSize: FontSize.xl,
+                textColor: TextColor.muted,
+                maxWidth: MaxWidth.text,
+              ),
+              children: [
+                ArcaneText(
                   'A modern web application built with Jaspr and Arcane design system.',
                 ),
               ],
             ),
-            div(
-              classes: 'flex gap-4 justify-center',
-              [
-                a(
-                  href: AppRoutes.about,
-                  classes:
-                      'px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90',
-                  [text('Learn More')],
+            ArcaneRow(
+              mainAxisAlignment: MainAxisAlignment.center,
+              style: const ArcaneStyleData(gap: Gap.md),
+              children: [
+                ArcaneButton(
+                  label: 'Get Started',
+                  onPressed: () {},
                 ),
-              ],
-            ),
-          ],
-        ),
-
-        // Features section
-        section(
-          classes: 'container mx-auto px-4 py-16',
-          [
-            h2(
-              classes: 'text-3xl font-bold text-foreground text-center mb-12',
-              [text('Features')],
-            ),
-            div(
-              classes: 'grid md:grid-cols-3 gap-8',
-              [
-                _featureCard(
-                  'Fast & Modern',
-                  'Built with Dart and Jaspr for blazing fast performance.',
-                ),
-                _featureCard(
-                  'Arcane Design',
-                  'Beautiful UI components from the Arcane design system.',
-                ),
-                _featureCard(
-                  'Full Stack',
-                  'Works seamlessly with Dart servers and shared models.',
+                ArcaneButton.outline(
+                  label: 'Learn More',
+                  onPressed: () {},
                 ),
               ],
             ),
@@ -103,20 +139,107 @@ class HomeScreen extends StatelessComponent {
       ],
     );
   }
+}
 
-  Component _featureCard(String title, String description) {
-    return div(
-      classes: 'p-6 bg-card rounded-lg border border-border',
-      [
-        h3(
-          classes: 'text-xl font-semibold text-card-foreground mb-2',
-          [text(title)],
-        ),
-        p(
-          classes: 'text-muted-foreground',
-          [text(description)],
+class _FeaturesSection extends StatelessComponent {
+  const _FeaturesSection();
+
+  @override
+  Component build(BuildContext context) {
+    return ArcaneDiv(
+      styles: const ArcaneStyleData(
+        padding: PaddingPreset.sectionY,
+      ),
+      children: [
+        ArcaneBox(
+          maxWidth: MaxWidth.container,
+          margin: MarginPreset.autoX,
+          children: [
+            ArcaneColumn(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              style: const ArcaneStyleData(gap: Gap.xxl),
+              children: [
+                ArcaneDiv(
+                  styles: const ArcaneStyleData(
+                    fontSize: FontSize.xl3,
+                    fontWeight: FontWeight.bold,
+                    textColor: TextColor.primary,
+                  ),
+                  children: [ArcaneText('Features')],
+                ),
+                ArcaneRow(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  style: const ArcaneStyleData(
+                    gap: Gap.lg,
+                    flexWrap: FlexWrap.wrap,
+                  ),
+                  children: [
+                    _FeatureCard(
+                      title: 'Fast & Modern',
+                      description:
+                          'Built with Dart and Jaspr for blazing fast performance.',
+                    ),
+                    _FeatureCard(
+                      title: 'Arcane Design',
+                      description:
+                          'Beautiful UI components from the Arcane design system.',
+                    ),
+                    _FeatureCard(
+                      title: 'Full Stack',
+                      description:
+                          'Works seamlessly with Dart servers and shared models.',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _FeatureCard extends StatelessComponent {
+  final String title;
+  final String description;
+
+  const _FeatureCard({
+    required this.title,
+    required this.description,
+  });
+
+  @override
+  Component build(BuildContext context) {
+    return ArcaneCard(
+      child: ArcaneDiv(
+        styles: const ArcaneStyleData(
+          padding: PaddingPreset.lg,
+          widthCustom: '320px',
+        ),
+        children: [
+          ArcaneColumn(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            style: const ArcaneStyleData(gap: Gap.sm),
+            children: [
+              ArcaneDiv(
+                styles: const ArcaneStyleData(
+                  fontSize: FontSize.lg,
+                  fontWeight: FontWeight.w600,
+                  textColor: TextColor.primary,
+                ),
+                children: [ArcaneText(title)],
+              ),
+              ArcaneDiv(
+                styles: const ArcaneStyleData(
+                  textColor: TextColor.muted,
+                ),
+                children: [ArcaneText(description)],
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,149 +1,154 @@
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr_content/jaspr_content.dart';
-import 'package:fast_log/fast_log.dart';
 
 import '../components/docs_sidebar.dart';
 import '../components/docs_header.dart';
-import '../components/docs_toc.dart';
-import '../utils/constants.dart';
 
 /// Custom documentation layout using Arcane UI components
-class ArcaneDocsLayout extends PageLayout {
-  ArcaneDocsLayout();
+class ArcaneDocsLayout extends PageLayoutBase {
+  const ArcaneDocsLayout();
 
   @override
-  String get id => 'docs';
+  Pattern get name => 'docs';
 
   @override
-  Component build(BuildContext context, Page page) {
-    verbose('Building ArcaneDocsLayout for: ${page.url}');
+  Iterable<Component> buildHead(Page page) sync* {
+    yield* super.buildHead(page);
+    yield link(rel: 'icon', type: 'image/x-icon', href: '/favicon.ico');
+    yield meta(name: 'viewport', content: 'width=device-width, initial-scale=1');
+    yield link(rel: 'stylesheet', href: '/styles.css');
+  }
 
-    final toc = page.tableOfContents;
+  @override
+  Component buildBody(Page page, Component child) {
+    final pageData = page.data.page;
+    final title = pageData['title'] as String?;
+    final description = pageData['description'] as String?;
+    final toc = page.data['toc'] as TableOfContents?;
 
-    return ArcaneWindow(
+    return ArcaneApp(
       theme: ArcaneTheme.supabase(
         accent: AccentTheme.emerald,
         themeMode: ThemeMode.dark,
       ),
-      child: Document(
-        title: '${page.title} | ${AppConstants.siteName}',
-        lang: 'en',
-        head: [
-          link(rel: 'icon', type: 'image/x-icon', href: '/favicon.ico'),
-          meta(name: 'description', content: page.description ?? AppConstants.siteDescription),
-          meta(name: 'viewport', content: 'width=device-width, initial-scale=1'),
-        ],
-        body: Screen(
-          header: const DocsHeader(),
-          sidebar: DocsSidebar(currentPath: page.url),
-          child: Div(
-            styles: ArcaneStyleData(
+      child: ArcaneDiv(
+        styles: const ArcaneStyleData(
+          display: Display.flex,
+          minHeight: '100vh',
+          background: Background.background,
+          textColor: TextColor.primary,
+          fontFamily: FontFamily.sans,
+        ),
+        children: [
+          // Sidebar
+          DocsSidebar(currentPath: page.url),
+
+          // Main area
+          ArcaneDiv(
+            styles: const ArcaneStyleData(
+              flexGrow: 1,
               display: Display.flex,
-              gap: Gap.xl,
-              padding: PaddingPreset.xl,
-              maxWidth: '1200px',
-              margin: 'auto',
+              flexDirection: FlexDirection.column,
+              minHeight: '100vh',
             ),
             children: [
-              // Main content area
-              Div(
-                styles: ArcaneStyleData(
-                  flex: '1',
-                  minWidth: '0',
+              // Header
+              const DocsHeader(),
+
+              // Content area
+              ArcaneDiv(
+                styles: const ArcaneStyleData(
+                  display: Display.flex,
+                  gap: Gap.xl,
+                  padding: PaddingPreset.xl,
+                  maxWidth: MaxWidth.container,
+                  margin: MarginPreset.autoX,
+                  flexGrow: 1,
                 ),
                 children: [
-                  // Page title
-                  if (page.title != null)
-                    Div.child(
-                      styles: ArcaneStyleData(
-                        marginBottom: ArcaneSpacing.lg,
-                      ),
-                      child: ArcaneText.display(page.title!),
+                  // Main content area
+                  ArcaneDiv(
+                    styles: const ArcaneStyleData(
+                      flexGrow: 1,
+                      raw: {
+                        'min-width': '0',
+                      },
                     ),
+                    children: [
+                      // Page title
+                      if (title != null)
+                        ArcaneDiv(
+                          styles: const ArcaneStyleData(
+                            margin: MarginPreset.bottomLg,
+                            fontSize: FontSize.xl3,
+                            fontWeight: FontWeight.bold,
+                            textColor: TextColor.primary,
+                          ),
+                          children: [ArcaneText(title)],
+                        ),
 
-                  // Page description
-                  if (page.description != null)
-                    Div.child(
-                      styles: ArcaneStyleData(
-                        marginBottom: ArcaneSpacing.xl,
-                        color: ArcaneColors.textMuted,
-                      ),
-                      child: ArcaneText.lg(page.description!),
-                    ),
+                      // Page description
+                      if (description != null)
+                        ArcaneDiv(
+                          styles: const ArcaneStyleData(
+                            margin: MarginPreset.bottomXl,
+                            textColor: TextColor.muted,
+                            fontSize: FontSize.lg,
+                          ),
+                          children: [ArcaneText(description)],
+                        ),
 
-                  // Rendered markdown content
-                  Div.child(
-                    styles: ArcaneStyleData(
-                      // Prose styling for markdown content
-                    ),
-                    classes: 'prose',
-                    child: page.content,
+                      // Rendered markdown content
+                      div(
+                        classes: 'prose',
+                        [child],
+                      ),
+                    ],
                   ),
 
-                  // Page navigation (prev/next)
-                  if (page.previous != null || page.next != null)
-                    Div(
-                      styles: ArcaneStyleData(
-                        display: Display.flex,
-                        justifyContent: JustifyContent.spaceBetween,
-                        marginTop: ArcaneSpacing.xxl,
-                        paddingTop: ArcaneSpacing.lg,
-                        borderTop: '1px solid ${ArcaneColors.border}',
+                  // Table of contents (right sidebar)
+                  if (toc != null)
+                    ArcaneDiv(
+                      styles: const ArcaneStyleData(
+                        widthCustom: '220px',
+                        flexShrink: 0,
+                        position: Position.sticky,
+                        overflow: Overflow.auto,
+                        raw: {
+                          'top': '80px',
+                          'align-self': 'flex-start',
+                          'max-height': 'calc(100vh - 100px)',
+                        },
                       ),
                       children: [
-                        if (page.previous != null)
-                          _buildPageLink(page.previous!, isPrevious: true)
-                        else
-                          Div(children: []),
-                        if (page.next != null)
-                          _buildPageLink(page.next!, isPrevious: false),
+                        ArcaneDiv(
+                          styles: const ArcaneStyleData(
+                            fontSize: FontSize.sm,
+                            fontWeight: FontWeight.w600,
+                            textColor: TextColor.muted,
+                            margin: MarginPreset.bottomMd,
+                            textTransform: TextTransform.uppercase,
+                            letterSpacing: LetterSpacing.wide,
+                          ),
+                          children: [ArcaneText('On this page')],
+                        ),
+                        ArcaneDiv(
+                          styles: const ArcaneStyleData(
+                            raw: {
+                              'border-left': '1px solid var(--border-primary)',
+                              'padding-left': '16px',
+                            },
+                          ),
+                          children: [toc.build()],
+                        ),
                       ],
                     ),
                 ],
               ),
-
-              // Table of contents (right sidebar)
-              if (toc != null && toc.isNotEmpty)
-                DocsToc(tableOfContents: toc),
             ],
           ),
-        ),
+        ],
       ),
-    );
-  }
-
-  Component _buildPageLink(PageLink link, {required bool isPrevious}) {
-    return a(
-      href: link.url,
-      [
-        Div(
-          styles: ArcaneStyleData(
-            display: Display.flex,
-            flexDirection: FlexDirection.column,
-            gap: Gap.xs,
-            padding: PaddingPreset.md,
-            borderRadius: BorderRadiusPreset.md,
-            backgroundColor: ArcaneColors.surface,
-            textAlign: isPrevious ? 'left' : 'right',
-          ),
-          children: [
-            Div.child(
-              styles: ArcaneStyleData(
-                color: ArcaneColors.textMuted,
-                fontSize: FontSizePreset.sm,
-              ),
-              child: Text(isPrevious ? 'Previous' : 'Next'),
-            ),
-            Div.child(
-              styles: ArcaneStyleData(
-                color: ArcaneColors.accent,
-                fontWeight: FontWeightPreset.medium,
-              ),
-              child: Text(link.title ?? link.url),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }
