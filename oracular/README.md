@@ -97,8 +97,8 @@ oracular config path              # Show config file path
 
 | # | Name | Type | Output | Description |
 |---|------|------|--------|-------------|
-| 5 | Jaspr Web App | Jaspr | SPA | Interactive web app with Arcane Jaspr 2.7.0 |
-| 6 | Jaspr Docs | Jaspr | Static | Documentation site with markdown, SEO-ready |
+| 5 | Jaspr Web App | Jaspr | SPA | Interactive web app with Arcane Jaspr 3.x |
+| 6 | Jaspr Docs | Jaspr | Static | Documentation site powered by Arcane Inkwell |
 
 ### Dart Templates
 

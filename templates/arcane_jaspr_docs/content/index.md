@@ -1,7 +1,7 @@
 ---
 title: Welcome
 description: Documentation for your project
-layout: docs
+layout: kb
 ---
 
 # Welcome to the Documentation

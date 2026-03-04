@@ -1,6 +1,6 @@
 # Arcane Jaspr Docs
 
-Static documentation site built with Jaspr and Arcane UI.
+Static documentation site built with Jaspr and Arcane Inkwell.
 
 ## Development
 
@@ -18,8 +18,8 @@ jaspr build
 ## Structure
 
 - `content/` - Markdown documentation files
-- `lib/components/` - Reusable UI components
-- `lib/layouts/` - Page layouts
+- `lib/main.server.dart` - Arcane Inkwell site configuration
+- `lib/main.client.dart` - Client hydration entrypoint
 - `web/` - Static assets
 
 ## Adding Pages
@@ -29,7 +29,7 @@ jaspr build
    ---
    title: My Page
    description: Page description
-   layout: docs
+   layout: kb
    ---
 
    # My Page
@@ -37,7 +37,7 @@ jaspr build
    Content here...
    ```
 
-2. Add navigation in `lib/components/docs_sidebar.dart`
+2. Arcane Inkwell builds sidebar navigation from your `content/` directory automatically.
 
 ## Deployment
 

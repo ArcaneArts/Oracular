@@ -17,76 +17,66 @@ class AppHeader extends StatelessComponent {
 
   @override
   Component build(BuildContext context) {
-    return ArcaneBar(
-      leading: [
+    return ArcaneDiv(
+      styles: const ArcaneStyleData(
+        display: Display.flex,
+        alignItems: AlignItems.center,
+        justifyContent: JustifyContent.spaceBetween,
+        padding: PaddingPreset.horizontalLg,
+        heightCustom: '64px',
+        borderBottom: BorderPreset.subtle,
+        background: Background.surface,
+        width: Size.full,
+      ),
+      children: [
         // Logo/Brand link
         ArcaneLink(
           href: AppRoutes.home,
-          styles: const ArcaneStyleData(
-            textDecoration: TextDecoration.none,
-          ),
-          child: ArcaneDiv(
-            styles: const ArcaneStyleData(
-              display: Display.flex,
-              alignItems: AlignItems.center,
-              gap: Gap.sm,
+          styles: const ArcaneStyleData(textDecoration: TextDecoration.none),
+          child: ArcaneText(
+            AppConstants.appName,
+            style: const ArcaneStyleData(
+              fontWeight: FontWeight.bold,
+              fontSize: FontSize.lg,
+              textColor: TextColor.primary,
             ),
-            children: [
-              ArcaneDiv(
-                styles: const ArcaneStyleData(
-                  fontWeight: FontWeight.bold,
-                  fontSize: FontSize.lg,
-                  textColor: TextColor.primary,
-                ),
-                children: [ArcaneText(AppConstants.appName)],
-              ),
-            ],
           ),
         ),
-      ],
-      trailing: [
-        // Navigation links
-        _buildNavLink('Home', AppRoutes.home),
-        _buildNavLink('About', AppRoutes.about),
-
-        // GitHub link (if configured)
-        if (AppConstants.githubUrl.isNotEmpty)
-          ArcaneLink.external(
-            href: AppConstants.githubUrl,
-            styles: const ArcaneStyleData(
-              textDecoration: TextDecoration.none,
-            ),
-            child: ArcaneButton.ghost(
-              label: 'GitHub',
-              onPressed: () {},
-            ),
+        ArcaneRow(
+          style: const ArcaneStyleData(
+            gap: Gap.sm,
+            alignItems: AlignItems.center,
           ),
+          children: [
+            // Navigation links
+            _buildNavLink('Home', AppRoutes.home),
+            _buildNavLink('About', AppRoutes.about),
 
-        // Theme toggle using the new ArcaneThemeToggle component
-        ArcaneThemeToggle(
-          isDark: isDark,
-          onChanged: onThemeToggle != null ? (_) => onThemeToggle!() : null,
+            // GitHub link (if configured)
+            if (AppConstants.githubUrl.isNotEmpty)
+              ArcaneButton.ghost(
+                label: 'GitHub',
+                href: AppConstants.githubUrl,
+                showArrow: true,
+              ),
+
+            // Theme toggle using the new ArcaneThemeToggle component
+            ArcaneButton.ghost(
+              label: isDark ? 'Light' : 'Dark',
+              onPressed: onThemeToggle,
+            ),
+          ],
         ),
       ],
     );
   }
 
   Component _buildNavLink(String label, String href) {
-    final isActive = currentPath == href;
+    final bool isActive = currentPath == href;
+    if (isActive) {
+      return ArcaneButton.secondary(label: label, href: href);
+    }
 
-    return ArcaneLink(
-      href: href,
-      styles: const ArcaneStyleData(
-        textDecoration: TextDecoration.none,
-      ),
-      child: ArcaneButton.ghost(
-        label: label,
-        onPressed: () {},
-        styles: ArcaneStyleData(
-          textColor: isActive ? TextColor.accent : TextColor.onSurfaceVariant,
-          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-        ),
-      ),
-    );
+    return ArcaneButton.ghost(label: label, href: href);
   }
 }

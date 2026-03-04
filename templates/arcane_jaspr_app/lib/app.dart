@@ -28,20 +28,14 @@ class _AppState extends State<App> {
   @override
   Component build(BuildContext context) {
     verbose('Building App component');
-
-    final theme = ArcaneTheme.green.copyWith(
-      themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
-      uniformBackgrounds: true, // Sleek dark design with unified backgrounds
-    );
+    final Brightness brightness = _isDark ? Brightness.dark : Brightness.light;
 
     // Use ArcaneApp wrapper for theming
     return ArcaneApp(
-      theme: theme,
+      stylesheet: const ShadcnStylesheet(theme: ShadcnTheme.midnight),
+      brightness: brightness,
       includeFallbackScripts: false, // Client app doesn't need static fallbacks
-      child: AppRouter(
-        isDark: _isDark,
-        onThemeToggle: _toggleTheme,
-      ),
+      child: AppRouter(isDark: _isDark, onThemeToggle: _toggleTheme),
     );
   }
 }

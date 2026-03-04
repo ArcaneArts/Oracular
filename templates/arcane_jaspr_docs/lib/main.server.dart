@@ -1,29 +1,34 @@
 /// The entrypoint for the **server** app (static generation).
 library;
 
+import 'package:arcane_inkwell/arcane_inkwell.dart' hide runApp;
 import 'package:jaspr/server.dart';
-import 'package:jaspr_content/jaspr_content.dart';
+import 'utils/constants.dart';
 
-import 'layouts/arcane_docs_layout.dart';
+const String baseUrl = String.fromEnvironment('BASE_URL', defaultValue: '');
 
-import 'main.server.options.dart';
-
-void main() {
-  Jaspr.initializeApp(options: defaultServerOptions);
+void main() async {
+  Jaspr.initializeApp();
 
   runApp(
-    ContentApp(
-      directory: 'content',
-      parsers: [
-        MarkdownParser(),
-      ],
-      layouts: [
-        ArcaneDocsLayout(),
-      ],
-      extensions: [
-        HeadingAnchorsExtension(),
-        TableOfContentsExtension(),
-      ],
+    await KnowledgeBaseApp.create(
+      config: SiteConfig(
+        name: 'Arcane Jaspr Docs',
+        description: 'Documentation for arcane_jaspr_docs',
+        contentDirectory: 'content',
+        baseUrl: baseUrl,
+        githubUrl: AppConstants.githubUrl,
+        searchEnabled: true,
+        tocEnabled: true,
+        themeToggleEnabled: true,
+        pageNavEnabled: true,
+        navigationBarEnabled: true,
+        navigationBarPosition: KBNavigationBarPosition.top,
+        defaultTheme: KBThemeMode.dark,
+        showEditLink: true,
+        editBranch: 'main',
+      ),
+      stylesheet: const ShadcnStylesheet(theme: ShadcnTheme.midnight),
     ),
   );
 }

@@ -1,7 +1,7 @@
 ---
 title: Introduction
 description: Learn about the project and its capabilities
-layout: docs
+layout: kb
 ---
 
 # Introduction

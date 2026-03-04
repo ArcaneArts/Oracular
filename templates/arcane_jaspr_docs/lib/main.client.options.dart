@@ -6,6 +6,9 @@
 
 import 'package:jaspr/client.dart';
 
+import 'package:jaspr_content/components/_internal/tab_bar.dart'
+    deferred as _tab_bar;
+
 /// Default [ClientOptions] for use with your Jaspr project.
 ///
 /// Use this to initialize Jaspr **before** calling [runApp].
@@ -22,4 +25,14 @@ import 'package:jaspr/client.dart';
 ///   runApp(...);
 /// }
 /// ```
-ClientOptions get defaultClientOptions => ClientOptions();
+ClientOptions get defaultClientOptions => ClientOptions(
+  clients: {
+    'jaspr_content:tab_bar': ClientLoader(
+      (p) => _tab_bar.TabBar(
+        initialValue: p['initialValue'] as String,
+        items: (p['items'] as Map<String, Object?>).cast<String, String>(),
+      ),
+      loader: _tab_bar.loadLibrary,
+    ),
+  },
+);

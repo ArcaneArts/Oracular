@@ -1,7 +1,7 @@
 ---
 title: Deployment
 description: Deploy your documentation to production
-layout: docs
+layout: kb
 ---
 
 # Deployment

@@ -14,6 +14,62 @@ String getTemplatesPath() {
   return p.normalize(p.join(Directory.current.path, '..', 'templates'));
 }
 
+Future<ProcessResult> runJasprBuildWithRetry({
+  required String workingDirectory,
+  int maxAttempts = 3,
+}) async {
+  ProcessResult result = await Process.run(
+    'jaspr',
+    <String>['build'],
+    workingDirectory: workingDirectory,
+  );
+
+  int attempt = 1;
+  while (attempt < maxAttempts) {
+    final String output = '${result.stdout}\n${result.stderr}';
+    final bool portBusy =
+        output.contains('Address already in use') &&
+        output.contains('5567');
+    if (result.exitCode == 0 || !portBusy) {
+      return result;
+    }
+
+    await freeJasprProxyPort();
+    attempt += 1;
+    await Future<void>.delayed(const Duration(milliseconds: 750));
+    result = await Process.run(
+      'jaspr',
+      <String>['build'],
+      workingDirectory: workingDirectory,
+    );
+  }
+
+  return result;
+}
+
+Future<void> freeJasprProxyPort() async {
+  final ProcessResult listenersResult = await Process.run(
+    'lsof',
+    <String>['-ti', '-nP', '-iTCP:5567', '-sTCP:LISTEN'],
+  );
+  if (listenersResult.exitCode != 0) {
+    return;
+  }
+
+  final String stdout = '${listenersResult.stdout}'.trim();
+  if (stdout.isEmpty) {
+    return;
+  }
+
+  final List<String> pidLines = stdout.split(RegExp(r'\s+'));
+  for (final String pidLine in pidLines) {
+    final int? listenerPid = int.tryParse(pidLine.trim());
+    if (listenerPid != null && listenerPid != pid) {
+      Process.killPid(listenerPid);
+    }
+  }
+}
+
 /// Test configuration for a single permutation
 class TestPermutation {
   final TemplateType template;
@@ -681,9 +737,7 @@ void main() {
             );
           } else if (template.isJasprApp) {
             // For Jaspr, run jaspr build to verify it compiles
-            compileResult = await Process.run(
-              'jaspr',
-              ['build'],
+            compileResult = await runJasprBuildWithRetry(
               workingDirectory: projectDir.path,
             );
           } else {
@@ -755,7 +809,8 @@ void main() {
           workingDirectory: modelsDir.path,
         );
         expect(analyzeResult.exitCode, equals(0),
-            reason: 'Models should analyze successfully:\n${analyzeResult.stderr}');
+            reason:
+                'Models should analyze successfully:\n${analyzeResult.stdout}\n${analyzeResult.stderr}');
 
         // Verify app compiles (may have dependency on models)
         final appDir = Directory(p.join(tempDir.path, config.appName));
@@ -895,7 +950,8 @@ void main() {
           workingDirectory: modelsDir.path,
         );
         expect(analyzeResult.exitCode, equals(0),
-            reason: 'Models should analyze successfully');
+            reason:
+                'Models should analyze successfully:\n${analyzeResult.stdout}\n${analyzeResult.stderr}');
 
         // Verify server compiles
         final serverDir =

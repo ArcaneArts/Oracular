@@ -1,7 +1,7 @@
 ---
 title: Installation
 description: How to install and set up the documentation site
-layout: docs
+layout: kb
 previous:
   url: /docs
   title: Introduction

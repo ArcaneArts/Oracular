@@ -1,7 +1,7 @@
 ---
 title: Quick Start
 description: Get up and running in 5 minutes
-layout: docs
+layout: kb
 previous:
   url: /docs/installation
   title: Installation
@@ -19,7 +19,7 @@ Add a new markdown file to the `content/` directory:
 ---
 title: My New Page
 description: A brief description
-layout: docs
+layout: kb
 ---
 
 # My New Page

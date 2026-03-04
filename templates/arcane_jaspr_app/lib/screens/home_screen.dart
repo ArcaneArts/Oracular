@@ -8,11 +8,7 @@ class HomeScreen extends StatelessComponent {
   final bool isDark;
   final VoidCallback? onThemeToggle;
 
-  const HomeScreen({
-    super.key,
-    this.isDark = true,
-    this.onThemeToggle,
-  });
+  const HomeScreen({super.key, this.isDark = true, this.onThemeToggle});
 
   @override
   Component build(BuildContext context) {
@@ -72,21 +68,19 @@ class _HeroSection extends StatelessComponent {
                 textColor: TextColor.muted,
                 maxWidth: MaxWidth.text,
               ),
-              children: [
-                ArcaneText(AppConstants.appDescription),
-              ],
+              children: [ArcaneText(AppConstants.appDescription)],
             ),
             // CTA buttons using new ArcaneCtaLink variants
             ArcaneRow(
               mainAxisAlignment: MainAxisAlignment.center,
               style: const ArcaneStyleData(gap: Gap.md),
               children: [
-                ArcaneCtaLink.primary(
-                  href: '/docs',
+                ArcaneButton.primary(
+                  href: AppRoutes.about,
                   label: 'Get Started',
                 ),
-                ArcaneCtaLink.secondary(
-                  href: '/about',
+                ArcaneButton.secondary(
+                  href: AppRoutes.about,
                   label: 'Learn More',
                 ),
               ],
@@ -118,9 +112,15 @@ class _FeaturesSection extends StatelessComponent {
               style: const ArcaneStyleData(gap: Gap.xxl),
               children: [
                 // Section header using new ArcaneSectionHeader component
-                ArcaneSectionHeader(
-                  heading: 'Features',
-                  description: 'Everything you need to build modern web applications',
+                ArcaneColumn(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  style: const ArcaneStyleData(gap: Gap.sm),
+                  children: const [
+                    ArcaneText.heading('Features'),
+                    ArcaneText.body(
+                      'Everything you need to build modern web applications',
+                    ),
+                  ],
                 ),
                 // Feature cards in a grid
                 ArcaneDiv(
@@ -128,7 +128,7 @@ class _FeaturesSection extends StatelessComponent {
                     display: Display.grid,
                     gridColumns: GridColumns.autoFitMd,
                     gap: Gap.lg,
-                    widthFull: true,
+                    width: Size.full,
                   ),
                   children: [
                     _FeatureCard(
@@ -175,9 +175,7 @@ class _FeatureCard extends StatelessComponent {
   Component build(BuildContext context) {
     return ArcaneCard(
       child: ArcaneDiv(
-        styles: const ArcaneStyleData(
-          padding: PaddingPreset.lg,
-        ),
+        styles: const ArcaneStyleData(padding: PaddingPreset.lg),
         children: [
           ArcaneColumn(
             crossAxisAlignment: CrossAxisAlignment.start,

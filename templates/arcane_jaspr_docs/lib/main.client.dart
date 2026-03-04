@@ -3,13 +3,9 @@ library;
 
 import 'package:jaspr/client.dart';
 
-import 'main.client.options.dart';
-
 void main() {
   // Initialize the client environment with generated options
-  Jaspr.initializeApp(
-    options: defaultClientOptions,
-  );
+  Jaspr.initializeApp();
 
   // ClientApp automatically loads and renders all @client annotated components
   runApp(const ClientApp());

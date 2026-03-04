@@ -8,11 +8,7 @@ class AboutScreen extends StatelessComponent {
   final bool isDark;
   final VoidCallback? onThemeToggle;
 
-  const AboutScreen({
-    super.key,
-    this.isDark = true,
-    this.onThemeToggle,
-  });
+  const AboutScreen({super.key, this.isDark = true, this.onThemeToggle});
 
   @override
   Component build(BuildContext context) {
@@ -57,11 +53,15 @@ class _Content extends StatelessComponent {
               style: const ArcaneStyleData(gap: Gap.lg),
               children: [
                 // Page title using ArcaneSectionHeader
-                ArcaneSectionHeader(
-                  heading: 'About',
-                  description:
+                ArcaneColumn(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  style: const ArcaneStyleData(gap: Gap.sm),
+                  children: const [
+                    ArcaneText.heading('About'),
+                    ArcaneText.body(
                       '${AppConstants.appName} is a modern web application template built with Jaspr - the Dart web framework.',
-                  align: TextAlign.left,
+                    ),
+                  ],
                 ),
 
                 // Description text
@@ -82,33 +82,31 @@ class _Content extends StatelessComponent {
 
                 // Getting Started section
                 ArcaneDiv(
-                  styles: const ArcaneStyleData(
-                    margin: MarginPreset.topXl,
-                  ),
-                  children: [
-                    ArcaneSectionHeader(
-                      label: 'Quick Start',
-                      heading: 'Getting Started',
-                      align: TextAlign.left,
-                    ),
-                  ],
+                  styles: const ArcaneStyleData(margin: MarginPreset.topXl),
+                  children: [const ArcaneText.heading2('Getting Started')],
                 ),
 
                 // Getting started checklist using ArcaneCheckList
                 ArcaneCard(
                   child: ArcaneDiv(
-                    styles: const ArcaneStyleData(
-                      padding: PaddingPreset.lg,
-                    ),
+                    styles: const ArcaneStyleData(padding: PaddingPreset.lg),
                     children: [
-                      ArcaneCheckList(
-                        items: [
-                          'Run jaspr serve to start the development server',
-                          'Edit screens in lib/screens/',
-                          'Add routes in lib/routes/app_router.dart',
-                          'Build for production with jaspr build',
+                      ArcaneColumn(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        style: const ArcaneStyleData(gap: Gap.sm),
+                        children: const [
+                          _ChecklistItem(
+                            text:
+                                'Run jaspr serve to start the development server',
+                          ),
+                          _ChecklistItem(text: 'Edit screens in lib/screens/'),
+                          _ChecklistItem(
+                            text: 'Add routes in lib/routes/app_router.dart',
+                          ),
+                          _ChecklistItem(
+                            text: 'Build for production with jaspr build',
+                          ),
                         ],
-                        iconStyle: CheckListIconStyle.arrow,
                       ),
                     ],
                   ),
@@ -116,16 +114,8 @@ class _Content extends StatelessComponent {
 
                 // Tech stack section
                 ArcaneDiv(
-                  styles: const ArcaneStyleData(
-                    margin: MarginPreset.topXl,
-                  ),
-                  children: [
-                    ArcaneSectionHeader(
-                      label: 'Built With',
-                      heading: 'Tech Stack',
-                      align: TextAlign.left,
-                    ),
-                  ],
+                  styles: const ArcaneStyleData(margin: MarginPreset.topXl),
+                  children: [const ArcaneText.heading2('Tech Stack')],
                 ),
 
                 // Tech stack badges
@@ -135,24 +125,32 @@ class _Content extends StatelessComponent {
                     flexWrap: FlexWrap.wrap,
                   ),
                   children: [
-                    ArcaneStatusBadge(
-                      label: 'Dart',
-                      variant: StatusBadgeVariant.info,
-                    ),
-                    ArcaneStatusBadge(
-                      label: 'Jaspr',
-                      variant: StatusBadgeVariant.success,
-                    ),
-                    ArcaneStatusBadge(
-                      label: 'Arcane UI',
-                      variant: StatusBadgeVariant.info,
-                    ),
+                    const ArcaneStatusBadge.info('Dart'),
+                    const ArcaneStatusBadge.success('Jaspr'),
+                    const ArcaneStatusBadge.info('Arcane UI'),
                   ],
                 ),
               ],
             ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+class _ChecklistItem extends StatelessComponent {
+  final String text;
+
+  const _ChecklistItem({required this.text});
+
+  @override
+  Component build(BuildContext context) {
+    return ArcaneRow(
+      style: const ArcaneStyleData(gap: Gap.sm, alignItems: AlignItems.center),
+      children: [
+        ArcaneIcon.check(size: IconSize.sm),
+        ArcaneText(text),
       ],
     );
   }
