@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:fast_log/fast_log.dart';
@@ -9,25 +10,172 @@ import '../utils/process_runner.dart' show ProcessResult, ProcessRunner;
 
 /// Service for Firebase operations
 class FirebaseService {
+  static const String _firebaseJsSdkVersion = '12.12.1';
+
   final SetupConfig config;
   final ProcessRunner _runner;
 
   FirebaseService(this.config, {ProcessRunner? runner})
     : _runner = runner ?? ProcessRunner();
 
+  String? get _resolvedServiceAccountPath {
+    final Set<String> candidates = <String>{};
+    final String? configuredPath = config.serviceAccountKeyPath;
+
+    if (configuredPath != null && configuredPath.trim().isNotEmpty) {
+      candidates.add(
+        p.isAbsolute(configuredPath)
+            ? configuredPath
+            : p.normalize(p.join(config.outputDir, configuredPath)),
+      );
+    }
+
+    // Conventional project-level locations.
+    candidates.add(
+      p.normalize(p.join(config.outputDir, 'service-account.json')),
+    );
+    candidates.add(
+      p.normalize(
+        p.join(config.outputDir, 'config', 'keys', 'service-account.json'),
+      ),
+    );
+
+    // Fallback for running Oracular from a workspace with a root key file.
+    candidates.add(
+      p.normalize(p.join(Directory.current.path, 'service-account.json')),
+    );
+
+    for (final String candidate in candidates) {
+      if (File(candidate).existsSync()) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  Map<String, String>? get _authEnvironment {
+    final String? serviceAccountPath = _resolvedServiceAccountPath;
+    if (serviceAccountPath == null) {
+      return null;
+    }
+    return <String, String>{
+      'GOOGLE_APPLICATION_CREDENTIALS': serviceAccountPath,
+    };
+  }
+
+  String? _requireFirebaseProjectId() {
+    if (config.firebaseProjectId == null || config.firebaseProjectId!.isEmpty) {
+      error('Firebase project ID not set');
+      return null;
+    }
+    return config.firebaseProjectId!;
+  }
+
+  /// Strip ANSI escape sequences (color codes, etc.) from a string.
+  static String _stripAnsi(String input) {
+    return input.replaceAll(RegExp(r'\x1B\[[0-9;]*[a-zA-Z]'), '');
+  }
+
+  /// Extract the JSON payload from a Firebase CLI response. Firebase prints
+  /// a spinner line above the JSON body, so we trim everything up to the first
+  /// `{` character and parse from there. Returns `null` if no JSON object
+  /// could be parsed.
+  static Map<String, dynamic>? _parseFirebaseJson(String stdout) {
+    final String cleaned = _stripAnsi(stdout);
+    final int braceIndex = cleaned.indexOf('{');
+    if (braceIndex < 0) {
+      return null;
+    }
+    final String jsonText = cleaned.substring(braceIndex);
+    try {
+      final dynamic decoded = jsonDecode(jsonText);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  /// Pull the human readable error message out of a failed firebase --json
+  /// response. Falls back to stdout/stderr when the JSON envelope is missing.
+  static String _firebaseError(ProcessResult result) {
+    final Map<String, dynamic>? parsed = _parseFirebaseJson(result.stdout);
+    if (parsed != null) {
+      final dynamic err = parsed['error'];
+      if (err is String && err.trim().isNotEmpty) {
+        return err.trim();
+      }
+      if (err is Map && err['message'] is String) {
+        return (err['message'] as String).trim();
+      }
+    }
+
+    final String stderr = _stripAnsi(result.stderr).trim();
+    if (stderr.isNotEmpty) {
+      return stderr;
+    }
+
+    final String stdout = _stripAnsi(result.stdout).trim();
+    if (stdout.isNotEmpty) {
+      return stdout;
+    }
+
+    return 'Firebase command failed with exit code ${result.exitCode}';
+  }
+
+  /// Public accessor for tests so they can verify error extraction logic.
+  static String firebaseErrorForTest(ProcessResult result) =>
+      _firebaseError(result);
+
   /// Login to Firebase CLI
   Future<bool> login() async {
+    final Map<String, String>? authEnvironment = _authEnvironment;
+    if (authEnvironment != null) {
+      info('Using configured service account for Firebase CLI authentication.');
+      final ProcessResult result = await _runner.run('firebase', <String>[
+        'projects:list',
+      ], environment: authEnvironment);
+      return result.success;
+    }
+
     info('Logging in to Firebase...');
 
-    final int result = await _runner.runStreaming('firebase', <String>['login']);
+    final int result = await _runner.runStreaming('firebase', <String>[
+      'login',
+    ], environment: authEnvironment);
     return result == 0;
   }
 
   /// Login to gcloud
   Future<bool> gcloudLogin() async {
+    final String? serviceAccountPath = _resolvedServiceAccountPath;
+    if (serviceAccountPath != null) {
+      info('Authenticating gcloud with configured service account key...');
+      final List<String> args = <String>[
+        'auth',
+        'activate-service-account',
+        '--key-file',
+        serviceAccountPath,
+      ];
+
+      final String? projectId = _requireFirebaseProjectId();
+      if (projectId != null) {
+        args.addAll(<String>['--project', projectId]);
+      }
+
+      final ProcessResult result = await _runner.run('gcloud', args);
+      return result.success;
+    }
+
     info('Logging in to Google Cloud...');
 
-    final int result = await _runner.runStreaming('gcloud', <String>['auth', 'login']);
+    final int result = await _runner.runStreaming('gcloud', <String>[
+      'auth',
+      'login',
+    ]);
     return result == 0;
   }
 
@@ -57,6 +205,111 @@ class FirebaseService {
     );
   }
 
+  /// List Firebase apps using JSON output. Returns the parsed list, or null on
+  /// failure (with a logged warning describing the underlying error).
+  Future<List<Map<String, dynamic>>?> _listFirebaseApps({
+    required String projectId,
+    String? platform,
+  }) async {
+    final List<String> args = <String>[
+      'apps:list',
+      if (platform != null) platform,
+      '--project',
+      projectId,
+      '--json',
+    ];
+
+    verbose('  Running: firebase ${args.join(' ')}');
+
+    final ProcessResult result = await _runner.run(
+      'firebase',
+      args,
+      environment: _authEnvironment,
+    );
+
+    final Map<String, dynamic>? body = _parseFirebaseJson(result.stdout);
+    if (body == null) {
+      warn(
+        'Could not parse firebase apps:list output. '
+        'stderr: ${_stripAnsi(result.stderr).trim()}',
+      );
+      return null;
+    }
+
+    if (body['status'] != 'success') {
+      warn(
+        'Firebase apps:list failed: ${body['error'] ?? 'unknown error'}',
+      );
+      return null;
+    }
+
+    final dynamic resultData = body['result'];
+    if (resultData is! List) {
+      return <Map<String, dynamic>>[];
+    }
+
+    return resultData
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  /// Create a Firebase app using --json so we get structured success/error
+  /// responses instead of fighting with spinner output.
+  Future<Map<String, dynamic>?> _createFirebaseApp({
+    required String projectId,
+    required String platform,
+    required String displayName,
+    String? androidPackage,
+    String? iosBundleId,
+  }) async {
+    final List<String> args = <String>[
+      'apps:create',
+      platform.toUpperCase(),
+      displayName,
+      '--project',
+      projectId,
+      '--json',
+    ];
+
+    if (platform.toLowerCase() == 'android' && androidPackage != null) {
+      args.addAll(<String>['--package-name', androidPackage]);
+    }
+    if (platform.toLowerCase() == 'ios' && iosBundleId != null) {
+      args.addAll(<String>['--bundle-id', iosBundleId]);
+    }
+
+    verbose('  Running: firebase ${args.join(' ')}');
+
+    final ProcessResult result = await _runner.run(
+      'firebase',
+      args,
+      environment: _authEnvironment,
+    );
+
+    final Map<String, dynamic>? body = _parseFirebaseJson(result.stdout);
+    if (body == null) {
+      warn(
+        'Could not parse firebase apps:create output. '
+        'stderr: ${_stripAnsi(result.stderr).trim()}',
+      );
+      return null;
+    }
+
+    if (body['status'] != 'success') {
+      final dynamic err = body['error'];
+      warn(
+        'Firebase $platform app creation failed: ${err ?? 'unknown error'}',
+      );
+      return null;
+    }
+
+    final dynamic resultData = body['result'];
+    if (resultData is Map<String, dynamic>) {
+      return resultData;
+    }
+    return null;
+  }
+
   /// Ensure Firebase apps exist for the specified platforms
   /// FlutterFire CLI crashes with RangeError if no apps exist
   /// [appDisplayName] is the name to use for the Firebase app (e.g., my_app_mobile)
@@ -66,76 +319,80 @@ class FirebaseService {
     String iosBundleId, {
     String? appDisplayName,
   }) async {
-    if (config.firebaseProjectId == null) return;
+    final String? projectId = _requireFirebaseProjectId();
+    if (projectId == null) return;
 
     // Use provided display name or default to config.appName
     final String displayName = appDisplayName ?? config.appName;
 
-    verbose('  Checking Firebase apps for project: ${config.firebaseProjectId}');
+    verbose('  Checking Firebase apps for project: $projectId');
     verbose('  App display name: $displayName');
     verbose('  Android package: $androidPackage');
     verbose('  iOS bundle ID: $iosBundleId');
 
-    // Check existing apps
-    final ProcessResult listResult = await _runner.run(
-      'firebase',
-      <String>['apps:list', '--project', config.firebaseProjectId!],
+    final List<Map<String, dynamic>>? existing = await _listFirebaseApps(
+      projectId: projectId,
     );
+    if (existing == null) {
+      warn(
+        '  Skipping app creation because the project app list could not be retrieved.',
+      );
+      return;
+    }
 
-    final String existingApps = listResult.stdout.toLowerCase();
-    verbose('  Existing apps output: ${existingApps.length > 200 ? '${existingApps.substring(0, 200)}...' : existingApps}');
+    String platformOf(Map<String, dynamic> app) {
+      final dynamic platform = app['platform'];
+      return platform is String ? platform.toUpperCase() : '';
+    }
+
+    String? packageOf(Map<String, dynamic> app) {
+      final dynamic value = app['packageName'];
+      return value is String ? value : null;
+    }
+
+    String? bundleOf(Map<String, dynamic> app) {
+      final dynamic value = app['bundleId'];
+      return value is String ? value : null;
+    }
 
     for (final String platform in platforms) {
+      final String upper = platform.toUpperCase();
       bool appExists = false;
 
-      if (platform == 'android') {
-        appExists = existingApps.contains('android') &&
-            existingApps.contains(androidPackage.toLowerCase());
-      } else if (platform == 'ios') {
-        appExists = existingApps.contains('ios') &&
-            existingApps.contains(iosBundleId.toLowerCase());
-      } else if (platform == 'web') {
-        appExists = existingApps.contains('web');
+      if (upper == 'ANDROID') {
+        appExists = existing.any(
+          (Map<String, dynamic> app) =>
+              platformOf(app) == 'ANDROID' &&
+              packageOf(app) == androidPackage,
+        );
+      } else if (upper == 'IOS') {
+        appExists = existing.any(
+          (Map<String, dynamic> app) =>
+              platformOf(app) == 'IOS' && bundleOf(app) == iosBundleId,
+        );
+      } else if (upper == 'WEB') {
+        appExists = existing.any(
+          (Map<String, dynamic> app) => platformOf(app) == 'WEB',
+        );
       }
 
-      if (!appExists) {
-        info('Creating Firebase $platform app...');
-
-        final List<String> createArgs = <String>[
-          'apps:create',
-          platform.toUpperCase(),
-          '${displayName}_$platform',
-          '--project',
-          config.firebaseProjectId!,
-        ];
-
-        // Add required package name/bundle id
-        if (platform == 'android') {
-          createArgs.addAll(<String>['--package-name', androidPackage]);
-        } else if (platform == 'ios') {
-          createArgs.addAll(<String>['--bundle-id', iosBundleId]);
-        }
-
-        verbose('  Running: firebase ${createArgs.join(' ')}');
-
-        final ProcessResult createResult = await _runner.run('firebase', createArgs);
-
-        if (createResult.success) {
-          success('  Created Firebase $platform app');
-        } else {
-          // Log both stdout and stderr for debugging
-          if (createResult.stdout.isNotEmpty) {
-            verbose('  stdout: ${createResult.stdout}');
-          }
-          if (createResult.stderr.isNotEmpty) {
-            warn('  Firebase $platform app creation failed: ${createResult.stderr}');
-          } else {
-            // Check if it's because app already exists
-            warn('  Firebase $platform app creation may have failed (no output)');
-          }
-        }
-      } else {
+      if (appExists) {
         verbose('  Firebase $platform app already exists');
+        continue;
+      }
+
+      info('Creating Firebase $platform app...');
+
+      final Map<String, dynamic>? created = await _createFirebaseApp(
+        projectId: projectId,
+        platform: platform,
+        displayName: '${displayName}_$platform',
+        androidPackage: upper == 'ANDROID' ? androidPackage : null,
+        iosBundleId: upper == 'IOS' ? iosBundleId : null,
+      );
+
+      if (created != null) {
+        success('  Created Firebase $platform app');
       }
     }
   }
@@ -169,15 +426,21 @@ class FirebaseService {
     // Check pubspec content for Flutter SDK
     final String pubspecContent = await pubspec.readAsString();
     if (!pubspecContent.contains('flutter:')) {
-      error('This does not appear to be a Flutter project (no flutter: in pubspec.yaml)');
+      error(
+        'This does not appear to be a Flutter project (no flutter: in pubspec.yaml)',
+      );
       verbose('  pubspec.yaml content preview:');
-      verbose('  ${pubspecContent.substring(0, pubspecContent.length > 200 ? 200 : pubspecContent.length)}...');
+      verbose(
+        '  ${pubspecContent.substring(0, pubspecContent.length > 200 ? 200 : pubspecContent.length)}...',
+      );
       return false;
     }
     verbose('  Flutter SDK dependency found');
 
     // Try to extract package identifiers to avoid interactive prompts
-    final String? androidPackage = await _extractAndroidPackageName(projectPath);
+    final String? androidPackage = await _extractAndroidPackageName(
+      projectPath,
+    );
     final String? iosBundleId = await _extractIosBundleId(projectPath);
 
     // Construct default identifiers if not extracted
@@ -187,7 +450,8 @@ class FirebaseService {
     // iOS bundle IDs cannot contain underscores - convert to camelCase
     final String iosSafeProjectName = _convertToCamelCase(projectName);
     final String defaultIosBundleId = '${config.orgDomain}.$iosSafeProjectName';
-    final String effectiveAndroidPackage = androidPackage ?? defaultAndroidPackage;
+    final String effectiveAndroidPackage =
+        androidPackage ?? defaultAndroidPackage;
     final String effectiveIosBundleId = iosBundleId ?? defaultIosBundleId;
 
     // Ensure Firebase apps exist before running flutterfire configure
@@ -232,6 +496,7 @@ class FirebaseService {
       'flutterfire',
       args,
       workingDirectory: projectPath,
+      environment: _authEnvironment,
       operationName: 'FlutterFire configure',
     );
 
@@ -257,25 +522,75 @@ class FirebaseService {
   /// Deploy Firestore rules
   Future<bool> deployFirestore() async {
     info('Deploying Firestore rules...');
+    final String? projectId = _requireFirebaseProjectId();
+    if (projectId == null) {
+      return false;
+    }
 
     final ProcessResult? result = await _runner.runWithRetry(
       'firebase',
-      <String>['deploy', '--only', 'firestore:rules,firestore:indexes'],
+      <String>[
+        'deploy',
+        '--only',
+        'firestore:rules,firestore:indexes',
+        '--project',
+        projectId,
+      ],
       workingDirectory: config.outputDir,
+      environment: _authEnvironment,
       operationName: 'Deploy Firestore',
     );
 
     return result != null && result.success;
   }
 
+  bool _isStorageNotInitialized(String output) {
+    final String lower = output.toLowerCase();
+    return lower.contains('firebase storage has not been set up');
+  }
+
   /// Deploy Storage rules
-  Future<bool> deployStorage() async {
+  Future<bool> deployStorage({bool allowNotInitialized = false}) async {
     info('Deploying Storage rules...');
+    final String? projectId = _requireFirebaseProjectId();
+    if (projectId == null) {
+      return false;
+    }
+
+    final List<String> args = <String>[
+      'deploy',
+      '--only',
+      'storage',
+      '--project',
+      projectId,
+    ];
+
+    final ProcessResult firstAttempt = await _runner.run(
+      'firebase',
+      args,
+      workingDirectory: config.outputDir,
+      environment: _authEnvironment,
+    );
+
+    if (firstAttempt.success) {
+      return true;
+    }
+
+    final String firstOutput = '${firstAttempt.stdout}\n${firstAttempt.stderr}'
+        .trim();
+    if (_isStorageNotInitialized(firstOutput)) {
+      warn(
+        'Firebase Storage is not initialized for project $projectId. '
+        'Open https://console.firebase.google.com/project/$projectId/storage and click "Get Started".',
+      );
+      return allowNotInitialized;
+    }
 
     final ProcessResult? result = await _runner.runWithRetry(
       'firebase',
-      <String>['deploy', '--only', 'storage'],
+      args,
       workingDirectory: config.outputDir,
+      environment: _authEnvironment,
       operationName: 'Deploy Storage',
     );
 
@@ -284,6 +599,13 @@ class FirebaseService {
 
   /// Build web app
   Future<bool> buildWeb() async {
+    if (!supportsWebHosting()) {
+      error(
+        'Web hosting is not available because this project was created without web support.',
+      );
+      return false;
+    }
+
     // Determine project path based on template type
     final String projectPath = config.template.isJasprApp
         ? p.join(config.outputDir, config.webPackageName)
@@ -302,6 +624,14 @@ class FirebaseService {
       return result != null && result.success;
     }
 
+    final Directory webDir = Directory(p.join(projectPath, 'web'));
+    if (!webDir.existsSync()) {
+      error('Web platform files were not found in: ${webDir.path}');
+      info('Enable web support in the app directory with:');
+      info('  flutter create --platforms=web .');
+      return false;
+    }
+
     // Flutter templates: use flutter build web
     final ProcessResult? result = await _runner.runWithRetry(
       'flutter',
@@ -316,25 +646,51 @@ class FirebaseService {
   /// Deploy to Firebase Hosting (release target)
   Future<bool> deployHostingRelease() async {
     info('Deploying to Firebase Hosting (release)...');
+    final String? projectId = _requireFirebaseProjectId();
+    if (projectId == null) {
+      return false;
+    }
 
     final ProcessResult? result = await _runner.runWithRetry(
       'firebase',
-      <String>['deploy', '--only', 'hosting:release'],
+      <String>['deploy', '--only', 'hosting:release', '--project', projectId],
       workingDirectory: config.outputDir,
+      environment: _authEnvironment,
       operationName: 'Deploy Hosting (release)',
     );
 
-    return result != null && result.success;
+    if (result != null && result.success) {
+      return true;
+    }
+
+    // Fallback for projects that only use a default hosting target.
+    warn(
+      'Release hosting target deploy failed; retrying default hosting deploy.',
+    );
+    final ProcessResult? fallbackResult = await _runner.runWithRetry(
+      'firebase',
+      <String>['deploy', '--only', 'hosting', '--project', projectId],
+      workingDirectory: config.outputDir,
+      environment: _authEnvironment,
+      operationName: 'Deploy Hosting (default)',
+    );
+
+    return fallbackResult != null && fallbackResult.success;
   }
 
   /// Deploy to Firebase Hosting (beta target)
   Future<bool> deployHostingBeta() async {
     info('Deploying to Firebase Hosting (beta)...');
+    final String? projectId = _requireFirebaseProjectId();
+    if (projectId == null) {
+      return false;
+    }
 
     final ProcessResult? result = await _runner.runWithRetry(
       'firebase',
-      <String>['deploy', '--only', 'hosting:beta'],
+      <String>['deploy', '--only', 'hosting:beta', '--project', projectId],
       workingDirectory: config.outputDir,
+      environment: _authEnvironment,
       operationName: 'Deploy Hosting (beta)',
     );
 
@@ -344,27 +700,45 @@ class FirebaseService {
   /// Deploy all Firebase resources
   Future<bool> deployAll() async {
     info('Deploying all Firebase resources...');
+    bool allSucceeded = true;
 
     // Deploy in order
     if (!await deployFirestore()) {
       warn('Firestore deployment failed');
+      allSucceeded = false;
     }
 
-    if (!await deployStorage()) {
+    if (!await deployStorage(allowNotInitialized: true)) {
       warn('Storage deployment failed');
+      allSucceeded = false;
     }
 
-    if (!await buildWeb()) {
-      error('Web build failed');
-      return false;
+    if (supportsWebHosting()) {
+      if (!await buildWeb()) {
+        error('Web build failed');
+        return false;
+      }
+
+      if (!await deployHostingRelease()) {
+        warn('Hosting deployment failed');
+        allSucceeded = false;
+      }
+    } else {
+      warn('Skipping Hosting deploy because web platform is not enabled.');
     }
 
-    if (!await deployHostingRelease()) {
-      warn('Hosting deployment failed');
+    if (allSucceeded) {
+      success('Firebase deployment complete');
+    } else {
+      warn('Firebase deployment completed with failures.');
     }
+    return allSucceeded;
+  }
 
-    success('Firebase deployment complete');
-    return true;
+  /// Whether this project supports web hosting deployment.
+  bool supportsWebHosting() {
+    return config.template.isJasprApp ||
+        (config.template.isFlutterApp && config.platforms.contains('web'));
   }
 
   /// Enable Google Cloud APIs needed for deployment
@@ -376,6 +750,8 @@ class FirebaseService {
 
     info('Enabling Google Cloud APIs...');
 
+    bool allOk = true;
+
     // Enable Artifact Registry
     ProcessResult result = await _runner.run('gcloud', <String>[
       'services',
@@ -383,10 +759,13 @@ class FirebaseService {
       'artifactregistry.googleapis.com',
       '--project',
       config.firebaseProjectId!,
-    ]);
+    ], environment: _authEnvironment);
 
     if (!result.success) {
-      warn('Failed to enable Artifact Registry API');
+      warn(
+        'Failed to enable Artifact Registry API: ${_stripAnsi(result.stderr).trim()}',
+      );
+      allOk = false;
     }
 
     // Enable Cloud Run
@@ -396,13 +775,16 @@ class FirebaseService {
       'run.googleapis.com',
       '--project',
       config.firebaseProjectId!,
-    ]);
+    ], environment: _authEnvironment);
 
     if (!result.success) {
-      warn('Failed to enable Cloud Run API');
+      warn(
+        'Failed to enable Cloud Run API: ${_stripAnsi(result.stderr).trim()}',
+      );
+      allOk = false;
     }
 
-    return true;
+    return allOk;
   }
 
   /// Extract Android package name from build.gradle or AndroidManifest.xml
@@ -451,7 +833,14 @@ class FirebaseService {
 
     // Fallback: try AndroidManifest.xml
     final File manifest = File(
-      p.join(projectPath, 'android', 'app', 'src', 'main', 'AndroidManifest.xml'),
+      p.join(
+        projectPath,
+        'android',
+        'app',
+        'src',
+        'main',
+        'AndroidManifest.xml',
+      ),
     );
     if (manifest.existsSync()) {
       final String content = await manifest.readAsString();
@@ -519,6 +908,11 @@ class FirebaseService {
   Future<bool> _configureFirebaseJsSdk() async {
     info('Configuring Firebase JS SDK for Jaspr...');
 
+    final String? projectId = _requireFirebaseProjectId();
+    if (projectId == null) {
+      return false;
+    }
+
     final String projectPath = p.join(config.outputDir, config.webPackageName);
     final String indexPath = p.join(projectPath, 'web', 'index.html');
 
@@ -526,15 +920,34 @@ class FirebaseService {
     final File indexFile = File(indexPath);
     if (!indexFile.existsSync()) {
       error('index.html not found at: $indexPath');
+      info('Expected the Jaspr web project at: $projectPath');
       return false;
     }
 
-    // Create Firebase web app if needed
-    final String appName = '${config.webPackageName}_web';
-    await _ensureFirebaseWebAppExists(appName);
+    // Find or create the Firebase web app for this project
+    final String desiredAppName = '${config.webPackageName}_web';
+    final Map<String, dynamic>? webApp = await _findOrCreateWebApp(
+      projectId: projectId,
+      desiredDisplayName: desiredAppName,
+    );
 
-    // Get the Firebase web SDK config
-    final Map<String, String>? firebaseConfig = await _getFirebaseWebConfig();
+    if (webApp == null) {
+      // Errors already logged
+      return false;
+    }
+
+    final dynamic appIdRaw = webApp['appId'];
+    if (appIdRaw is! String || appIdRaw.isEmpty) {
+      error('Firebase web app missing appId in response');
+      verbose('  webApp payload: ${jsonEncode(webApp)}');
+      return false;
+    }
+
+    // Get the Firebase web SDK config using the JSON output of apps:sdkconfig
+    final Map<String, String>? firebaseConfig = await _getFirebaseWebConfig(
+      projectId: projectId,
+      appId: appIdRaw,
+    );
     if (firebaseConfig == null) {
       error('Failed to get Firebase web config');
       return false;
@@ -543,14 +956,11 @@ class FirebaseService {
     // Update index.html with the Firebase config
     String indexContent = await indexFile.readAsString();
 
-    // Check if Firebase is already configured (look for the placeholder or existing config)
-    if (indexContent.contains('YOUR_API_KEY') ||
-        indexContent.contains('apiKey:')) {
-      // Replace the placeholder config with real values
-      final String firebaseScript = '''
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    final String firebaseScript =
+        '''
+  <script src="https://www.gstatic.com/firebasejs/$_firebaseJsSdkVersion/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/$_firebaseJsSdkVersion/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/$_firebaseJsSdkVersion/firebase-firestore-compat.js"></script>
   <script>
     const firebaseConfig = {
       apiKey: "${firebaseConfig['apiKey']}",
@@ -563,193 +973,203 @@ class FirebaseService {
     firebase.initializeApp(firebaseConfig);
   </script>''';
 
-      // Find and replace the commented Firebase section or placeholder
-      final RegExp firebaseBlockRegex = RegExp(
-        r'<!--\s*Firebase SDKs.*?-->.*?<!--\s*-->',
-        dotAll: true,
+    // Replace any existing Firebase block (commented or active) or insert it.
+    //
+    // Templates currently emit a block shaped like:
+    //   <!-- Firebase SDKs (uncomment if using Firebase) -->
+    //   <!--
+    //   <script src="..."></script>
+    //   ...
+    //   firebase.initializeApp(firebaseConfig);
+    //   </script>
+    //   -->
+    //
+    // The regex below tolerates either a single-comment header followed by a
+    // multi-line `<!-- ... -->` body, or a single comment that contains the
+    // whole block.
+    final RegExp commentedBlock = RegExp(
+      r'<!--\s*Firebase SDKs.*?-->\s*(?:<!--\s*[\s\S]*?-->|<!--\s*[\s\S]*?-->)',
+      dotAll: true,
+    );
+    // Older templates may have used an empty `<!-- -->` terminator instead.
+    final RegExp legacyCommentedBlock = RegExp(
+      r'<!--\s*Firebase SDKs.*?-->.*?<!--\s*-->',
+      dotAll: true,
+    );
+    final RegExp activeBlock = RegExp(
+      r'<script src="https://www\.gstatic\.com/firebasejs/.*?firebase\.initializeApp\(firebaseConfig\);\s*</script>',
+      dotAll: true,
+    );
+
+    if (commentedBlock.hasMatch(indexContent)) {
+      indexContent = indexContent.replaceFirst(commentedBlock, firebaseScript);
+    } else if (legacyCommentedBlock.hasMatch(indexContent)) {
+      indexContent = indexContent.replaceFirst(
+        legacyCommentedBlock,
+        firebaseScript,
       );
-
-      if (firebaseBlockRegex.hasMatch(indexContent)) {
-        // Replace commented block with actual config
-        indexContent = indexContent.replaceFirst(
-          firebaseBlockRegex,
-          firebaseScript,
-        );
-      } else {
-        // Look for existing Firebase script tags and replace
-        final RegExp existingFirebaseRegex = RegExp(
-          r'<script src="https://www\.gstatic\.com/firebasejs/.*?firebase\.initializeApp\(firebaseConfig\);\s*</script>',
-          dotAll: true,
-        );
-
-        if (existingFirebaseRegex.hasMatch(indexContent)) {
-          indexContent = indexContent.replaceFirst(
-            existingFirebaseRegex,
-            firebaseScript,
-          );
-        } else {
-          // Insert before </head>
-          indexContent = indexContent.replaceFirst(
-            '</head>',
-            '$firebaseScript\n</head>',
-          );
-        }
-      }
-
-      await indexFile.writeAsString(indexContent);
-      success('Firebase JS SDK configured in index.html');
-      final apiKey = firebaseConfig['apiKey'] ?? '';
-      final apiKeyPreview = apiKey.length > 10 ? '${apiKey.substring(0, 10)}...' : apiKey;
-      verbose('  API Key: $apiKeyPreview');
-      verbose('  Project ID: ${firebaseConfig['projectId']}');
+    } else if (activeBlock.hasMatch(indexContent)) {
+      indexContent = indexContent.replaceFirst(activeBlock, firebaseScript);
     } else {
-      info('Firebase already configured in index.html');
+      indexContent = indexContent.replaceFirst(
+        '</head>',
+        '$firebaseScript\n</head>',
+      );
     }
 
+    await indexFile.writeAsString(indexContent);
+    success('Firebase JS SDK configured in index.html');
+
+    final String apiKey = firebaseConfig['apiKey'] ?? '';
+    final String apiKeyPreview = apiKey.length > 10
+        ? '${apiKey.substring(0, 10)}...'
+        : apiKey;
+    verbose('  API Key: $apiKeyPreview');
+    verbose('  Project ID: ${firebaseConfig['projectId']}');
     return true;
   }
 
-  /// Ensure a Firebase web app exists
-  Future<void> _ensureFirebaseWebAppExists(String appName) async {
-    if (config.firebaseProjectId == null) return;
-
+  /// Either return the first existing web app whose displayName matches
+  /// [desiredDisplayName], the first web app of any name, or create a new one.
+  Future<Map<String, dynamic>?> _findOrCreateWebApp({
+    required String projectId,
+    required String desiredDisplayName,
+  }) async {
     verbose('Checking if Firebase web app exists...');
 
-    // List existing apps
-    final ProcessResult listResult = await _runner.run(
-      'firebase',
-      <String>['apps:list', '--project', config.firebaseProjectId!],
+    final List<Map<String, dynamic>>? existing = await _listFirebaseApps(
+      projectId: projectId,
+      platform: 'WEB',
     );
 
-    final String existingApps = listResult.stdout.toLowerCase();
-
-    // Check if web app exists
-    if (!existingApps.contains('web')) {
-      info('Creating Firebase web app...');
-
-      final ProcessResult createResult = await _runner.run(
-        'firebase',
-        <String>[
-          'apps:create',
-          'WEB',
-          appName,
-          '--project',
-          config.firebaseProjectId!,
-        ],
+    if (existing == null) {
+      error(
+        'Failed to list Firebase web apps for project $projectId. '
+        'Verify the project exists and your service account has Firebase access.',
       );
-
-      if (createResult.success) {
-        success('Created Firebase web app: $appName');
-        // Wait for propagation
-        await Future<void>.delayed(const Duration(seconds: 2));
-      } else {
-        warn('Failed to create Firebase web app: ${createResult.stderr}');
-      }
-    } else {
-      verbose('Firebase web app already exists');
-    }
-  }
-
-  /// Get Firebase web SDK config from Firebase CLI
-  Future<Map<String, String>?> _getFirebaseWebConfig() async {
-    if (config.firebaseProjectId == null) return null;
-
-    verbose('Getting Firebase web SDK config...');
-
-    // First, get the list of web apps to find the app ID
-    final ProcessResult listResult = await _runner.run(
-      'firebase',
-      <String>['apps:list', 'WEB', '--project', config.firebaseProjectId!],
-    );
-
-    if (!listResult.success) {
-      error('Failed to list Firebase web apps');
       return null;
     }
 
-    // Parse the app ID from the list output - strip ANSI codes first
-    // The output format is typically: App ID | Display Name | ...
-    String listOutput = listResult.stdout;
-    listOutput = listOutput.replaceAll(RegExp(r'\x1B\[[0-9;]*[a-zA-Z]'), '');
-    final RegExp appIdRegex = RegExp(r'1:(\d+):web:([a-f0-9]+)');
-    final RegExpMatch? appIdMatch = appIdRegex.firstMatch(listOutput);
-
-    String? appId;
-    if (appIdMatch != null) {
-      appId = appIdMatch.group(0);
-    }
-
-    if (appId == null) {
-      // Try alternative format
-      final RegExp altRegex = RegExp(r'([a-zA-Z0-9:_-]+)\s+\|\s+\w+.*web', caseSensitive: false);
-      final RegExpMatch? altMatch = altRegex.firstMatch(listOutput);
-      if (altMatch != null) {
-        final String line = altMatch.group(0) ?? '';
-        final List<String> parts = line.split('|');
-        if (parts.isNotEmpty) {
-          appId = parts[0].trim();
+    if (existing.isNotEmpty) {
+      Map<String, dynamic>? matchByName;
+      for (final Map<String, dynamic> app in existing) {
+        if (app['displayName'] == desiredDisplayName) {
+          matchByName = app;
+          break;
         }
       }
+      if (matchByName != null) {
+        verbose(
+          'Reusing existing Firebase web app: $desiredDisplayName (${matchByName['appId']})',
+        );
+        return matchByName;
+      }
+
+      final Map<String, dynamic> firstApp = existing.first;
+      verbose(
+        'Reusing existing Firebase web app: ${firstApp['displayName']} (${firstApp['appId']})',
+      );
+      return firstApp;
     }
 
-    if (appId == null) {
-      error('Could not find Firebase web app ID');
-      verbose('List output: $listOutput');
-      return null;
-    }
-
-    verbose('Found web app ID: $appId');
-
-    // Get the SDK config for this app
-    final ProcessResult configResult = await _runner.run(
-      'firebase',
-      <String>[
-        'apps:sdkconfig',
-        'WEB',
-        appId,
-        '--project',
-        config.firebaseProjectId!,
-      ],
+    info('Creating Firebase web app: $desiredDisplayName');
+    final Map<String, dynamic>? created = await _createFirebaseApp(
+      projectId: projectId,
+      platform: 'WEB',
+      displayName: desiredDisplayName,
     );
 
-    if (!configResult.success) {
-      error('Failed to get Firebase SDK config');
+    if (created == null) {
+      error(
+        'Could not create a Firebase web app. '
+        'Check that the Firebase project exists and the service account has '
+        '"Firebase Admin" or equivalent permissions to create apps.',
+      );
       return null;
     }
 
-    // Parse the config from the output - strip ANSI escape codes first
-    String configOutput = configResult.stdout;
-    // Remove ANSI escape sequences (color codes, etc.)
-    configOutput = configOutput.replaceAll(RegExp(r'\x1B\[[0-9;]*[a-zA-Z]'), '');
+    success('Created Firebase web app: $desiredDisplayName');
+    // Wait for propagation
+    await Future<void>.delayed(const Duration(seconds: 2));
+    return created;
+  }
+
+  /// Get Firebase web SDK config from Firebase CLI using --json output.
+  Future<Map<String, String>?> _getFirebaseWebConfig({
+    required String projectId,
+    required String appId,
+  }) async {
+    verbose('Getting Firebase web SDK config for app: $appId');
+
+    final ProcessResult result = await _runner.run('firebase', <String>[
+      'apps:sdkconfig',
+      'WEB',
+      appId,
+      '--project',
+      projectId,
+      '--json',
+    ], environment: _authEnvironment);
+
+    final Map<String, dynamic>? body = _parseFirebaseJson(result.stdout);
+    if (body == null) {
+      error(
+        'Failed to parse firebase apps:sdkconfig output. '
+        'stderr: ${_stripAnsi(result.stderr).trim()}',
+      );
+      return null;
+    }
+
+    if (body['status'] != 'success') {
+      error(
+        'Failed to get Firebase SDK config: ${body['error'] ?? 'unknown error'}',
+      );
+      return null;
+    }
+
+    final dynamic resultData = body['result'];
+    if (resultData is! Map<String, dynamic>) {
+      error('apps:sdkconfig returned unexpected payload');
+      return null;
+    }
+
+    final dynamic sdkConfig = resultData['sdkConfig'];
+    Map<String, dynamic>? sdkValues;
+    if (sdkConfig is Map<String, dynamic>) {
+      sdkValues = sdkConfig;
+    } else if (resultData['fileContents'] is String) {
+      try {
+        final dynamic decoded = jsonDecode(resultData['fileContents'] as String);
+        if (decoded is Map<String, dynamic>) {
+          sdkValues = decoded;
+        }
+      } catch (_) {
+        // Fall through
+      }
+    }
+
+    if (sdkValues == null) {
+      error('Could not locate sdkConfig payload from Firebase CLI');
+      return null;
+    }
+
     final Map<String, String> firebaseConfig = <String, String>{};
-
-    // Extract each config value using simpler patterns
-    final RegExp apiKeyRegex = RegExp(r'apiKey.*?["\x27]([^"\x27]+)["\x27]');
-    final RegExp authDomainRegex = RegExp(r'authDomain.*?["\x27]([^"\x27]+)["\x27]');
-    final RegExp projectIdRegex = RegExp(r'projectId.*?["\x27]([^"\x27]+)["\x27]');
-    final RegExp storageBucketRegex = RegExp(r'storageBucket.*?["\x27]([^"\x27]+)["\x27]');
-    final RegExp messagingSenderIdRegex = RegExp(r'messagingSenderId.*?["\x27]([^"\x27]+)["\x27]');
-    final RegExp appIdRegex2 = RegExp(r'appId.*?["\x27]([^"\x27]+)["\x27]');
-
-    final Map<String, RegExp> configPatterns = <String, RegExp>{
-      'apiKey': apiKeyRegex,
-      'authDomain': authDomainRegex,
-      'projectId': projectIdRegex,
-      'storageBucket': storageBucketRegex,
-      'messagingSenderId': messagingSenderIdRegex,
-      'appId': appIdRegex2,
-    };
-
-    for (final MapEntry<String, RegExp> entry in configPatterns.entries) {
-      final RegExpMatch? match = entry.value.firstMatch(configOutput);
-      if (match != null) {
-        firebaseConfig[entry.key] = match.group(1) ?? '';
+    for (final String key in const <String>[
+      'apiKey',
+      'authDomain',
+      'projectId',
+      'storageBucket',
+      'messagingSenderId',
+      'appId',
+      'databaseURL',
+    ]) {
+      final dynamic value = sdkValues[key];
+      if (value is String && value.isNotEmpty) {
+        firebaseConfig[key] = value;
       }
     }
 
     if (firebaseConfig.isEmpty) {
-      error('Could not parse Firebase config from output');
-      verbose('Config output: $configOutput');
+      error('Firebase SDK config response was missing all expected fields');
       return null;
     }
 

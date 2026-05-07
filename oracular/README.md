@@ -25,6 +25,26 @@ oracular create app               # Create new project
 oracular create templates         # List available templates
 ```
 
+### Guided Next Steps
+
+Every generated project root gets a `GET_STARTED.md` with exact commands,
+local folders, and Firebase/Google console links.
+
+```bash
+oracular guide                    # Regenerate the setup guide
+oracular guide --print            # Print the guide in the terminal
+oracular open guide               # Open GET_STARTED.md
+oracular open app                 # Open the main app folder
+oracular open firebase            # Open Firebase project overview
+oracular open auth                # Open Firebase Authentication
+oracular open firestore           # Open Firestore Database
+oracular open storage             # Open Firebase Storage
+oracular open hosting             # Open Firebase Hosting
+oracular open server              # Open the server package
+oracular open service-account     # Open Firebase service account keys
+oracular open cloud-run           # Open Google Cloud Run
+```
+
 ### Script Runner
 
 Run scripts from `pubspec.yaml` with fuzzy matching:
@@ -98,7 +118,7 @@ oracular config path              # Show config file path
 | # | Name | Type | Output | Description |
 |---|------|------|--------|-------------|
 | 5 | Jaspr Web App | Jaspr | SPA | Interactive web app with Arcane Jaspr 3.x |
-| 6 | Jaspr Docs | Jaspr | Static | Documentation site powered by Arcane Inkwell |
+| 6 | Jaspr Docs | Jaspr | Static | Documentation site powered by Arcane Lexicon |
 
 ### Dart Templates
 

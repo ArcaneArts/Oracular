@@ -36,7 +36,7 @@ class AuthenticatedProcessRunner extends ProcessRunner {
     String? workingDirectory,
     Map<String, String>? environment,
     String? operationName,
-    bool interactive = true,
+    bool? interactive,
   }) {
     final Map<String, String> mergedEnv = <String, String>{
       ...this.environment,

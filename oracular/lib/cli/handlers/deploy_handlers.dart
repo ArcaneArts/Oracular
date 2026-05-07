@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:fast_log/fast_log.dart';
 import 'package:path/path.dart' as p;
 
@@ -7,45 +5,35 @@ import '../../models/setup_config.dart';
 import '../../services/config_generator.dart';
 import '../../services/firebase_service.dart';
 import '../../services/server_setup.dart';
+import '../../utils/project_config_loader.dart';
+import '../../utils/setup_guidance.dart';
 import '../../utils/user_prompt.dart';
 
-/// Load configuration from project directory
-/// Searches in multiple locations to handle different working directories
-Future<SetupConfig?> _loadConfig() async {
-  final currentDir = Directory.current.path;
-
-  // List of potential config locations to search
-  final searchPaths = <String>[
-    // Direct location in current directory
-    p.join(currentDir, 'config', 'setup_config.env'),
-    // Parent directory (if running from within app folder)
-    p.join(currentDir, '..', 'config', 'setup_config.env'),
-    // Check if we're in a nested project folder
-    p.join(currentDir, '..', '..', 'config', 'setup_config.env'),
-  ];
-
-  for (final path in searchPaths) {
-    final normalizedPath = p.normalize(path);
-    final config = await SetupConfig.loadFromFile(normalizedPath);
-    if (config != null) {
-      verbose('Loaded config from: $normalizedPath');
-      return config;
-    }
-  }
-
-  return null;
+void _printFirebaseDisabledHelp(SetupConfig config) {
+  error('Firebase is not enabled for this project.');
+  print('');
+  UserPrompt.printList(<String>[
+    'Edit ${p.join(config.outputDir, 'config', 'setup_config.env')} and set:',
+    '  USE_FIREBASE=yes',
+    '  FIREBASE_PROJECT_ID=<your-project-id>',
+    'Then run: oracular deploy firebase-setup',
+    SetupGuidance.linkLine(
+      'Firebase console',
+      'https://console.firebase.google.com',
+    ),
+  ]);
 }
 
 /// Deploy Firestore rules and indexes
 Future<void> handleDeployFirestore() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
   if (!config.useFirebase) {
-    error('Firebase is not enabled for this project.');
+    _printFirebaseDisabledHelp(config);
     return;
   }
 
@@ -59,14 +47,14 @@ Future<void> handleDeployFirestore() async {
 
 /// Deploy Storage rules
 Future<void> handleDeployStorage() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
   if (!config.useFirebase) {
-    error('Firebase is not enabled for this project.');
+    _printFirebaseDisabledHelp(config);
     return;
   }
 
@@ -80,14 +68,30 @@ Future<void> handleDeployStorage() async {
 
 /// Deploy to Firebase Hosting (release)
 Future<void> handleDeployHosting() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
   if (!config.useFirebase) {
-    error('Firebase is not enabled for this project.');
+    _printFirebaseDisabledHelp(config);
+    return;
+  }
+
+  if (!SetupGuidance.supportsWebHosting(config)) {
+    error('This project is not configured for web hosting.');
+    print('');
+    UserPrompt.printList(<String>[
+      'To add web support:',
+      '  cd ${SetupGuidance.mainProjectPath(config)}',
+      '  flutter create --platforms=web .',
+      'Then retry: oracular deploy hosting',
+      SetupGuidance.linkLine(
+        'Flutter web deployment docs',
+        'https://docs.flutter.dev/deployment/web',
+      ),
+    ]);
     return;
   }
 
@@ -101,6 +105,7 @@ Future<void> handleDeployHosting() async {
 
   if (await firebase.deployHostingRelease()) {
     success('Hosting deployed successfully');
+    SetupGuidance.printHostingSuccess(config, beta: false);
   } else {
     error('Hosting deployment failed');
   }
@@ -108,14 +113,30 @@ Future<void> handleDeployHosting() async {
 
 /// Deploy to Firebase Hosting (beta)
 Future<void> handleDeployHostingBeta() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
   if (!config.useFirebase) {
-    error('Firebase is not enabled for this project.');
+    _printFirebaseDisabledHelp(config);
+    return;
+  }
+
+  if (!SetupGuidance.supportsWebHosting(config)) {
+    error('This project is not configured for web hosting.');
+    print('');
+    UserPrompt.printList(<String>[
+      'To add web support:',
+      '  cd ${SetupGuidance.mainProjectPath(config)}',
+      '  flutter create --platforms=web .',
+      'Then retry: oracular deploy hosting-beta',
+      SetupGuidance.linkLine(
+        'Flutter web deployment docs',
+        'https://docs.flutter.dev/deployment/web',
+      ),
+    ]);
     return;
   }
 
@@ -129,27 +150,35 @@ Future<void> handleDeployHostingBeta() async {
 
   if (await firebase.deployHostingBeta()) {
     success('Beta hosting deployed successfully');
+    SetupGuidance.printHostingSuccess(config, beta: true);
   } else {
     error('Beta hosting deployment failed');
+    if (config.firebaseProjectId != null) {
+      SetupGuidance.printBetaSiteHint(config.firebaseProjectId!);
+    }
   }
 }
 
 /// Deploy all Firebase resources
 Future<void> handleDeployAll() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
   if (!config.useFirebase) {
-    error('Firebase is not enabled for this project.');
+    _printFirebaseDisabledHelp(config);
     return;
   }
 
   final firebase = FirebaseService(config);
   if (await firebase.deployAll()) {
     success('All Firebase resources deployed');
+    if (config.firebaseProjectId != null &&
+        SetupGuidance.supportsWebHosting(config)) {
+      SetupGuidance.printHostingSuccess(config, beta: false);
+    }
   } else {
     error('Some deployments failed');
   }
@@ -157,9 +186,9 @@ Future<void> handleDeployAll() async {
 
 /// Setup Firebase for a new project
 Future<void> handleFirebaseSetup() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
@@ -207,16 +236,40 @@ Future<void> handleFirebaseSetup() async {
 
   success('Firebase setup complete!');
   print('');
-  print('Next steps:');
-  print('  1. Review generated rules in config/');
-  print('  2. Deploy with: oracular deploy all');
+  UserPrompt.printNumberedList(<String>[
+    'Review generated rules in ${p.join(config.outputDir, 'config')}',
+    'Run: oracular deploy all',
+    if (SetupGuidance.supportsWebHosting(config))
+      'Run: oracular deploy hosting',
+    if (SetupGuidance.supportsWebHosting(config))
+      'Run: oracular deploy hosting-beta',
+  ]);
+
+  if (config.firebaseProjectId != null) {
+    print('');
+    print('Helpful links:');
+    UserPrompt.printList(<String>[
+      SetupGuidance.linkLine(
+        'Firebase project overview',
+        SetupGuidance.firebaseOverviewUrl(config.firebaseProjectId!),
+      ),
+      SetupGuidance.linkLine(
+        'Hosting console',
+        SetupGuidance.firebaseHostingConsoleUrl(config.firebaseProjectId!),
+      ),
+      SetupGuidance.linkLine(
+        'Firebase Hosting docs',
+        'https://firebase.google.com/docs/hosting',
+      ),
+    ]);
+  }
 }
 
 /// Generate Firebase configuration files
 Future<void> handleGenerateConfigs() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
@@ -226,9 +279,9 @@ Future<void> handleGenerateConfigs() async {
 
 /// Setup server for deployment
 Future<void> handleServerSetup() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
@@ -243,9 +296,9 @@ Future<void> handleServerSetup() async {
 
 /// Build server Docker image
 Future<void> handleServerBuild() async {
-  final config = await _loadConfig();
+  final config = await ProjectConfigLoader.load();
   if (config == null) {
-    error('No configuration found. Run "oracular create" first.');
+    ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 

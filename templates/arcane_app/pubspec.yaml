@@ -9,20 +9,24 @@ dependencies:
     sdk: flutter
 
   # ARCANE - Core UI Framework
-  arcane: ^6.5.3
+  arcane: ^6.5.13
   arcane_user: ^1.1.0
 
   # ARCANE - Firebase Integration (added automatically if Firebase is enabled)
-  # arcane_fluf: ^1.3.0
+  # arcane_fluf: ^1.3.1
   # arcane_auth: ^1.8.1
-  #  fire_crud: ^3.1.14
+  # fire_crud: ^3.1.16
+  # firebase_core: ^4.7.0
+  # firebase_auth: ^6.4.0
+  # cloud_firestore: ^6.3.0
+  # firebase_storage: ^13.3.0
 
   toxic_flutter: ^1.1.0
-  toxic: ^1.3.8
-  pylon: ^3.2.0
-  package_info_plus: ^9.0.0
+  toxic: ^1.3.9
+  pylon: ^3.2.1
+  package_info_plus: ^9.0.1
   fast_log: ^1.0.7
-  artifact: ^1.0.20 # This is the Models and Data Structures used across Arcane Apps.
+  artifact: ^1.0.34 # This is the Models and Data Structures used across Arcane Apps.
 
   # ARCANE DESKTOP - Transient [Only enabled if building for desktop]
   #  arcane_desktop: 2.1.0 # Disabled for now, as this is a cross-platform app, not desktop only.
@@ -41,13 +45,13 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   serviced: ^1.0.3
-  file_picker: ^10.3.6
+  file_picker: ^11.0.2
   jiffy: ^6.4.4
   http: ^1.6.0
   throttled: ^1.0.1
   crypto: ^3.0.7
   flutter_svg: any
-  synchronized: ^3.4.0
+  synchronized: ^3.4.0+1
   convert: ^3.1.2
   intl: ^0.20.2
   duration: ^4.0.3

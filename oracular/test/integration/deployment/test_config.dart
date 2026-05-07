@@ -30,6 +30,12 @@ class DeploymentTestConfig {
 
   /// Get the path to the service account file
   static String get serviceAccountPath {
+    final String preferredPath = p.join(_oracularRoot, 'service-account.json');
+    if (File(preferredPath).existsSync()) {
+      return preferredPath;
+    }
+
+    // Backward-compatible fallback for older local setups
     return p.join(_oracularRoot, 'oraculat-test-service-account.json');
   }
 
@@ -58,14 +64,11 @@ class DeploymentTestConfig {
   /// Activate gcloud service account for tests that need gcloud CLI
   /// Note: This does NOT set the global project - use --project flag instead
   static Future<bool> activateGcloudServiceAccount() async {
-    final ProcessResult result = await Process.run(
-      'gcloud',
-      <String>[
-        'auth',
-        'activate-service-account',
-        '--key-file=$serviceAccountPath',
-      ],
-    );
+    final ProcessResult result = await Process.run('gcloud', <String>[
+      'auth',
+      'activate-service-account',
+      '--key-file=$serviceAccountPath',
+    ]);
     return result.exitCode == 0;
   }
 

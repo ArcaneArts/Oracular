@@ -42,7 +42,16 @@ class ProcessRunner {
   /// Whether to show verbose output
   final bool showVerbose;
 
-  ProcessRunner({this.maxAutoRetries = 2, this.showVerbose = false});
+  /// Whether `runWithRetry` is allowed to prompt the user when automatic
+  /// retries are exhausted. Set to `false` when running inside a spinner or
+  /// other non-interactive UI so we never block waiting for stdin.
+  final bool interactive;
+
+  ProcessRunner({
+    this.maxAutoRetries = 2,
+    this.showVerbose = false,
+    this.interactive = true,
+  });
 
   /// Run a command and return the result
   Future<ProcessResult> run(
@@ -83,8 +92,9 @@ class ProcessRunner {
     String? workingDirectory,
     Map<String, String>? environment,
     String? operationName,
-    bool interactive = true,
+    bool? interactive,
   }) async {
+    final bool effectiveInteractive = interactive ?? this.interactive;
     final String opName = operationName ?? '$executable ${arguments.join(' ')}';
     int attempt = 0;
 
@@ -108,10 +118,12 @@ class ProcessRunner {
         continue;
       }
 
-      // Auto-retries exhausted - ask user
-      if (!interactive) {
+      // Auto-retries exhausted - ask user (only if interactive)
+      if (!effectiveInteractive) {
         error('$opName failed after $maxAutoRetries attempts');
-        error('stderr: ${result.stderr}');
+        if (result.stderr.isNotEmpty) {
+          error('stderr: ${result.stderr.trim()}');
+        }
         return null;
       }
 

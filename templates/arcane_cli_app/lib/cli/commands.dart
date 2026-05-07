@@ -10,7 +10,7 @@ final List<DartedCommand> commandsTree = [
   DartedCommand(
     name: 'hello',
     helperDescription: 'Hello world command - demonstrates basic CLI structure',
-    callback: (_, __) => handleVersion(),
+    callback: (_, _) => handleVersion(),
     subCommands: [
       DartedCommand(
         name: 'greet',
@@ -27,7 +27,7 @@ final List<DartedCommand> commandsTree = [
       DartedCommand(
         name: 'version',
         helperDescription: 'Display version information',
-        callback: (_, __) => handleVersion(),
+        callback: (_, _) => handleVersion(),
       ),
     ],
   ),
@@ -36,7 +36,7 @@ final List<DartedCommand> commandsTree = [
   DartedCommand(
     name: 'config',
     helperDescription: 'Configuration management commands',
-    callback: (_, __) => handleConfigList(),
+    callback: (_, _) => handleConfigList(),
     subCommands: [
       DartedCommand(
         name: 'init',
@@ -62,12 +62,12 @@ final List<DartedCommand> commandsTree = [
       DartedCommand(
         name: 'list',
         helperDescription: 'List all configuration values',
-        callback: (_, __) => handleConfigList(),
+        callback: (_, _) => handleConfigList(),
       ),
       DartedCommand(
         name: 'path',
         helperDescription: 'Show configuration file path',
-        callback: (_, __) => handleConfigPath(),
+        callback: (_, _) => handleConfigPath(),
       ),
     ],
   ),
@@ -110,7 +110,7 @@ final List<DartedCommand> commandsTree = [
   DartedCommand(
     name: 'version',
     helperDescription: 'Show version information',
-    callback: (_, __) {
+    callback: (_, _) {
       print('arcane_cli_app CLI v1.0.0');
       print('Built with Arcane Templates');
     },

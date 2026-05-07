@@ -6,13 +6,12 @@ import 'package:jaspr/client.dart';
 import 'package:fast_log/fast_log.dart';
 
 import 'app.dart';
+import 'main.client.options.dart';
 
 void main() {
   info('arcane_jaspr_app starting...');
 
-  Jaspr.initializeApp(
-    options: const ClientOptions(clients: {}),
-  );
+  Jaspr.initializeApp(options: defaultClientOptions);
 
   try {
     const App app = App();

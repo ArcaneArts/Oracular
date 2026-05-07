@@ -4,16 +4,16 @@ import '../components/app_header.dart';
 import '../utils/constants.dart';
 
 /// Home screen - landing page for the application
-class HomeScreen extends StatelessComponent {
+class HomeScreen extends StatelessWidget {
   final bool isDark;
-  final VoidCallback? onThemeToggle;
+  final void Function()? onThemeToggle;
 
   const HomeScreen({super.key, this.isDark = true, this.onThemeToggle});
 
   @override
-  Component build(BuildContext context) {
-    return ArcaneDiv(
-      styles: const ArcaneStyleData(
+  Widget build(BuildContext context) {
+    return ArcaneBox(
+      style: const ArcaneStyleData(
         minHeight: '100vh',
         display: Display.flex,
         flexDirection: FlexDirection.column,
@@ -27,62 +27,56 @@ class HomeScreen extends StatelessComponent {
         ),
 
         // Hero section
-        _HeroSection(),
+        const _HeroSection(),
 
         // Features section
-        _FeaturesSection(),
+        const _FeaturesSection(),
       ],
     );
   }
 }
 
-class _HeroSection extends StatelessComponent {
+class _HeroSection extends StatelessWidget {
   const _HeroSection();
 
   @override
-  Component build(BuildContext context) {
-    return ArcaneDiv(
-      styles: const ArcaneStyleData(
+  Widget build(BuildContext context) {
+    return const ArcaneBox(
+      style: ArcaneStyleData(
         padding: PaddingPreset.heroY,
         textAlign: TextAlign.center,
       ),
       children: [
-        ArcaneColumn(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.center,
-          style: const ArcaneStyleData(gap: Gap.lg),
+          style: ArcaneStyleData(gap: Gap.lg),
           children: [
             // Hero headline with gradient text
-            ArcaneDiv(
-              styles: const ArcaneStyleData(
+            ArcaneBox(
+              style: ArcaneStyleData(
                 fontSize: FontSize.mega,
                 fontWeight: FontWeight.w800,
                 textColor: TextColor.primary,
                 lineHeight: LineHeight.tight,
               ),
-              children: [ArcaneText('Welcome to ${AppConstants.appName}')],
+              children: [Text('Welcome to ${AppConstants.appName}')],
             ),
             // Subtitle
-            ArcaneDiv(
-              styles: const ArcaneStyleData(
+            ArcaneBox(
+              style: ArcaneStyleData(
                 fontSize: FontSize.xl,
                 textColor: TextColor.muted,
                 maxWidth: MaxWidth.text,
               ),
-              children: [ArcaneText(AppConstants.appDescription)],
+              children: [Text(AppConstants.appDescription)],
             ),
             // CTA buttons using new ArcaneCtaLink variants
-            ArcaneRow(
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              style: const ArcaneStyleData(gap: Gap.md),
+              style: ArcaneStyleData(gap: Gap.md),
               children: [
-                ArcaneButton.primary(
-                  href: AppRoutes.about,
-                  label: 'Get Started',
-                ),
-                ArcaneButton.secondary(
-                  href: AppRoutes.about,
-                  label: 'Learn More',
-                ),
+                Button.primary(href: AppRoutes.about, label: 'Get Started'),
+                Button.secondary(href: AppRoutes.about, label: 'Learn More'),
               ],
             ),
           ],
@@ -92,13 +86,13 @@ class _HeroSection extends StatelessComponent {
   }
 }
 
-class _FeaturesSection extends StatelessComponent {
+class _FeaturesSection extends StatelessWidget {
   const _FeaturesSection();
 
   @override
-  Component build(BuildContext context) {
-    return ArcaneDiv(
-      styles: const ArcaneStyleData(
+  Widget build(BuildContext context) {
+    return ArcaneBox(
+      style: const ArcaneStyleData(
         padding: PaddingPreset.sectionY,
         flexGrow: 1,
       ),
@@ -107,24 +101,24 @@ class _FeaturesSection extends StatelessComponent {
           maxWidth: MaxWidth.container,
           margin: MarginPreset.autoX,
           children: [
-            ArcaneColumn(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               style: const ArcaneStyleData(gap: Gap.xxl),
               children: [
                 // Section header using new ArcaneSectionHeader component
-                ArcaneColumn(
+                const Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
-                  style: const ArcaneStyleData(gap: Gap.sm),
-                  children: const [
-                    ArcaneText.heading('Features'),
-                    ArcaneText.body(
+                  style: ArcaneStyleData(gap: Gap.sm),
+                  children: [
+                    Text.heading('Features'),
+                    Text.body(
                       'Everything you need to build modern web applications',
                     ),
                   ],
                 ),
                 // Feature cards in a grid
-                ArcaneDiv(
-                  styles: const ArcaneStyleData(
+                ArcaneBox(
+                  style: const ArcaneStyleData(
                     display: Display.grid,
                     gridColumns: GridColumns.autoFitMd,
                     gap: Gap.lg,
@@ -160,8 +154,8 @@ class _FeaturesSection extends StatelessComponent {
   }
 }
 
-class _FeatureCard extends StatelessComponent {
-  final Component icon;
+class _FeatureCard extends StatelessWidget {
+  final Widget icon;
   final String title;
   final String description;
 
@@ -172,18 +166,18 @@ class _FeatureCard extends StatelessComponent {
   });
 
   @override
-  Component build(BuildContext context) {
-    return ArcaneCard(
-      child: ArcaneDiv(
-        styles: const ArcaneStyleData(padding: PaddingPreset.lg),
+  Widget build(BuildContext context) {
+    return Card(
+      child: ArcaneBox(
+        style: const ArcaneStyleData(padding: PaddingPreset.lg),
         children: [
-          ArcaneColumn(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             style: const ArcaneStyleData(gap: Gap.md),
             children: [
               // Icon with accent background
-              ArcaneDiv(
-                styles: const ArcaneStyleData(
+              ArcaneBox(
+                style: const ArcaneStyleData(
                   padding: PaddingPreset.sm,
                   borderRadius: Radius.lg,
                   background: Background.accentContainer,
@@ -193,21 +187,21 @@ class _FeatureCard extends StatelessComponent {
                 children: [icon],
               ),
               // Title
-              ArcaneDiv(
-                styles: const ArcaneStyleData(
+              ArcaneBox(
+                style: const ArcaneStyleData(
                   fontSize: FontSize.lg,
                   fontWeight: FontWeight.w600,
                   textColor: TextColor.primary,
                 ),
-                children: [ArcaneText(title)],
+                children: [Text(title)],
               ),
               // Description
-              ArcaneDiv(
-                styles: const ArcaneStyleData(
+              ArcaneBox(
+                style: const ArcaneStyleData(
                   textColor: TextColor.muted,
                   lineHeight: LineHeight.relaxed,
                 ),
-                children: [ArcaneText(description)],
+                children: [Text(description)],
               ),
             ],
           ),

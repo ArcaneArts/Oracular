@@ -5,16 +5,23 @@ import 'package:path/path.dart' as p;
 
 import '../../models/setup_config.dart';
 import '../../models/template_info.dart';
+import '../../services/config_generator.dart';
 import '../../services/dependency_manager.dart';
 import '../../services/project_creator.dart';
+import '../../services/server_setup.dart';
 import '../../services/template_copier.dart';
 import '../../services/tool_checker.dart';
+import '../../utils/firebase_setup_prompts.dart';
 import '../../utils/string_utils.dart';
+import '../../utils/setup_guidance.dart';
 import '../../utils/user_prompt.dart';
 import '../../utils/validators.dart';
 
 /// Handle create command
-Future<void> handleCreate(Map<String, dynamic> args, Map<String, dynamic> flags) async {
+Future<void> handleCreate(
+  Map<String, dynamic> args,
+  Map<String, dynamic> flags,
+) async {
   UserPrompt.printBanner(
     'Oracular Project Creator',
     subtitle: 'Arcane Template System',
@@ -26,7 +33,9 @@ Future<void> handleCreate(Map<String, dynamic> args, Map<String, dynamic> flags)
     final checker = ToolChecker();
     final result = await checker.checkRequired();
     if (!result.allRequiredInstalled) {
-      error('Required tools are missing. Run "oracular check tools" for details.');
+      error(
+        'Required tools are missing. Run "oracular check tools" for details.',
+      );
       exit(1);
     }
   }
@@ -65,7 +74,10 @@ Future<void> handleCreate(Map<String, dynamic> args, Map<String, dynamic> flags)
 }
 
 /// List available templates
-Future<void> handleListTemplates(Map<String, dynamic> args, Map<String, dynamic> flags) async {
+Future<void> handleListTemplates(
+  Map<String, dynamic> args,
+  Map<String, dynamic> flags,
+) async {
   print('\nAvailable Templates:');
   print('\u2500' * 70);
 
@@ -114,7 +126,8 @@ Future<SetupConfig> _gatherConfig({
       'Enter app name (snake_case)',
       defaultValue: 'my_app',
       validator: (s) => validateAppName(s).isValid,
-      validationMessage: 'Invalid app name. Use lowercase letters, numbers, and underscores.',
+      validationMessage:
+          'Invalid app name. Use lowercase letters, numbers, and underscores.',
     );
   } else {
     error('--app-name is required');
@@ -148,7 +161,9 @@ Future<SetupConfig> _gatherConfig({
   } else if (interactive) {
     final templateIndex = await UserPrompt.showMenu(
       'Select a template:',
-      TemplateType.values.map((t) => '${t.displayName}\n      ${t.description}').toList(),
+      TemplateType.values
+          .map((t) => '${t.displayName}\n      ${t.description}')
+          .toList(),
       defaultIndex: 0,
     );
     finalTemplate = TemplateType.values[templateIndex];
@@ -163,23 +178,75 @@ Future<SetupConfig> _gatherConfig({
   // Output directory
   final finalOutputDir = outputDir ?? Directory.current.path;
 
+  // Platforms
+  List<String> finalPlatforms = finalTemplate.supportedPlatforms;
+  final bool canChoosePlatforms =
+      finalTemplate.isFlutterApp &&
+      finalTemplate != TemplateType.arcaneDock &&
+      finalTemplate.supportedPlatforms.length > 1;
+
+  if (interactive && canChoosePlatforms) {
+    print('');
+    info('Target Platforms');
+    final List<int> platformIndices = await UserPrompt.askMultiSelect(
+      'Select target platforms',
+      finalTemplate.supportedPlatforms,
+      defaultSelected: finalTemplate.supportedPlatforms,
+    );
+
+    finalPlatforms = platformIndices
+        .map((int index) => finalTemplate.supportedPlatforms[index])
+        .toList();
+
+    if (finalPlatforms.isEmpty) {
+      warn(
+        'At least one platform must be selected; using all supported platforms.',
+      );
+      finalPlatforms = finalTemplate.supportedPlatforms;
+    }
+  }
+
   // Models package
   bool finalWithModels = withModels;
   if (!withModels && interactive) {
-    finalWithModels = await UserPrompt.askYesNo('Create models package?', defaultValue: false);
+    print('');
+    info('Optional package: Shared Models');
+    UserPrompt.printList(<String>[
+      'Stores reusable data classes and serializers in one package.',
+      'Use this if multiple projects (app/server/cli) should share the same models.',
+      'Control: press Enter to accept the default shown in [Y/n] or [y/N].',
+    ]);
+    finalWithModels = await UserPrompt.askYesNo(
+      'Create models package?',
+      defaultValue: false,
+    );
   }
 
   // Server app
   bool finalWithServer = withServer;
   if (!withServer && interactive) {
-    finalWithServer = await UserPrompt.askYesNo('Create server app?', defaultValue: false);
+    print('');
+    info('Optional package: Server Application');
+    UserPrompt.printList(<String>[
+      'Creates a backend service for APIs, admin operations, and secure server-side logic.',
+      'Use this when your project needs a deployable server instead of client-only behavior.',
+      'Control: press Enter to accept the default shown in [Y/n] or [y/N].',
+    ]);
+    finalWithServer = await UserPrompt.askYesNo(
+      'Create server app?',
+      defaultValue: false,
+    );
   }
 
   // Firebase
-  bool finalWithFirebase = withFirebase;
-  String? finalFirebaseProjectId = firebaseProjectId;
-  if (interactive && !withFirebase) {
-    finalWithFirebase = await UserPrompt.askYesNo('Enable Firebase?', defaultValue: false);
+  bool finalWithFirebase = withFirebase ||
+      (firebaseProjectId != null && firebaseProjectId.trim().isNotEmpty);
+  String? finalFirebaseProjectId = firebaseProjectId?.trim();
+  if (interactive && !finalWithFirebase) {
+    finalWithFirebase = await UserPrompt.askYesNo(
+      'Enable Firebase?',
+      defaultValue: false,
+    );
   }
   if (finalWithFirebase && finalFirebaseProjectId == null && interactive) {
     finalFirebaseProjectId = await UserPrompt.askString(
@@ -188,54 +255,34 @@ Future<SetupConfig> _gatherConfig({
       validationMessage: 'Invalid Firebase project ID',
     );
   }
+  if (finalWithFirebase &&
+      (finalFirebaseProjectId == null || finalFirebaseProjectId.isEmpty)) {
+    error('--firebase-project-id is required when Firebase is enabled');
+    exit(1);
+  }
 
   // Cloud Run
   bool finalWithCloudRun = withCloudRun;
-  if (finalWithServer && interactive && !withCloudRun) {
-    finalWithCloudRun = await UserPrompt.askYesNo('Setup Cloud Run for server?', defaultValue: false);
+  if (finalWithServer && finalWithFirebase && interactive && !withCloudRun) {
+    finalWithCloudRun = await UserPrompt.askYesNo(
+      'Setup Cloud Run for server?',
+      defaultValue: false,
+    );
   }
 
-  // Service account key (for server deployment)
-  String? finalServiceAccountKey = serviceAccountKey;
-  if (finalWithServer && interactive && serviceAccountKey == null && finalFirebaseProjectId != null) {
-    print('');
-    info('Server deployment requires a Firebase service account key.');
-    print('');
-    print('  1. Opening Firebase Console for you...');
-    print('  2. Click "Generate new private key"');
-    print('  3. Copy the downloaded file to the folder that will open');
-    print('  4. Rename it to: service-account.json');
-    print('');
-
-    // Create the server directory
-    final serverDir = Directory(p.join(finalOutputDir, '${finalAppName}_server'));
-    if (!serverDir.existsSync()) {
-      await serverDir.create(recursive: true);
-    }
-
-    // Open Firebase Console
-    final consoleUrl =
-        'https://console.firebase.google.com/project/$finalFirebaseProjectId/settings/serviceaccounts/adminsdk';
-    await Process.run('open', [consoleUrl]);
-
-    // Small delay then open the folder
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    await Process.run('open', [serverDir.path]);
-
-    // Wait for user to confirm
-    await UserPrompt.askYesNo(
-      'Press Enter when you have copied service-account.json',
-      defaultValue: true,
+  // Service account key (optional now, needed later for server deployment)
+  String? finalServiceAccountKey =
+      FirebaseSetupPrompts.normalizeConfiguredKeyPath(serviceAccountKey);
+  if (finalWithServer &&
+      finalWithFirebase &&
+      interactive &&
+      serviceAccountKey == null &&
+      finalFirebaseProjectId != null) {
+    finalServiceAccountKey =
+        await FirebaseSetupPrompts.askServiceAccountKeyPath(
+      outputDir: finalOutputDir,
+      serverPackageName: '${finalAppName}_server',
     );
-
-    // Check if file exists
-    final keyFile = File(p.join(serverDir.path, 'service-account.json'));
-    if (keyFile.existsSync()) {
-      finalServiceAccountKey = keyFile.path;
-      success('Service account key found!');
-    } else {
-      warn('service-account.json not found - you can add it later');
-    }
   }
 
   return SetupConfig(
@@ -250,7 +297,7 @@ Future<SetupConfig> _gatherConfig({
     firebaseProjectId: finalFirebaseProjectId,
     setupCloudRun: finalWithCloudRun,
     serviceAccountKeyPath: finalServiceAccountKey,
-    platforms: finalTemplate.supportedPlatforms,
+    platforms: finalPlatforms,
   );
 }
 
@@ -285,46 +332,39 @@ Future<void> _executeCreation(SetupConfig config) async {
   // 5. Run build_runner where needed
   await depManager.runAllBuildRunners();
 
-  // 6. Save configuration
+  // 6. Generate deployment configuration
+  if (config.useFirebase) {
+    final configGenerator = ConfigGenerator(config);
+    await configGenerator.generateAll();
+  }
+
+  if (config.createServer) {
+    final serverSetup = ServerSetup(config);
+    await serverSetup.generateAll();
+  }
+
+  // 7. Save configuration
   final configDir = Directory(p.join(config.outputDir, 'config'));
   if (!configDir.existsSync()) {
     await configDir.create(recursive: true);
   }
   await config.saveToFile(p.join(configDir.path, 'setup_config.env'));
+  final File guide = await SetupGuidance.writeProjectGuide(config);
 
   // Print success message
   print('');
   success('\u2713 Project created successfully!');
   print('');
-  print('Created projects:');
+  print('Created:');
+  UserPrompt.printList(SetupGuidance.createdProjectItems(config));
 
-  // Determine main app name based on template type
-  final String mainAppName =
-      config.template.isJasprApp ? config.webPackageName : config.appName;
-  final String mainAppLabel =
-      config.template.isJasprApp ? 'Web app' : 'Main app';
+  SetupGuidance.printPostCreationChecklist(config);
 
-  print('  \u2022 $mainAppName/ - $mainAppLabel');
-  if (config.createModels) {
-    print('  \u2022 ${config.modelsPackageName}/ - Models package');
-  }
-  if (config.createServer) {
-    print('  \u2022 ${config.serverPackageName}/ - Server app');
-  }
   print('');
-  print('Next steps:');
-  print('  cd ${config.outputDir}/$mainAppName');
-  if (config.template.isFlutterApp) {
-    print('  flutter run');
-  } else if (config.template.isJasprApp) {
-    print('  jaspr serve');
-  } else {
-    print('  dart run bin/main.dart --help');
-  }
+  UserPrompt.printList(<String>[
+    'Generated guide: ${guide.path}',
+    'Open it with: oracular open guide',
+  ]);
   print('');
-
-  if (config.useFirebase) {
-    warn('Firebase setup required:');
-    print('  oracular deploy firebase-setup');
-  }
+  UserPrompt.printSuccessBox('Happy coding!');
 }

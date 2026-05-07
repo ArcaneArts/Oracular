@@ -3,9 +3,9 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import '../utils/constants.dart';
 
 /// Shared application header with navigation and theme toggle
-class AppHeader extends StatelessComponent {
+class AppHeader extends StatelessWidget {
   final bool isDark;
-  final VoidCallback? onThemeToggle;
+  final void Function()? onThemeToggle;
   final String currentPath;
 
   const AppHeader({
@@ -16,9 +16,9 @@ class AppHeader extends StatelessComponent {
   });
 
   @override
-  Component build(BuildContext context) {
-    return ArcaneDiv(
-      styles: const ArcaneStyleData(
+  Widget build(BuildContext context) {
+    return ArcaneBox(
+      style: const ArcaneStyleData(
         display: Display.flex,
         alignItems: AlignItems.center,
         justifyContent: JustifyContent.spaceBetween,
@@ -29,20 +29,8 @@ class AppHeader extends StatelessComponent {
         width: Size.full,
       ),
       children: [
-        // Logo/Brand link
-        ArcaneLink(
-          href: AppRoutes.home,
-          styles: const ArcaneStyleData(textDecoration: TextDecoration.none),
-          child: ArcaneText(
-            AppConstants.appName,
-            style: const ArcaneStyleData(
-              fontWeight: FontWeight.bold,
-              fontSize: FontSize.lg,
-              textColor: TextColor.primary,
-            ),
-          ),
-        ),
-        ArcaneRow(
+        const Button.ghost(label: AppConstants.appName, href: AppRoutes.home),
+        Row(
           style: const ArcaneStyleData(
             gap: Gap.sm,
             alignItems: AlignItems.center,
@@ -54,14 +42,14 @@ class AppHeader extends StatelessComponent {
 
             // GitHub link (if configured)
             if (AppConstants.githubUrl.isNotEmpty)
-              ArcaneButton.ghost(
+              const Button.ghost(
                 label: 'GitHub',
                 href: AppConstants.githubUrl,
                 showArrow: true,
               ),
 
             // Theme toggle using the new ArcaneThemeToggle component
-            ArcaneButton.ghost(
+            Button.ghost(
               label: isDark ? 'Light' : 'Dark',
               onPressed: onThemeToggle,
             ),
@@ -71,12 +59,12 @@ class AppHeader extends StatelessComponent {
     );
   }
 
-  Component _buildNavLink(String label, String href) {
+  Widget _buildNavLink(String label, String href) {
     final bool isActive = currentPath == href;
     if (isActive) {
-      return ArcaneButton.secondary(label: label, href: href);
+      return Button.secondary(label: label, href: href);
     }
 
-    return ArcaneButton.ghost(label: label, href: href);
+    return Button.ghost(label: label, href: href);
   }
 }

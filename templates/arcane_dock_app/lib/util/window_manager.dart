@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:arcane/arcane.dart' hide Window, MenuItem;
 import 'package:fast_log/fast_log.dart';

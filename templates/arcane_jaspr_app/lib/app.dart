@@ -1,10 +1,11 @@
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:arcane_jaspr_shadcn/arcane_jaspr_shadcn.dart';
 import 'package:fast_log/fast_log.dart';
 
 import 'routes/app_router.dart';
 
 /// arcane_jaspr_app - Main application component with theming
-class App extends StatefulComponent {
+class App extends StatefulWidget {
   const App({super.key});
 
   @override
@@ -26,7 +27,7 @@ class _AppState extends State<App> {
   }
 
   @override
-  Component build(BuildContext context) {
+  Widget build(BuildContext context) {
     verbose('Building App component');
     final Brightness brightness = _isDark ? Brightness.dark : Brightness.light;
 
@@ -35,7 +36,7 @@ class _AppState extends State<App> {
       stylesheet: const ShadcnStylesheet(theme: ShadcnTheme.midnight),
       brightness: brightness,
       includeFallbackScripts: false, // Client app doesn't need static fallbacks
-      child: AppRouter(isDark: _isDark, onThemeToggle: _toggleTheme),
+      home: AppRouter(isDark: _isDark, onThemeToggle: _toggleTheme),
     );
   }
 }

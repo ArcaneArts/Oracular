@@ -33,6 +33,10 @@ extension XFCrudBase$User on User {
   
   /// Sets this [User] document atomically by getting first then setting.
   Future<void> setAtomic(User Function(User?) txn) => setSelfAtomicRaw<User>(txn);
+
+  /// Patches this [User] document by transforming the current model and writing only changed fields.
+  /// Returns the previous remote snapshot when a patch was applied, or null when the document was missing/no-op.
+  Future<User?> patch(User Function(User initial) patcher, {User? remote}) => $patchModel<User>(documentId!, patcher, remote: remote);
   
   /// Modifies properties of the [User] document (as a unique child) atomically.
   Future<void> modify({
@@ -85,6 +89,10 @@ extension XFCrudU$User$UserSettings on User {
   
   /// Updates properties of the [UserSettings] document (as a unique child) with {"fieldName": VALUE, ...}
   Future<void> updateUserSettings(Map<String, dynamic> updates) => updateUnique<UserSettings>(updates);
+
+  /// Patches the [UserSettings] document (as a unique child) by transforming the current model and writing only changed fields.
+  /// Returns the previous remote snapshot when a patch was applied, or null when the document was missing/no-op.
+  Future<UserSettings?> patchUserSettings(UserSettings Function(UserSettings initial) patcher, {UserSettings? remote}) => $patchModelUnique<UserSettings>(patcher, remote: remote);
   
   /// Sets the [UserSettings] document (as a unique child) atomically by getting first then setting.
   Future<void> setUserSettingsAtomic(UserSettings Function(UserSettings?) txn) => setUniqueAtomic<UserSettings>(txn);
@@ -143,6 +151,10 @@ extension XFCrudBase$UserSettings on UserSettings {
   
   /// Sets this [UserSettings] document atomically by getting first then setting.
   Future<void> setAtomic(UserSettings Function(UserSettings?) txn) => setSelfAtomicRaw<UserSettings>(txn);
+
+  /// Patches this [UserSettings] document by transforming the current model and writing only changed fields.
+  /// Returns the previous remote snapshot when a patch was applied, or null when the document was missing/no-op.
+  Future<UserSettings?> patch(UserSettings Function(UserSettings initial) patcher, {UserSettings? remote}) => $patchModel<UserSettings>(documentId!, patcher, remote: remote);
   
   /// Modifies properties of the [UserSettings] document (as a unique child) atomically.
   Future<void> modify({
@@ -190,6 +202,10 @@ extension XFCrudBase$ServerCommand on ServerCommand {
   
   /// Sets this [ServerCommand] document atomically by getting first then setting.
   Future<void> setAtomic(ServerCommand Function(ServerCommand?) txn) => setSelfAtomicRaw<ServerCommand>(txn);
+
+  /// Patches this [ServerCommand] document by transforming the current model and writing only changed fields.
+  /// Returns the previous remote snapshot when a patch was applied, or null when the document was missing/no-op.
+  Future<ServerCommand?> patch(ServerCommand Function(ServerCommand initial) patcher, {ServerCommand? remote}) => $patchModel<ServerCommand>(documentId!, patcher, remote: remote);
   
   /// Modifies properties of the [ServerCommand] document (as a unique child) atomically.
   Future<void> modify({
@@ -226,6 +242,10 @@ extension XFCrudU$ServerCommand$ServerResponse on ServerCommand {
   
   /// Updates properties of the [ServerResponse] document (as a unique child) with {"fieldName": VALUE, ...}
   Future<void> updateServerResponse(Map<String, dynamic> updates) => updateUnique<ServerResponse>(updates);
+
+  /// Patches the [ServerResponse] document (as a unique child) by transforming the current model and writing only changed fields.
+  /// Returns the previous remote snapshot when a patch was applied, or null when the document was missing/no-op.
+  Future<ServerResponse?> patchServerResponse(ServerResponse Function(ServerResponse initial) patcher, {ServerResponse? remote}) => $patchModelUnique<ServerResponse>(patcher, remote: remote);
   
   /// Sets the [ServerResponse] document (as a unique child) atomically by getting first then setting.
   Future<void> setServerResponseAtomic(ServerResponse Function(ServerResponse?) txn) => setUniqueAtomic<ServerResponse>(txn);
@@ -284,6 +304,10 @@ extension XFCrudBase$ServerResponse on ServerResponse {
   
   /// Sets this [ServerResponse] document atomically by getting first then setting.
   Future<void> setAtomic(ServerResponse Function(ServerResponse?) txn) => setSelfAtomicRaw<ServerResponse>(txn);
+
+  /// Patches this [ServerResponse] document by transforming the current model and writing only changed fields.
+  /// Returns the previous remote snapshot when a patch was applied, or null when the document was missing/no-op.
+  Future<ServerResponse?> patch(ServerResponse Function(ServerResponse initial) patcher, {ServerResponse? remote}) => $patchModel<ServerResponse>(documentId!, patcher, remote: remote);
   
   /// Modifies properties of the [ServerResponse] document (as a unique child) atomically.
   Future<void> modify({
@@ -330,6 +354,10 @@ extension XFCrudRoot$User on RootFireCrud {
   
   /// Updates properties of the [User] document with [id] with {"fieldName": VALUE, ...}
   Future<void> updateUser(String id, Map<String, dynamic> updates) => $update<User>(id, updates);
+
+  /// Patches the [User] document with [id] by transforming the current model and writing only changed fields.
+  /// Returns the previous remote snapshot when a patch was applied, or null when the document was missing/no-op.
+  Future<User?> patchUser(String id, User Function(User initial) patcher, {User? remote}) => $patchModel<User>(id, patcher, remote: remote);
   
   /// Opens a stream of the [User] document with [id]
   Stream<User?> streamUser(String id) => $stream<User>(id);
@@ -412,6 +440,10 @@ extension XFCrudRoot$ServerCommand on RootFireCrud {
   
   /// Updates properties of the [ServerCommand] document with [id] with {"fieldName": VALUE, ...}
   Future<void> updateServerCommand(String id, Map<String, dynamic> updates) => $update<ServerCommand>(id, updates);
+
+  /// Patches the [ServerCommand] document with [id] by transforming the current model and writing only changed fields.
+  /// Returns the previous remote snapshot when a patch was applied, or null when the document was missing/no-op.
+  Future<ServerCommand?> patchServerCommand(String id, ServerCommand Function(ServerCommand initial) patcher, {ServerCommand? remote}) => $patchModel<ServerCommand>(id, patcher, remote: remote);
   
   /// Opens a stream of the [ServerCommand] document with [id]
   Stream<ServerCommand?> streamServerCommand(String id) => $stream<ServerCommand>(id);

@@ -60,6 +60,26 @@ oracular create app               # Create project with prompts
 oracular create templates         # List available templates
 ```
 
+### Guided Next Steps
+
+Generated projects include `GET_STARTED.md`, plus shortcut commands for the
+folders and setup consoles users need next.
+
+```bash
+oracular guide                    # Regenerate the setup guide
+oracular guide --print            # Print the guide in the terminal
+oracular open guide               # Open GET_STARTED.md
+oracular open app                 # Open the main app folder
+oracular open firebase            # Open Firebase project overview
+oracular open auth                # Open Firebase Authentication
+oracular open firestore           # Open Firestore Database
+oracular open storage             # Open Firebase Storage
+oracular open hosting             # Open Firebase Hosting
+oracular open server              # Open the server package
+oracular open service-account     # Open Firebase service account keys
+oracular open cloud-run           # Open Google Cloud Run
+```
+
 ### Script Runner
 
 Run scripts defined in your `pubspec.yaml`:

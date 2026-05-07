@@ -1,38 +1,20 @@
 ---
 title: Welcome
-description: Documentation for your project
+description: Flutter-first documentation starter for Arcane Jaspr projects
 layout: kb
 ---
 
-# Welcome to the Documentation
+# Welcome
 
-This is your documentation site built with **Jaspr** and **Arcane UI**.
+This template is set up to document a Flutter-first Arcane Jaspr project.
+Use it to teach the primary `package:arcane_jaspr/arcane_jaspr.dart` surface first, and keep advanced HTML or raw Jaspr APIs clearly separated.
 
-## Features
+## Start Here
 
-- **Static Generation** - Pre-rendered HTML for fast loading
-- **Markdown Support** - Write docs in Markdown with frontmatter
-- **Arcane Theming** - Beautiful dark-first design
-- **Table of Contents** - Auto-generated from headings
-- **Navigation** - Sidebar with grouped sections
+- [Installation](/docs/installation)
+- [Quick Start](/docs/quick-start)
+- [Deployment Guide](/guides/deployment)
 
-## Getting Started
+## Documentation Rule
 
-Check out the [Installation](/docs/installation) guide to get started, or jump to the [Quick Start](/docs/quick-start) for a rapid overview.
-
-## Structure
-
-Your documentation is organized in the `content/` directory:
-
-```
-content/
-  index.md          # This page
-  docs/
-    index.md        # /docs landing page
-    installation.md # /docs/installation
-    quick-start.md  # /docs/quick-start
-  guides/
-    deployment.md   # /guides/deployment
-```
-
-Each markdown file becomes a route based on its path.
+Code samples in this template should read like normal Flutter-style Arcane Jaspr code, not like low-level HTML or raw Jaspr code.

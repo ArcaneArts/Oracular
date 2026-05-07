@@ -1,6 +1,8 @@
 import 'package:fast_log/fast_log.dart';
 import 'package:interact/interact.dart';
 
+import 'prompt_environment.dart';
+
 /// Sorting/ordering prompts
 class SortPrompt {
   /// Let user sort/order a list of items by preference
@@ -10,14 +12,24 @@ class SortPrompt {
     List<String> options, {
     bool showOutput = true,
   }) async {
+    if (PromptEnvironment.useSimplePrompts) {
+      return List<String>.from(options);
+    }
+
     print('');
-    print('  Use ↑↓ to navigate, Shift+↑↓ to reorder, Enter to confirm');
-    final List<String> result = Sort(
-      prompt: title,
-      options: options,
-      showOutput: showOutput,
-    ).interact();
-    return result;
+    print(
+      '  Use arrow keys to navigate, Shift+arrow keys to reorder, Enter to confirm',
+    );
+    try {
+      final List<String> result = Sort(
+        prompt: title,
+        options: options,
+        showOutput: showOutput,
+      ).interact();
+      return result;
+    } on Object {
+      return List<String>.from(options);
+    }
   }
 
   /// Sort and return the sorted option names (alias for askSort)
@@ -26,7 +38,11 @@ class SortPrompt {
     List<String> options, {
     bool showOutput = true,
   }) async {
-    final List<String> result = await askSort(title, options, showOutput: showOutput);
+    final List<String> result = await askSort(
+      title,
+      options,
+      showOutput: showOutput,
+    );
     return result;
   }
 

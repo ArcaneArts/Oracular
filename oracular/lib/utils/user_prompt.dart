@@ -175,15 +175,25 @@ class UserPrompt {
     String message,
     Future<T> Function() action, {
     String? doneMessage,
+    String? failedMessage,
     String? icon,
+    bool Function(T result)? isSuccess,
   }) =>
-      SpinnerPrompt.withSpinner(message, action, doneMessage: doneMessage, icon: icon);
+      SpinnerPrompt.withSpinner(
+        message,
+        action,
+        doneMessage: doneMessage,
+        failedMessage: failedMessage,
+        icon: icon,
+        isSuccess: isSuccess,
+      );
 
   static Future<T> withLoadingSpinner<T>(
     String message,
-    Future<T> Function() action,
-  ) =>
-      SpinnerPrompt.withLoadingSpinner(message, action);
+    Future<T> Function() action, {
+    String? failedMessage,
+  }) =>
+      SpinnerPrompt.withLoadingSpinner(message, action, failedMessage: failedMessage);
 
   // ============================================================================
   // PROGRESS (ProgressPrompt)

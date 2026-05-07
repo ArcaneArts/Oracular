@@ -1,48 +1,24 @@
 # Arcane Jaspr Docs
 
-Static documentation site built with Jaspr and Arcane Inkwell.
+Static documentation site for a Flutter-first Arcane Jaspr project.
 
 ## Development
 
 ```bash
-# Install dependencies
 dart pub get
-
-# Run development server
 jaspr serve
+```
 
-# Build for production
+## Build
+
+```bash
 jaspr build
 ```
 
-## Structure
+## Documentation Rules
 
-- `content/` - Markdown documentation files
-- `lib/main.server.dart` - Arcane Inkwell site configuration
-- `lib/main.client.dart` - Client hydration entrypoint
-- `web/` - Static assets
-
-## Adding Pages
-
-1. Create a markdown file in `content/`:
-   ```markdown
-   ---
-   title: My Page
-   description: Page description
-   layout: kb
-   ---
-
-   # My Page
-
-   Content here...
-   ```
-
-2. Arcane Inkwell builds sidebar navigation from your `content/` directory automatically.
-
-## Deployment
-
-Build and deploy to Firebase Hosting:
-
-```bash
-jaspr build && firebase deploy --only hosting
-```
+- Teach `package:arcane_jaspr/arcane_jaspr.dart` first
+- Keep `package:arcane_jaspr/html.dart` for advanced HTML wrapper examples only
+- Keep `package:arcane_jaspr/web.dart` for raw Jaspr escape hatches only
+- Prefer Flutter-shaped examples with `Widget build(BuildContext context)` and no explicit type arguments in normal usage
+- Resolve `arcane_lexicon` and `arcane_jaspr` from `../.oracular_deps/` when validating the template locally

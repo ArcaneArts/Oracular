@@ -169,12 +169,22 @@ set -e
 PROJECT_ID="${config.firebaseProjectId}"
 REGION="us-central1"
 SERVICE_NAME="${config.serverPackageName.replaceAll('_', '-')}"
-IMAGE_NAME="gcr.io/\$PROJECT_ID/\$SERVICE_NAME"
+REPOSITORY="oracular"
+IMAGE_NAME="\$REGION-docker.pkg.dev/\$PROJECT_ID/\$REPOSITORY/\$SERVICE_NAME"
+
+echo "Ensuring Artifact Registry repository exists..."
+gcloud artifacts repositories create \$REPOSITORY \\
+    --repository-format=docker \\
+    --location \$REGION \\
+    --project \$PROJECT_ID || true
+
+echo "Configuring Docker auth for Artifact Registry..."
+gcloud auth configure-docker "\$REGION-docker.pkg.dev" --quiet
 
 echo "Building Docker image..."
 docker build --platform linux/amd64 -t \$IMAGE_NAME .
 
-echo "Pushing to Container Registry..."
+echo "Pushing to Artifact Registry..."
 docker push \$IMAGE_NAME
 
 echo "Deploying to Cloud Run..."
@@ -220,6 +230,19 @@ echo "Service URL: https://\$SERVICE_NAME-\$PROJECT_ID.\$REGION.run.app"
     info('Copying service account key...');
 
     final String destPath = p.join(serverPath, 'service-account.json');
+    final String sourcePath = p.normalize(sourceFile.path);
+    final String normalizedDestPath = p.normalize(destPath);
+
+    if (sourcePath == normalizedDestPath) {
+      info('Service account key already in place: $destPath');
+      return;
+    }
+
+    final File destFile = File(destPath);
+    if (destFile.existsSync()) {
+      await _rotateServiceAccountBackups(destFile);
+    }
+
     await sourceFile.copy(destPath);
 
     // Add to gitignore
@@ -233,6 +256,23 @@ echo "Service URL: https://\$SERVICE_NAME-\$PROJECT_ID.\$REGION.run.app"
     }
 
     success('Service account key copied');
+  }
+
+  Future<void> _rotateServiceAccountBackups(File currentKeyFile) async {
+    final File backup1 = File('${currentKeyFile.path}.bak.1');
+    final File backup2 = File('${currentKeyFile.path}.bak.2');
+
+    if (backup2.existsSync()) {
+      await backup2.delete();
+    }
+    if (backup1.existsSync()) {
+      await backup1.rename(backup2.path);
+    }
+
+    await currentKeyFile.copy(backup1.path);
+    info(
+      'Existing service-account.json backed up to ${p.basename(backup1.path)} (retaining 2 backups)',
+    );
   }
 
   /// Build the server Docker image

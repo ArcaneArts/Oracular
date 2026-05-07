@@ -1,5 +1,5 @@
 /// arcane_jaspr_app - Main library export
-library arcane_jaspr_app;
+library;
 
 // Export app component
 export 'app.dart';

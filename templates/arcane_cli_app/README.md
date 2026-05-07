@@ -9,7 +9,6 @@ This is a Dart-based CLI application that uses `darted_cli` for declarative, cle
 ## Features
 
 - **Declarative Commands**: Uses `darted_cli` for clean, no-codegen command structure
-- **Interactive Prompts**: Built-in `interact` package for arrow-key menus, confirmations, and inputs
 - **Beautiful Help Text**: Auto-generated documentation from command definitions
 - **Config Management**: Built-in configuration file handling
 - **Firebase Integration**: Admin SDK commands for Firestore and Auth (if enabled)
@@ -411,7 +410,6 @@ dart pub get
 ## Learn More
 
 - [darted_cli Documentation](https://pub.dev/packages/darted_cli)
-- [interact Documentation](https://pub.dev/packages/interact)
 - [Arcane Templates](https://github.com/ArcaneArts/arcane_templates)
 - [fast_log](https://pub.dev/packages/fast_log)
 

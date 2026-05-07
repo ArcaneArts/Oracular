@@ -5,7 +5,10 @@ import 'package:path/path.dart' as p;
 
 import '../models/setup_config.dart';
 import '../models/template_info.dart';
+import '../utils/firebase_setup_prompts.dart';
+import '../utils/process_runner.dart';
 import '../utils/string_utils.dart';
+import '../utils/setup_guidance.dart';
 import '../utils/user_prompt.dart';
 import '../utils/validators.dart';
 import 'config_generator.dart';
@@ -25,22 +28,55 @@ class InteractiveWizard {
   static const int _totalSteps = 5;
   int _currentStep = 0;
 
+  /// Failures encountered during setup, surfaced at the end of the wizard.
+  final List<_WizardFailure> _failures = <_WizardFailure>[];
+
+  /// Process runner used while spinner UI is active. Non-interactive so
+  /// failed commands don't try to prompt the user from behind the spinner.
+  final ProcessRunner _spinnerRunner = ProcessRunner(interactive: false);
+
+  /// Resolved absolute target directory chosen in the wizard intro. Used as
+  /// the [SetupConfig.outputDir] when scaffolding projects.
+  String _targetLocation = Directory.current.path;
+
   InteractiveWizard({this.verbose = false});
+
+  void _recordFailure(
+    String step, {
+    String? hint,
+  }) {
+    _failures.add(_WizardFailure(step: step, hint: hint));
+  }
 
   /// Run the full interactive wizard
   Future<void> run() async {
     _printWelcome();
 
+    // Intro: pick the target location before anything else so the user
+    // knows exactly where the project will land.
+    if (!await _askTargetLocation()) {
+      warn('Setup cancelled');
+      return;
+    }
+
     // Step 1: Check tools
     _currentStep = 0;
-    UserPrompt.printStepIndicator(_currentStep, _totalSteps, 'Environment Check');
+    UserPrompt.printStepIndicator(
+      _currentStep,
+      _totalSteps,
+      'Environment Check',
+    );
     if (!await _checkTools()) {
       return;
     }
 
     // Step 2: Gather configuration
     _currentStep = 1;
-    UserPrompt.printStepIndicator(_currentStep, _totalSteps, 'Project Configuration');
+    UserPrompt.printStepIndicator(
+      _currentStep,
+      _totalSteps,
+      'Project Configuration',
+    );
     final config = await _gatherConfiguration();
     if (config == null) {
       warn('Setup cancelled');
@@ -57,13 +93,21 @@ class InteractiveWizard {
 
     // Step 4: Execute setup
     _currentStep = 3;
-    UserPrompt.printStepIndicator(_currentStep, _totalSteps, 'Creating Project');
+    UserPrompt.printStepIndicator(
+      _currentStep,
+      _totalSteps,
+      'Creating Project',
+    );
     await _executeSetup(config);
 
     // Step 5: Optional Firebase setup
     _currentStep = 4;
     if (config.useFirebase) {
-      UserPrompt.printStepIndicator(_currentStep, _totalSteps, 'Firebase Setup');
+      UserPrompt.printStepIndicator(
+        _currentStep,
+        _totalSteps,
+        'Firebase Setup',
+      );
       await _offerFirebaseSetup(config);
     }
 
@@ -78,12 +122,106 @@ class InteractiveWizard {
     );
     info('This wizard will help you create a new Arcane project.');
     print('');
-    UserPrompt.printList([
-      'Use ↑↓ arrow keys to navigate menus',
+    UserPrompt.printList(<String>[
+      'Use \u2191\u2193 arrow keys to navigate menus',
       'Press Space to toggle selections',
       'Press Enter to confirm',
     ]);
     print('');
+  }
+
+  /// Ask the user where the new project should live. Runs as part of the
+  /// intro so the resolved absolute path is known before any other config is
+  /// collected. Returns false if the user backs out or the directory cannot
+  /// be created.
+  Future<bool> _askTargetLocation() async {
+    UserPrompt.printDivider(title: 'Target Location');
+    final String defaultPath = Directory.current.path;
+    print('  Where should the new project be created?');
+    UserPrompt.printList(<String>[
+      'Press Enter to use the current directory',
+      'Type an absolute path (/Users/me/code) or relative path (./projects)',
+      'Use ~ as a shortcut for your home directory',
+    ]);
+    print('  Default: $defaultPath');
+    print('');
+
+    final String input = await UserPrompt.askString(
+      'Target location',
+      defaultValue: defaultPath,
+      validator: (String s) => validatePath(s).isValid,
+      validationMessage: 'Path contains invalid characters',
+    );
+
+    final String resolved = _resolveTargetPath(input);
+
+    // Reject pointing at a non-directory.
+    final FileSystemEntityType entityType =
+        FileSystemEntity.typeSync(resolved);
+    if (entityType == FileSystemEntityType.file ||
+        entityType == FileSystemEntityType.link) {
+      UserPrompt.printErrorBox(
+        'Target is not a directory',
+        hint: '$resolved already exists as a file. Pick a different target.',
+      );
+      return false;
+    }
+
+    // Create the directory if it doesn't exist (with confirmation).
+    final Directory dir = Directory(resolved);
+    if (!dir.existsSync()) {
+      print('');
+      info('Target does not exist yet: $resolved');
+      final bool create = await UserPrompt.askYesNo(
+        'Create this directory?',
+        defaultValue: true,
+      );
+      if (!create) {
+        return false;
+      }
+      try {
+        dir.createSync(recursive: true);
+      } catch (e) {
+        UserPrompt.printErrorBox(
+          'Could not create directory',
+          hint: 'Error: $e',
+        );
+        return false;
+      }
+    }
+
+    _targetLocation = resolved;
+    if (resolved != defaultPath) {
+      print('');
+      info('Using target: $resolved');
+    }
+    print('');
+    return true;
+  }
+
+  /// Resolve a user-supplied path. Handles `~` expansion and converts
+  /// relative paths to absolute paths anchored at the current working
+  /// directory. The returned path is normalized.
+  String _resolveTargetPath(String raw) {
+    String value = raw.trim();
+    if (value.isEmpty) {
+      return p.normalize(Directory.current.path);
+    }
+
+    // Expand leading ~ to the user's home directory.
+    if (value == '~' || value.startsWith('~/') || value.startsWith('~\\')) {
+      final String home = Platform.environment['HOME'] ??
+          Platform.environment['USERPROFILE'] ??
+          '';
+      if (home.isNotEmpty) {
+        value = value == '~' ? home : p.join(home, value.substring(2));
+      }
+    }
+
+    if (p.isAbsolute(value)) {
+      return p.normalize(value);
+    }
+    return p.normalize(p.absolute(value));
   }
 
   Future<bool> _checkTools() async {
@@ -143,18 +281,18 @@ class InteractiveWizard {
     );
     final template = TemplateType.values[templateIndex];
 
-    // Output directory
-    final outputDir = await UserPrompt.askString(
-      'Output directory',
-      defaultValue: Directory.current.path,
-    );
+    // Output directory was selected during the intro; reuse it here so the
+    // user isn't prompted twice.
+    final String outputDir = _targetLocation;
+    info('Output directory: $outputDir');
 
     // ── Section 3: Platform Selection ──
     // Only show for Flutter apps that have platform choices
     // Skip for: Dart CLI, arcaneDock (fixed platforms)
     List<String> selectedPlatforms = template.supportedPlatforms;
 
-    final bool showPlatformSelection = template.isFlutterApp &&
+    final bool showPlatformSelection =
+        template.isFlutterApp &&
         template != TemplateType.arcaneDock &&
         template.supportedPlatforms.length > 1;
 
@@ -207,6 +345,12 @@ class InteractiveWizard {
     if (template.isDartCli) {
       // Dart CLI: only offer models package (server is unusual for CLI)
       UserPrompt.printDivider(title: 'Additional Packages');
+      print('  Optional package:');
+      UserPrompt.printList(<String>[
+        'Shared Models Package: reusable data models and serialization for sharing types across apps.',
+        'Pick this if your CLI will share entities with a server/mobile/web app.',
+        'Prompt control: press Enter to accept the default choice.',
+      ]);
       createModels = await UserPrompt.askYesNo(
         'Create shared models package?',
         defaultValue: true,
@@ -215,9 +359,15 @@ class InteractiveWizard {
     } else {
       // Flutter apps: offer both models and server
       UserPrompt.printDivider(title: 'Additional Packages');
+      print('  Optional packages:');
+      UserPrompt.printList(<String>[
+        'Shared Models Package: keeps data classes in one place so app/server use the same schema.',
+        'Server Application: backend service for APIs, admin tasks, and private logic not run on client apps.',
+        'Controls: use ↑↓ to move, Space to toggle a package, Enter to confirm.',
+      ]);
 
       final additionalFeatures = await UserPrompt.askMultiSelectNames(
-        'Select additional packages to create',
+        'Select additional packages to create (Space to toggle)',
         ['Shared Models Package', 'Server Application'],
         defaultSelected: ['Shared Models Package'],
       );
@@ -255,46 +405,13 @@ class InteractiveWizard {
       }
     }
 
-    // Service account key (needed for server deployment)
+    // Service account key (optional now, needed later for server deployment)
     if (createServer && useFirebase && firebaseProjectId != null) {
-      print('');
-      info('Server deployment requires a Firebase service account key.');
-      print('');
-      print('  1. Opening Firebase Console for you...');
-      print('  2. Click "Generate new private key"');
-      print('  3. Copy the downloaded file to the folder that will open');
-      print('  4. Rename it to: service-account.json');
-      print('');
-
-      // Create the server directory
-      final serverDir = Directory(p.join(outputDir, '${appName}_server'));
-      if (!serverDir.existsSync()) {
-        await serverDir.create(recursive: true);
-      }
-
-      // Open Firebase Console
-      final consoleUrl =
-          'https://console.firebase.google.com/project/$firebaseProjectId/settings/serviceaccounts/adminsdk';
-      await Process.run('open', [consoleUrl]);
-
-      // Small delay then open the folder
-      await Future.delayed(const Duration(milliseconds: 500));
-      await Process.run('open', [serverDir.path]);
-
-      // Wait for user to confirm
-      await UserPrompt.askYesNo(
-        'Press Enter when you have copied service-account.json',
-        defaultValue: true,
+      serviceAccountKeyPath =
+          await FirebaseSetupPrompts.askServiceAccountKeyPath(
+        outputDir: outputDir,
+        serverPackageName: '${appName}_server',
       );
-
-      // Check if file exists
-      final keyFile = File(p.join(serverDir.path, 'service-account.json'));
-      if (keyFile.existsSync()) {
-        serviceAccountKeyPath = keyFile.path;
-        success('Service account key found!');
-      } else {
-        warn('service-account.json not found - you can add it later');
-      }
     }
 
     return SetupConfig(
@@ -324,98 +441,164 @@ class InteractiveWizard {
     UserPrompt.printDivider(title: 'Creating Project');
 
     // Create projects with spinner
-    await UserPrompt.withSpinner(
-      'Creating project structure...',
-      () async {
-        final creator = ProjectCreator(config);
+    try {
+      await UserPrompt.withSpinner('Creating project structure...', () async {
+        final creator = ProjectCreator(config, runner: _spinnerRunner);
         if (!await creator.createAllProjects()) {
           throw Exception('Failed to create projects');
         }
         // Clean up test folders while we're at it
         await creator.deleteTestFolders();
       },
-      doneMessage: '✓ Project structure created',
-    );
+        doneMessage: '✓ Project structure created',
+        failedMessage: '✗ Project creation failed',
+      );
+    } catch (e) {
+      _recordFailure(
+        'Project structure',
+        hint: 'Could not run flutter/dart create. Error: $e',
+      );
+      // No point continuing without project skeletons
+      return;
+    }
 
     // Copy templates with spinner (downloads from GitHub if needed)
-    await UserPrompt.withSpinner(
-      'Preparing templates...',
-      () async {
+    try {
+      await UserPrompt.withSpinner('Preparing templates...', () async {
         final copier = await TemplateCopier.create(config);
         await copier.copyAll();
       },
-      doneMessage: '✓ Template files copied',
-    );
+        doneMessage: '✓ Template files copied',
+        failedMessage: '✗ Template copy failed',
+      );
+    } catch (e) {
+      _recordFailure(
+        'Template copy',
+        hint: 'Templates could not be copied. Error: $e',
+      );
+      // Templates are required for the rest to work
+      return;
+    }
 
     // Link models if needed
-    final depManager = DependencyManager(config);
+    final depManager = DependencyManager(config, runner: _spinnerRunner);
     if (config.createModels) {
-      await UserPrompt.withSpinner(
-        'Linking models package...',
-        () async {
+      try {
+        await UserPrompt.withSpinner('Linking models package...', () async {
           await depManager.linkModelsToProjects();
         },
-        doneMessage: '✓ Models package linked',
-      );
+          doneMessage: '✓ Models package linked',
+          failedMessage: '✗ Models linking failed',
+        );
+      } catch (e) {
+        _recordFailure(
+          'Models linking',
+          hint: 'Could not add path dependency to models. Error: $e',
+        );
+      }
     }
 
     // Get dependencies with spinner (this can take a while)
-    await UserPrompt.withSpinner(
+    final bool depsOk = await UserPrompt.withSpinner(
       'Installing dependencies (this may take a moment)...',
-      () async {
-        await depManager.getAllDependencies();
-      },
+      () async => await depManager.getAllDependencies(),
       doneMessage: '✓ Dependencies installed',
+      failedMessage: '✗ Dependency install had issues',
     );
+    if (!depsOk) {
+      _recordFailure(
+        'Dependencies',
+        hint:
+            'Some pub get commands failed. Run `flutter pub get` or `dart pub get` manually in each package.',
+      );
+    }
 
     // Run build_runner with spinner
-    await UserPrompt.withSpinner(
+    final bool buildOk = await UserPrompt.withSpinner(
       'Running code generation...',
-      () async {
-        await depManager.runAllBuildRunners();
-      },
+      () async => await depManager.runAllBuildRunners(),
       doneMessage: '✓ Code generation complete',
+      failedMessage: '✗ Code generation had issues',
     );
+    if (!buildOk) {
+      _recordFailure(
+        'Code generation',
+        hint:
+            'build_runner failed. After fixing dependencies, run `dart run build_runner build --delete-conflicting-outputs`.',
+      );
+    }
 
     // Generate Firebase configs if enabled
     if (config.useFirebase) {
-      await UserPrompt.withSpinner(
-        'Generating Firebase configuration...',
-        () async {
-          final configGen = ConfigGenerator(config);
-          await configGen.generateAll();
-        },
-        doneMessage: '✓ Firebase config generated',
-      );
+      try {
+        await UserPrompt.withSpinner(
+          'Generating Firebase configuration...',
+          () async {
+            final configGen = ConfigGenerator(config);
+            await configGen.generateAll();
+          },
+          doneMessage: '✓ Firebase config generated',
+          failedMessage: '✗ Firebase config generation failed',
+        );
+      } catch (e) {
+        _recordFailure(
+          'Firebase config files',
+          hint: 'Could not generate firebase.json/.firebaserc. Error: $e',
+        );
+      }
     }
 
     // Generate server files if enabled
     if (config.createServer) {
+      try {
+        await UserPrompt.withSpinner(
+          'Setting up server deployment...',
+          () async {
+            final serverSetup = ServerSetup(config, runner: _spinnerRunner);
+            await serverSetup.generateAll();
+          },
+          doneMessage: '✓ Server setup complete',
+          failedMessage: '✗ Server setup failed',
+        );
+      } catch (e) {
+        _recordFailure(
+          'Server setup',
+          hint: 'Server deployment files could not be created. Error: $e',
+        );
+      }
+    }
+
+    // Save configuration (always best-effort)
+    try {
       await UserPrompt.withSpinner(
-        'Setting up server deployment...',
+        'Saving configuration...',
         () async {
-          final serverSetup = ServerSetup(config);
-          await serverSetup.generateAll();
+          final configDir = Directory(p.join(config.outputDir, 'config'));
+          if (!configDir.existsSync()) {
+            await configDir.create(recursive: true);
+          }
+          await config.saveToFile(p.join(configDir.path, 'setup_config.env'));
+          await SetupGuidance.writeProjectGuide(config);
         },
-        doneMessage: '✓ Server setup complete',
+        doneMessage: '✓ Configuration saved',
+        failedMessage: '✗ Configuration save failed',
+      );
+    } catch (e) {
+      _recordFailure(
+        'Configuration save',
+        hint: 'Could not write setup_config.env or GET_STARTED.md. Error: $e',
       );
     }
 
-    // Save configuration
-    await UserPrompt.withSpinner(
-      'Saving configuration...',
-      () async {
-        final configDir = Directory(p.join(config.outputDir, 'config'));
-        if (!configDir.existsSync()) {
-          await configDir.create(recursive: true);
-        }
-        await config.saveToFile(p.join(configDir.path, 'setup_config.env'));
-      },
-      doneMessage: '✓ Configuration saved',
-    );
-
     print('');
-    UserPrompt.printSuccessBox('Project created successfully!');
+    if (_failures.isEmpty) {
+      UserPrompt.printSuccessBox('Project created successfully!');
+    } else {
+      UserPrompt.printErrorBox(
+        'Project created with ${_failures.length} issue(s)',
+        hint: 'Review the issues below and rerun the failed steps.',
+      );
+    }
   }
 
   Future<void> _offerFirebaseSetup(SetupConfig config) async {
@@ -435,38 +618,55 @@ class InteractiveWizard {
       return;
     }
 
-    final firebase = FirebaseService(config);
+    final firebase = FirebaseService(config, runner: _spinnerRunner);
 
     // Login to Firebase with spinner
-    await UserPrompt.withSpinner(
+    final bool loginOk = await UserPrompt.withSpinner(
       'Logging in to Firebase...',
-      () async {
-        await firebase.login();
-      },
+      () async => await firebase.login(),
       doneMessage: '✓ Firebase login complete',
+      failedMessage: '✗ Firebase login failed',
     );
+    if (!loginOk) {
+      _recordFailure(
+        'Firebase login',
+        hint:
+            'Run `firebase login` (or place a service-account.json) and rerun `oracular deploy firebase-setup`.',
+      );
+      // Without login, the rest will fail too. Surface guidance and bail.
+      return;
+    }
 
     // Login to gcloud if Cloud Run enabled
     if (config.setupCloudRun) {
-      await UserPrompt.withSpinner(
+      final bool gcloudOk = await UserPrompt.withSpinner(
         'Logging in to Google Cloud...',
-        () async {
-          await firebase.gcloudLogin();
-        },
+        () async => await firebase.gcloudLogin(),
         doneMessage: '✓ Google Cloud login complete',
+        failedMessage: '✗ Google Cloud login failed',
       );
+      if (!gcloudOk) {
+        _recordFailure(
+          'gcloud login',
+          hint:
+              'Run `gcloud auth login` (or activate a service account) before deploying Cloud Run.',
+        );
+      }
     }
 
     // Configure FlutterFire with spinner
     final flutterFireSuccess = await UserPrompt.withSpinner(
       'Configuring FlutterFire...',
-      () async {
-        return await firebase.configureFlutterFire();
-      },
+      () async => await firebase.configureFlutterFire(),
       doneMessage: '✓ FlutterFire configured',
+      failedMessage: '✗ FlutterFire configuration failed',
     );
 
     if (!flutterFireSuccess) {
+      _recordFailure(
+        'FlutterFire configuration',
+        hint: 'Retry with: oracular deploy firebase-setup',
+      );
       UserPrompt.printErrorBox(
         'FlutterFire configuration failed',
         hint: 'You can retry with: oracular deploy firebase-setup',
@@ -475,68 +675,80 @@ class InteractiveWizard {
 
     // Enable APIs
     if (config.setupCloudRun) {
-      await UserPrompt.withSpinner(
+      final bool apisOk = await UserPrompt.withSpinner(
         'Enabling Google Cloud APIs...',
-        () async {
-          await firebase.enableGoogleApis();
-        },
+        () async => await firebase.enableGoogleApis(),
         doneMessage: '✓ APIs enabled',
+        failedMessage: '✗ Could not enable all APIs',
       );
+      if (!apisOk) {
+        _recordFailure(
+          'Google Cloud APIs',
+          hint:
+              'Manually run `gcloud services enable artifactregistry.googleapis.com run.googleapis.com --project ${config.firebaseProjectId}`.',
+        );
+      }
     }
 
     print('');
-    UserPrompt.printSuccessBox('Firebase setup complete!');
+    if (_failures.isEmpty) {
+      UserPrompt.printSuccessBox('Firebase setup complete!');
+    } else {
+      UserPrompt.printErrorBox(
+        'Firebase setup completed with issues',
+        hint: 'Review the issues at the end of the wizard output.',
+      );
+    }
   }
 
   void _printSuccess(SetupConfig config) {
-    UserPrompt.printBanner('Project Created Successfully!');
+    if (_failures.isEmpty) {
+      UserPrompt.printBanner('Project Created Successfully!');
+    } else {
+      UserPrompt.printBanner('Project Created With Issues');
+    }
 
     // List created packages
-    final createdItems = <String>[];
-
-    createdItems.add('${config.appName}/ - Main application');
-    if (config.createModels) {
-      createdItems.add('${config.modelsPackageName}/ - Shared models package');
-    }
-    if (config.createServer) {
-      createdItems.add('${config.serverPackageName}/ - Server application');
-    }
-    createdItems.add('config/ - Configuration files');
-    createdItems.add('references/ - Library documentation');
+    final List<String> createdItems = SetupGuidance.createdProjectItems(config);
 
     print('Created:');
     UserPrompt.printList(createdItems);
 
-    // Next steps
-    UserPrompt.printDivider(title: 'Next Steps');
-
-    final nextSteps = <String>[];
-
-    nextSteps.add('cd ${config.outputDir}/${config.appName}');
-    if (config.template.isFlutterApp) {
-      nextSteps.add('flutter run');
-    } else {
-      nextSteps.add('dart run bin/main.dart --help');
+    if (_failures.isNotEmpty) {
+      _printFailureSummary();
     }
 
-    UserPrompt.printNumberedList(nextSteps);
-
-    // Firebase deployment commands
-    if (config.useFirebase) {
-      UserPrompt.printDivider(title: 'Firebase Deployment');
-      UserPrompt.printList(['oracular deploy all']);
-    }
-
-    // Server deployment commands
-    if (config.createServer) {
-      UserPrompt.printDivider(title: 'Server Deployment');
-      UserPrompt.printList([
-        'cd ${config.serverPackageName}',
-        './script_deploy.sh',
-      ]);
-    }
+    SetupGuidance.printPostCreationChecklist(config);
 
     print('');
-    UserPrompt.printSuccessBox('Happy coding!');
+    if (_failures.isEmpty) {
+      UserPrompt.printSuccessBox('Happy coding!');
+    } else {
+      UserPrompt.printErrorBox(
+        '${_failures.length} step(s) need your attention',
+        hint: 'Resolve the items listed under "Setup Issues" before deploying.',
+      );
+    }
   }
+
+  void _printFailureSummary() {
+    print('');
+    UserPrompt.printDivider(title: 'Setup Issues');
+    final List<String> lines = <String>[];
+    for (int i = 0; i < _failures.length; i++) {
+      final _WizardFailure failure = _failures[i];
+      lines.add('${i + 1}. ${failure.step}');
+      if (failure.hint != null) {
+        lines.add('   Fix: ${failure.hint}');
+      }
+    }
+    UserPrompt.printList(lines);
+  }
+}
+
+class _WizardFailure {
+  final String step;
+  final String? hint;
+
+  _WizardFailure({required this.step, this.hint});
 }

@@ -4,6 +4,7 @@ import 'handlers/check_handlers.dart';
 import 'handlers/config_handlers.dart';
 import 'handlers/create_handlers.dart';
 import 'handlers/deploy_handlers.dart';
+import 'handlers/guide_handlers.dart';
 import 'handlers/gitignore_handlers.dart';
 import 'handlers/script_handlers.dart';
 import 'handlers/templates_handlers.dart';
@@ -40,6 +41,32 @@ final List<DartedCommand> commandsTree = [
         callback: (args, flags) => handleListTemplates(args ?? {}, _boolToMap(flags)),
       ),
     ],
+  ),
+
+  // Guide command
+  DartedCommand(
+    name: 'guide',
+    helperDescription: 'Generate and print the project setup guide',
+    flags: [
+      DartedFlag(name: 'print', abbreviation: 'p'),
+      DartedFlag.help,
+    ],
+    callback: (args, flags) => handleGuide(args ?? {}, _boolToMap(flags)),
+  ),
+
+  // Open command
+  DartedCommand(
+    name: 'open',
+    helperDescription: 'Open project folders and setup consoles',
+    arguments: [
+      DartedArgument(
+        name: 'target',
+        abbreviation: 't',
+        isMainReq: true,
+        description: 'guide, app, firebase, auth, firestore, storage, hosting',
+      ),
+    ],
+    callback: (args, _) => handleOpenTarget((args?['target'] ?? '').toString()),
   ),
 
   // Check command

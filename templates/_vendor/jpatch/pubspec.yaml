@@ -1,0 +1,11 @@
+name: jpatch
+description: >-
+  Pure-Dart shim for ArcaneArts/jpatch. Identical public API to the published
+  jpatch 1.0.1, but without the gratuitous flutter SDK dependency so it can
+  be consumed from pure-Dart contexts (Jaspr, server, CLI). Vendored by
+  Oracular into projects that need shared models in non-Flutter contexts.
+version: 1.0.2
+publish_to: 'none'
+
+environment:
+  sdk: ^3.0.0

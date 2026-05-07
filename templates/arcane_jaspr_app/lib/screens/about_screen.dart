@@ -4,16 +4,16 @@ import '../components/app_header.dart';
 import '../utils/constants.dart';
 
 /// About screen - information about the application
-class AboutScreen extends StatelessComponent {
+class AboutScreen extends StatelessWidget {
   final bool isDark;
-  final VoidCallback? onThemeToggle;
+  final void Function()? onThemeToggle;
 
   const AboutScreen({super.key, this.isDark = true, this.onThemeToggle});
 
   @override
-  Component build(BuildContext context) {
-    return ArcaneDiv(
-      styles: const ArcaneStyleData(
+  Widget build(BuildContext context) {
+    return ArcaneBox(
+      style: const ArcaneStyleData(
         minHeight: '100vh',
         display: Display.flex,
         flexDirection: FlexDirection.column,
@@ -27,52 +27,49 @@ class AboutScreen extends StatelessComponent {
         ),
 
         // Content
-        _Content(),
+        const _Content(),
       ],
     );
   }
 }
 
-class _Content extends StatelessComponent {
+class _Content extends StatelessWidget {
   const _Content();
 
   @override
-  Component build(BuildContext context) {
-    return ArcaneDiv(
-      styles: const ArcaneStyleData(
-        padding: PaddingPreset.sectionY,
-        flexGrow: 1,
-      ),
+  Widget build(BuildContext context) {
+    return const ArcaneBox(
+      style: ArcaneStyleData(padding: PaddingPreset.sectionY, flexGrow: 1),
       children: [
         ArcaneBox(
           maxWidth: MaxWidth.content,
           margin: MarginPreset.autoX,
           children: [
-            ArcaneColumn(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              style: const ArcaneStyleData(gap: Gap.lg),
+              style: ArcaneStyleData(gap: Gap.lg),
               children: [
                 // Page title using ArcaneSectionHeader
-                ArcaneColumn(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  style: const ArcaneStyleData(gap: Gap.sm),
-                  children: const [
-                    ArcaneText.heading('About'),
-                    ArcaneText.body(
+                  style: ArcaneStyleData(gap: Gap.sm),
+                  children: [
+                    Text.heading('About'),
+                    Text.body(
                       '${AppConstants.appName} is a modern web application template built with Jaspr - the Dart web framework.',
                     ),
                   ],
                 ),
 
                 // Description text
-                ArcaneDiv(
-                  styles: const ArcaneStyleData(
+                ArcaneBox(
+                  style: ArcaneStyleData(
                     fontSize: FontSize.lg,
                     textColor: TextColor.muted,
                     lineHeight: LineHeight.relaxed,
                   ),
                   children: [
-                    ArcaneText(
+                    Text(
                       'This template includes the Arcane design system for beautiful, '
                       'consistent UI components, along with routing, logging, and '
                       'a ready-to-use project structure.',
@@ -81,20 +78,20 @@ class _Content extends StatelessComponent {
                 ),
 
                 // Getting Started section
-                ArcaneDiv(
-                  styles: const ArcaneStyleData(margin: MarginPreset.topXl),
-                  children: [const ArcaneText.heading2('Getting Started')],
+                ArcaneBox(
+                  style: ArcaneStyleData(margin: MarginPreset.topXl),
+                  children: [Text.heading2('Getting Started')],
                 ),
 
                 // Getting started checklist using ArcaneCheckList
-                ArcaneCard(
-                  child: ArcaneDiv(
-                    styles: const ArcaneStyleData(padding: PaddingPreset.lg),
+                Card(
+                  child: ArcaneBox(
+                    style: ArcaneStyleData(padding: PaddingPreset.lg),
                     children: [
-                      ArcaneColumn(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        style: const ArcaneStyleData(gap: Gap.sm),
-                        children: const [
+                        style: ArcaneStyleData(gap: Gap.sm),
+                        children: [
                           _ChecklistItem(
                             text:
                                 'Run jaspr serve to start the development server',
@@ -113,21 +110,18 @@ class _Content extends StatelessComponent {
                 ),
 
                 // Tech stack section
-                ArcaneDiv(
-                  styles: const ArcaneStyleData(margin: MarginPreset.topXl),
-                  children: [const ArcaneText.heading2('Tech Stack')],
+                ArcaneBox(
+                  style: ArcaneStyleData(margin: MarginPreset.topXl),
+                  children: [Text.heading2('Tech Stack')],
                 ),
 
                 // Tech stack badges
-                ArcaneRow(
-                  style: const ArcaneStyleData(
-                    gap: Gap.sm,
-                    flexWrap: FlexWrap.wrap,
-                  ),
+                Row(
+                  style: ArcaneStyleData(gap: Gap.sm, flexWrap: FlexWrap.wrap),
                   children: [
-                    const ArcaneStatusBadge.info('Dart'),
-                    const ArcaneStatusBadge.success('Jaspr'),
-                    const ArcaneStatusBadge.info('Arcane UI'),
+                    ArcaneStatusBadge.info('Dart'),
+                    ArcaneStatusBadge.success('Jaspr'),
+                    ArcaneStatusBadge.info('Arcane UI'),
                   ],
                 ),
               ],
@@ -139,18 +133,18 @@ class _Content extends StatelessComponent {
   }
 }
 
-class _ChecklistItem extends StatelessComponent {
+class _ChecklistItem extends StatelessWidget {
   final String text;
 
   const _ChecklistItem({required this.text});
 
   @override
-  Component build(BuildContext context) {
-    return ArcaneRow(
+  Widget build(BuildContext context) {
+    return Row(
       style: const ArcaneStyleData(gap: Gap.sm, alignItems: AlignItems.center),
       children: [
         ArcaneIcon.check(size: IconSize.sm),
-        ArcaneText(text),
+        Text(text),
       ],
     );
   }

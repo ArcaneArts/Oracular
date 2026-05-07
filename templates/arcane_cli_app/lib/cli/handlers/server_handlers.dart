@@ -135,7 +135,7 @@ Future<void> handleServerPing() async {
     if (response.statusCode == 200) {
       print('\n┌─ Server Status ──────────────────────┐');
       print('│ URL: ${_serverUrl.padRight(30)}│');
-      print('│ Status: Online'.padRight(41) + '│');
+      print('${'│ Status: Online'.padRight(41)}│');
       print('│ Response: ${response.statusCode.toString().padRight(27)}│');
       print('└──────────────────────────────────────┘\n');
       success("Server is online");

@@ -1,33 +1,60 @@
 #!/bin/bash
 
-# Run pub get on all template packages
+# Run pub get on all template packages.
 # Usage: ./pub_get_all.sh
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Running pub get on all templates..."
 echo ""
 
-# Flutter templates
-for dir in arcane_app arcane_beamer_app arcane_dock_app arcane_server; do
+run_flutter_get() {
+  local dir="$1"
   if [ -d "$SCRIPT_DIR/$dir" ]; then
     echo "=== $dir (flutter) ==="
     cd "$SCRIPT_DIR/$dir"
     flutter pub get
     echo ""
   fi
-done
+}
 
-# Dart-only templates
-for dir in arcane_cli_app arcane_models; do
+run_dart_get() {
+  local dir="$1"
+  local label="$2"
   if [ -d "$SCRIPT_DIR/$dir" ]; then
-    echo "=== $dir (dart) ==="
+    echo "=== $dir ($label) ==="
     cd "$SCRIPT_DIR/$dir"
     dart pub get
     echo ""
   fi
-done
+}
+
+# Flutter templates
+run_flutter_get "arcane_app"
+run_flutter_get "arcane_beamer_app"
+run_flutter_get "arcane_dock_app"
+run_flutter_get "arcane_server"
+
+# Dart-only templates
+run_dart_get "arcane_cli_app" "dart"
+run_dart_get "arcane_models" "dart"
+
+# Jaspr templates
+run_dart_get "arcane_jaspr_app" "jaspr"
+
+# arcane_jaspr_docs depends on generated local deps in ../.oracular_deps
+if [ -d "$SCRIPT_DIR/arcane_jaspr_docs" ]; then
+  echo "=== arcane_jaspr_docs (jaspr) ==="
+  if [ -f "$SCRIPT_DIR/.oracular_deps/arcane_lexicon/pubspec.yaml" ] && [ -f "$SCRIPT_DIR/.oracular_deps/arcane_jaspr/pubspec.yaml" ]; then
+    cd "$SCRIPT_DIR/arcane_jaspr_docs"
+    dart pub get
+  else
+    echo "Skipping arcane_jaspr_docs: missing templates/.oracular_deps/arcane_lexicon or templates/.oracular_deps/arcane_jaspr."
+    echo "Generate a Jaspr docs project with Oracular to provision local docs deps."
+  fi
+  echo ""
+fi
 
 echo "Done!"

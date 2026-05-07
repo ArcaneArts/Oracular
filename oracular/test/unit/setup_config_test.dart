@@ -151,5 +151,23 @@ void main() {
       );
       expect(loaded, isNull);
     });
+
+    test('loads empty platform list for non-Flutter templates', () async {
+      final configPath = '${tempDir.path}/config.env';
+      await File(configPath).writeAsString('''
+APP_NAME=docs_site
+ORG_DOMAIN=com.test
+BASE_CLASS_NAME=DocsSite
+TEMPLATE_NAME=arcaneJasprDocs
+OUTPUT_DIR=${tempDir.path}
+PLATFORMS=
+''');
+
+      final loaded = await SetupConfig.loadFromFile(configPath);
+
+      expect(loaded, isNotNull);
+      expect(loaded!.template, equals(TemplateType.arcaneJasprDocs));
+      expect(loaded.platforms, isEmpty);
+    });
   });
 }

@@ -18,40 +18,110 @@ Future<ProcessResult> runJasprBuildWithRetry({
   required String workingDirectory,
   int maxAttempts = 3,
 }) async {
-  ProcessResult result = await Process.run(
-    'jaspr',
-    <String>['build'],
+  int port = await getAvailablePort();
+  ProcessResult result = await runJasprBuild(
     workingDirectory: workingDirectory,
+    port: port,
   );
 
   int attempt = 1;
   while (attempt < maxAttempts) {
     final String output = '${result.stdout}\n${result.stderr}';
-    final bool portBusy =
-        output.contains('Address already in use') &&
-        output.contains('5567');
+    final bool portBusy = output.contains('Address already in use');
     if (result.exitCode == 0 || !portBusy) {
       return result;
     }
 
-    await freeJasprProxyPort();
+    if (output.contains('5567')) {
+      await freeJasprProxyPort();
+    }
+
     attempt += 1;
     await Future<void>.delayed(const Duration(milliseconds: 750));
-    result = await Process.run(
-      'jaspr',
-      <String>['build'],
+    port = await getAvailablePort();
+    result = await runJasprBuild(
       workingDirectory: workingDirectory,
+      port: port,
     );
   }
 
   return result;
 }
 
-Future<void> freeJasprProxyPort() async {
-  final ProcessResult listenersResult = await Process.run(
-    'lsof',
-    <String>['-ti', '-nP', '-iTCP:5567', '-sTCP:LISTEN'],
+Future<ProcessResult> runJasprBuild({
+  required String workingDirectory,
+  required int port,
+}) async {
+  return Process.run(
+    'jaspr',
+    <String>['build'],
+    workingDirectory: workingDirectory,
+    environment: <String, String>{'PORT': '$port'},
   );
+}
+
+Future<int> getAvailablePort() async {
+  final ServerSocket socket = await ServerSocket.bind(
+    InternetAddress.loopbackIPv4,
+    0,
+  );
+  final int port = socket.port;
+  await socket.close();
+  return port;
+}
+
+Future<void> setJasprProjectPort({
+  required String projectDirectory,
+  required int port,
+}) async {
+  final File pubspecFile = File(p.join(projectDirectory, 'pubspec.yaml'));
+  if (!pubspecFile.existsSync()) {
+    return;
+  }
+
+  final List<String> lines = await pubspecFile.readAsLines();
+  int jasprIndex = lines.indexWhere((String line) => line.trim() == 'jaspr:');
+  if (jasprIndex == -1) {
+    lines
+      ..add('')
+      ..add('jaspr:')
+      ..add('  port: $port');
+  } else {
+    int blockEnd = jasprIndex + 1;
+    while (blockEnd < lines.length) {
+      final String line = lines[blockEnd];
+      if (line.startsWith('  ') || line.trim().isEmpty) {
+        blockEnd += 1;
+      } else {
+        break;
+      }
+    }
+
+    int portIndex = -1;
+    for (int i = jasprIndex + 1; i < blockEnd; i++) {
+      if (lines[i].trimLeft().startsWith('port:')) {
+        portIndex = i;
+        break;
+      }
+    }
+
+    if (portIndex == -1) {
+      lines.insert(blockEnd, '  port: $port');
+    } else {
+      lines[portIndex] = '  port: $port';
+    }
+  }
+
+  await pubspecFile.writeAsString('${lines.join('\n')}\n');
+}
+
+Future<void> freeJasprProxyPort() async {
+  final ProcessResult listenersResult = await Process.run('lsof', <String>[
+    '-ti',
+    '-nP',
+    '-iTCP:5567',
+    '-sTCP:LISTEN',
+  ]);
   if (listenersResult.exitCode != 0) {
     return;
   }
@@ -86,15 +156,15 @@ class TestPermutation {
       '${template.name}_models${createModels ? "Yes" : "No"}_server${createServer ? "Yes" : "No"}';
 
   SetupConfig toConfig(String outputDir) => SetupConfig(
-        appName: 'test_app',
-        orgDomain: 'com.example',
-        baseClassName: 'TestApp',
-        template: template,
-        outputDir: outputDir,
-        createModels: createModels,
-        createServer: createServer,
-        useFirebase: false,
-      );
+    appName: 'test_app',
+    orgDomain: 'com.example',
+    baseClassName: 'TestApp',
+    template: template,
+    outputDir: outputDir,
+    createModels: createModels,
+    createServer: createServer,
+    useFirebase: false,
+  );
 }
 
 void main() {
@@ -103,11 +173,13 @@ void main() {
   for (final template in TemplateType.values) {
     for (final models in [false, true]) {
       for (final server in [false, true]) {
-        permutations.add(TestPermutation(
-          template: template,
-          createModels: models,
-          createServer: server,
-        ));
+        permutations.add(
+          TestPermutation(
+            template: template,
+            createModels: models,
+            createServer: server,
+          ),
+        );
       }
     }
   }
@@ -142,7 +214,8 @@ void main() {
           expect(
             Directory(templatePath).existsSync(),
             isTrue,
-            reason: 'Template directory should exist: ${template.directoryName}',
+            reason:
+                'Template directory should exist: ${template.directoryName}',
           );
         }
 
@@ -176,8 +249,9 @@ void main() {
         ];
 
         for (final name in templateNames) {
-          final pubspec =
-              File(p.join(copier.getTemplatePath(name), 'pubspec.yaml'));
+          final pubspec = File(
+            p.join(copier.getTemplatePath(name), 'pubspec.yaml'),
+          );
           expect(
             pubspec.existsSync(),
             isTrue,
@@ -231,8 +305,9 @@ void main() {
           final result = replacer.replaceInContent(input);
 
           // Jaspr templates use webPackageName (my_cool_app_web), others use appName
-          final expectedPackage =
-              template.isJasprApp ? 'my_cool_app_web' : 'my_cool_app';
+          final expectedPackage = template.isJasprApp
+              ? 'my_cool_app_web'
+              : 'my_cool_app';
           expect(
             result,
             equals("import 'package:$expectedPackage/main.dart';"),
@@ -349,12 +424,14 @@ void main() {
           );
           final replacer = PlaceholderReplacer(config);
 
-          final result =
-              replacer.replaceInFilename('${template.canonicalPackageName}.dart');
+          final result = replacer.replaceInFilename(
+            '${template.canonicalPackageName}.dart',
+          );
 
           // Jaspr templates use webPackageName (my_app_web), others use appName
-          final expectedFilename =
-              template.isJasprApp ? 'my_app_web.dart' : 'my_app.dart';
+          final expectedFilename = template.isJasprApp
+              ? 'my_app_web.dart'
+              : 'my_app.dart';
           expect(result, equals(expectedFilename));
         });
       }
@@ -386,8 +463,9 @@ void main() {
         test('template directory exists', () {
           final config = permutation.toConfig(tempDir.path);
           final copier = TemplateCopier.withPath(config, getTemplatesPath());
-          final templatePath =
-              copier.getTemplatePath(config.template.directoryName);
+          final templatePath = copier.getTemplatePath(
+            config.template.directoryName,
+          );
           expect(
             Directory(templatePath).existsSync(),
             isTrue,
@@ -431,9 +509,13 @@ void main() {
           final result = replacer.replaceInContent(input);
 
           // Jaspr templates use webPackageName (test_app_web), others use appName
-          final expectedPackage =
-              config.template.isJasprApp ? 'test_app_web' : 'test_app';
-          expect(result, equals("import 'package:$expectedPackage/main.dart';"));
+          final expectedPackage = config.template.isJasprApp
+              ? 'test_app_web'
+              : 'test_app';
+          expect(
+            result,
+            equals("import 'package:$expectedPackage/main.dart';"),
+          );
         });
       });
     }
@@ -478,25 +560,38 @@ void main() {
 
         // Verify output directory was created
         // For Jaspr templates, use webPackageName; for others, use appName
-        final expectedDirName =
-            template.isJasprApp ? config.webPackageName : config.appName;
+        final expectedDirName = template.isJasprApp
+            ? config.webPackageName
+            : config.appName;
         final outputDir = Directory(p.join(tempDir.path, expectedDirName));
-        expect(outputDir.existsSync(), isTrue,
-            reason: 'Output directory should be created');
+        expect(
+          outputDir.existsSync(),
+          isTrue,
+          reason: 'Output directory should be created',
+        );
 
         // Verify pubspec.yaml was copied and modified
         final pubspec = File(p.join(outputDir.path, 'pubspec.yaml'));
-        expect(pubspec.existsSync(), isTrue,
-            reason: 'pubspec.yaml should exist');
+        expect(
+          pubspec.existsSync(),
+          isTrue,
+          reason: 'pubspec.yaml should exist',
+        );
 
         final pubspecContent = await pubspec.readAsString();
-        expect(pubspecContent, contains('name: $expectedDirName'),
-            reason: 'pubspec should have correct name');
+        expect(
+          pubspecContent,
+          contains('name: $expectedDirName'),
+          reason: 'pubspec should have correct name',
+        );
 
         // Verify lib directory exists
         final libDir = Directory(p.join(outputDir.path, 'lib'));
-        expect(libDir.existsSync(), isTrue,
-            reason: 'lib directory should exist');
+        expect(
+          libDir.existsSync(),
+          isTrue,
+          reason: 'lib directory should exist',
+        );
 
         // Verify no canonical names remain in Dart files
         await for (final entity in libDir.list(recursive: true)) {
@@ -536,19 +631,25 @@ void main() {
       await copier.copyModelsTemplate();
 
       // Verify output directory was created
-      final outputDir =
-          Directory(p.join(tempDir.path, config.modelsPackageName));
-      expect(outputDir.existsSync(), isTrue,
-          reason: 'Models output directory should be created');
+      final outputDir = Directory(
+        p.join(tempDir.path, config.modelsPackageName),
+      );
+      expect(
+        outputDir.existsSync(),
+        isTrue,
+        reason: 'Models output directory should be created',
+      );
 
       // Verify pubspec.yaml was copied and modified
       final pubspec = File(p.join(outputDir.path, 'pubspec.yaml'));
-      expect(pubspec.existsSync(), isTrue,
-          reason: 'pubspec.yaml should exist');
+      expect(pubspec.existsSync(), isTrue, reason: 'pubspec.yaml should exist');
 
       final pubspecContent = await pubspec.readAsString();
-      expect(pubspecContent, contains('name: ${config.modelsPackageName}'),
-          reason: 'pubspec should have correct name');
+      expect(
+        pubspecContent,
+        contains('name: ${config.modelsPackageName}'),
+        reason: 'pubspec should have correct name',
+      );
     });
 
     test('copyServerTemplate works', () async {
@@ -574,19 +675,25 @@ void main() {
       await copier.copyServerTemplate();
 
       // Verify output directory was created
-      final outputDir =
-          Directory(p.join(tempDir.path, config.serverPackageName));
-      expect(outputDir.existsSync(), isTrue,
-          reason: 'Server output directory should be created');
+      final outputDir = Directory(
+        p.join(tempDir.path, config.serverPackageName),
+      );
+      expect(
+        outputDir.existsSync(),
+        isTrue,
+        reason: 'Server output directory should be created',
+      );
 
       // Verify pubspec.yaml was copied and modified
       final pubspec = File(p.join(outputDir.path, 'pubspec.yaml'));
-      expect(pubspec.existsSync(), isTrue,
-          reason: 'pubspec.yaml should exist');
+      expect(pubspec.existsSync(), isTrue, reason: 'pubspec.yaml should exist');
 
       final pubspecContent = await pubspec.readAsString();
-      expect(pubspecContent, contains('name: ${config.serverPackageName}'),
-          reason: 'pubspec should have correct name');
+      expect(
+        pubspecContent,
+        contains('name: ${config.serverPackageName}'),
+        reason: 'pubspec should have correct name',
+      );
     });
 
     test('copyAll creates all requested packages', () async {
@@ -638,7 +745,9 @@ void main() {
       );
 
       // Verify references was created (only if references template exists)
-      final referencesTemplate = Directory(copier.getTemplatePath('references'));
+      final referencesTemplate = Directory(
+        copier.getTemplatePath('references'),
+      );
       if (referencesTemplate.existsSync()) {
         expect(
           Directory(p.join(tempDir.path, 'references')).existsSync(),
@@ -689,34 +798,42 @@ void main() {
           await copier.copyAppTemplate();
 
           // Get output directory name
-          final outputDirName =
-              template.isJasprApp ? config.webPackageName : config.appName;
+          final outputDirName = template.isJasprApp
+              ? config.webPackageName
+              : config.appName;
           final projectDir = Directory(p.join(tempDir.path, outputDirName));
-          expect(projectDir.existsSync(), isTrue,
-              reason: 'Project directory should exist after copy');
+          expect(
+            projectDir.existsSync(),
+            isTrue,
+            reason: 'Project directory should exist after copy',
+          );
+
+          if (template.isJasprApp) {
+            await setJasprProjectPort(
+              projectDirectory: projectDir.path,
+              port: await getAvailablePort(),
+            );
+          }
 
           // Run pub get first
           late ProcessResult pubResult;
           if (template.isFlutterApp) {
-            pubResult = await Process.run(
-              'flutter',
-              ['pub', 'get'],
-              workingDirectory: projectDir.path,
-            );
+            pubResult = await Process.run('flutter', [
+              'pub',
+              'get',
+            ], workingDirectory: projectDir.path);
           } else if (template.isJasprApp) {
             // For Jaspr, use dart pub get
-            pubResult = await Process.run(
-              'dart',
-              ['pub', 'get'],
-              workingDirectory: projectDir.path,
-            );
+            pubResult = await Process.run('dart', [
+              'pub',
+              'get',
+            ], workingDirectory: projectDir.path);
           } else {
             // Dart CLI
-            pubResult = await Process.run(
-              'dart',
-              ['pub', 'get'],
-              workingDirectory: projectDir.path,
-            );
+            pubResult = await Process.run('dart', [
+              'pub',
+              'get',
+            ], workingDirectory: projectDir.path);
           }
 
           expect(
@@ -730,23 +847,31 @@ void main() {
           late ProcessResult compileResult;
           if (template.isFlutterApp) {
             // Flutter analyze checks for compile errors
-            compileResult = await Process.run(
-              'flutter',
-              ['analyze', '--no-fatal-infos', '--no-fatal-warnings'],
-              workingDirectory: projectDir.path,
-            );
+            compileResult = await Process.run('flutter', [
+              'analyze',
+              '--no-fatal-infos',
+              '--no-fatal-warnings',
+            ], workingDirectory: projectDir.path);
           } else if (template.isJasprApp) {
+            final ProcessResult analyzeResult = await Process.run('dart', [
+              'analyze',
+            ], workingDirectory: projectDir.path);
+            expect(
+              analyzeResult.exitCode,
+              equals(0),
+              reason:
+                  '${template.name} should analyze successfully before build:\n${analyzeResult.stdout}\n${analyzeResult.stderr}',
+            );
+
             // For Jaspr, run jaspr build to verify it compiles
             compileResult = await runJasprBuildWithRetry(
               workingDirectory: projectDir.path,
             );
           } else {
             // Dart CLI - use dart analyze (no --no-fatal-infos flag in dart)
-            compileResult = await Process.run(
-              'dart',
-              ['analyze'],
-              workingDirectory: projectDir.path,
-            );
+            compileResult = await Process.run('dart', [
+              'analyze',
+            ], workingDirectory: projectDir.path);
           }
 
           expect(
@@ -790,47 +915,63 @@ void main() {
         await copier.copyModelsTemplate();
 
         // Verify models package compiles
-        final modelsDir =
-            Directory(p.join(tempDir.path, config.modelsPackageName));
-        expect(modelsDir.existsSync(), isTrue,
-            reason: 'Models directory should exist');
-
-        var pubResult = await Process.run(
-          'dart',
-          ['pub', 'get'],
-          workingDirectory: modelsDir.path,
+        final modelsDir = Directory(
+          p.join(tempDir.path, config.modelsPackageName),
         );
-        expect(pubResult.exitCode, equals(0),
-            reason: 'Models pub get should succeed:\n${pubResult.stderr}');
-
-        var analyzeResult = await Process.run(
-          'dart',
-          ['analyze'],
-          workingDirectory: modelsDir.path,
+        expect(
+          modelsDir.existsSync(),
+          isTrue,
+          reason: 'Models directory should exist',
         );
-        expect(analyzeResult.exitCode, equals(0),
-            reason:
-                'Models should analyze successfully:\n${analyzeResult.stdout}\n${analyzeResult.stderr}');
+
+        var pubResult = await Process.run('dart', [
+          'pub',
+          'get',
+        ], workingDirectory: modelsDir.path);
+        expect(
+          pubResult.exitCode,
+          equals(0),
+          reason: 'Models pub get should succeed:\n${pubResult.stderr}',
+        );
+
+        var analyzeResult = await Process.run('dart', [
+          'analyze',
+        ], workingDirectory: modelsDir.path);
+        expect(
+          analyzeResult.exitCode,
+          equals(0),
+          reason:
+              'Models should analyze successfully:\n${analyzeResult.stdout}\n${analyzeResult.stderr}',
+        );
 
         // Verify app compiles (may have dependency on models)
         final appDir = Directory(p.join(tempDir.path, config.appName));
-        expect(appDir.existsSync(), isTrue, reason: 'App directory should exist');
-
-        pubResult = await Process.run(
-          'flutter',
-          ['pub', 'get'],
-          workingDirectory: appDir.path,
+        expect(
+          appDir.existsSync(),
+          isTrue,
+          reason: 'App directory should exist',
         );
-        expect(pubResult.exitCode, equals(0),
-            reason: 'App pub get should succeed:\n${pubResult.stderr}');
 
-        analyzeResult = await Process.run(
-          'flutter',
-          ['analyze', '--no-fatal-infos', '--no-fatal-warnings'],
-          workingDirectory: appDir.path,
+        pubResult = await Process.run('flutter', [
+          'pub',
+          'get',
+        ], workingDirectory: appDir.path);
+        expect(
+          pubResult.exitCode,
+          equals(0),
+          reason: 'App pub get should succeed:\n${pubResult.stderr}',
         );
-        expect(analyzeResult.exitCode, equals(0),
-            reason: 'App should analyze successfully:\n${analyzeResult.stderr}');
+
+        analyzeResult = await Process.run('flutter', [
+          'analyze',
+          '--no-fatal-infos',
+          '--no-fatal-warnings',
+        ], workingDirectory: appDir.path);
+        expect(
+          analyzeResult.exitCode,
+          equals(0),
+          reason: 'App should analyze successfully:\n${analyzeResult.stderr}',
+        );
       },
       timeout: const Timeout(Duration(minutes: 5)),
     );
@@ -868,37 +1009,48 @@ void main() {
         await copier.copyServerTemplate();
 
         // First get and analyze models (server depends on it)
-        final modelsDir =
-            Directory(p.join(tempDir.path, config.modelsPackageName));
-        var pubResult = await Process.run(
-          'dart',
-          ['pub', 'get'],
-          workingDirectory: modelsDir.path,
+        final modelsDir = Directory(
+          p.join(tempDir.path, config.modelsPackageName),
         );
-        expect(pubResult.exitCode, equals(0),
-            reason: 'Models pub get should succeed:\n${pubResult.stderr}');
+        var pubResult = await Process.run('dart', [
+          'pub',
+          'get',
+        ], workingDirectory: modelsDir.path);
+        expect(
+          pubResult.exitCode,
+          equals(0),
+          reason: 'Models pub get should succeed:\n${pubResult.stderr}',
+        );
 
         // Verify server package compiles
-        final serverDir =
-            Directory(p.join(tempDir.path, config.serverPackageName));
-        expect(serverDir.existsSync(), isTrue,
-            reason: 'Server directory should exist');
-
-        pubResult = await Process.run(
-          'dart',
-          ['pub', 'get'],
-          workingDirectory: serverDir.path,
+        final serverDir = Directory(
+          p.join(tempDir.path, config.serverPackageName),
         );
-        expect(pubResult.exitCode, equals(0),
-            reason: 'Server pub get should succeed:\n${pubResult.stderr}');
-
-        var analyzeResult = await Process.run(
-          'dart',
-          ['analyze'],
-          workingDirectory: serverDir.path,
+        expect(
+          serverDir.existsSync(),
+          isTrue,
+          reason: 'Server directory should exist',
         );
-        expect(analyzeResult.exitCode, equals(0),
-            reason: 'Server should analyze successfully:\n${analyzeResult.stderr}');
+
+        pubResult = await Process.run('dart', [
+          'pub',
+          'get',
+        ], workingDirectory: serverDir.path);
+        expect(
+          pubResult.exitCode,
+          equals(0),
+          reason: 'Server pub get should succeed:\n${pubResult.stderr}',
+        );
+
+        var analyzeResult = await Process.run('dart', [
+          'analyze',
+        ], workingDirectory: serverDir.path);
+        expect(
+          analyzeResult.exitCode,
+          equals(0),
+          reason:
+              'Server should analyze successfully:\n${analyzeResult.stdout}\n${analyzeResult.stderr}',
+        );
       },
       timeout: const Timeout(Duration(minutes: 5)),
     );
@@ -934,61 +1086,75 @@ void main() {
         await copier.copyAll();
 
         // Verify models compiles first (no dependencies)
-        final modelsDir =
-            Directory(p.join(tempDir.path, config.modelsPackageName));
-        var pubResult = await Process.run(
-          'dart',
-          ['pub', 'get'],
-          workingDirectory: modelsDir.path,
+        final modelsDir = Directory(
+          p.join(tempDir.path, config.modelsPackageName),
         );
-        expect(pubResult.exitCode, equals(0),
-            reason: 'Models pub get should succeed');
+        var pubResult = await Process.run('dart', [
+          'pub',
+          'get',
+        ], workingDirectory: modelsDir.path);
+        expect(
+          pubResult.exitCode,
+          equals(0),
+          reason: 'Models pub get should succeed',
+        );
 
-        var analyzeResult = await Process.run(
-          'dart',
-          ['analyze'],
-          workingDirectory: modelsDir.path,
+        var analyzeResult = await Process.run('dart', [
+          'analyze',
+        ], workingDirectory: modelsDir.path);
+        expect(
+          analyzeResult.exitCode,
+          equals(0),
+          reason:
+              'Models should analyze successfully:\n${analyzeResult.stdout}\n${analyzeResult.stderr}',
         );
-        expect(analyzeResult.exitCode, equals(0),
-            reason:
-                'Models should analyze successfully:\n${analyzeResult.stdout}\n${analyzeResult.stderr}');
 
         // Verify server compiles
-        final serverDir =
-            Directory(p.join(tempDir.path, config.serverPackageName));
-        pubResult = await Process.run(
-          'dart',
-          ['pub', 'get'],
-          workingDirectory: serverDir.path,
+        final serverDir = Directory(
+          p.join(tempDir.path, config.serverPackageName),
         );
-        expect(pubResult.exitCode, equals(0),
-            reason: 'Server pub get should succeed');
+        pubResult = await Process.run('dart', [
+          'pub',
+          'get',
+        ], workingDirectory: serverDir.path);
+        expect(
+          pubResult.exitCode,
+          equals(0),
+          reason: 'Server pub get should succeed',
+        );
 
-        analyzeResult = await Process.run(
-          'dart',
-          ['analyze'],
-          workingDirectory: serverDir.path,
+        analyzeResult = await Process.run('dart', [
+          'analyze',
+        ], workingDirectory: serverDir.path);
+        expect(
+          analyzeResult.exitCode,
+          equals(0),
+          reason:
+              'Server should analyze successfully:\n${analyzeResult.stdout}\n${analyzeResult.stderr}',
         );
-        expect(analyzeResult.exitCode, equals(0),
-            reason: 'Server should analyze successfully');
 
         // Verify app compiles
         final appDir = Directory(p.join(tempDir.path, config.appName));
-        pubResult = await Process.run(
-          'flutter',
-          ['pub', 'get'],
-          workingDirectory: appDir.path,
+        pubResult = await Process.run('flutter', [
+          'pub',
+          'get',
+        ], workingDirectory: appDir.path);
+        expect(
+          pubResult.exitCode,
+          equals(0),
+          reason: 'App pub get should succeed',
         );
-        expect(pubResult.exitCode, equals(0),
-            reason: 'App pub get should succeed');
 
-        analyzeResult = await Process.run(
-          'flutter',
-          ['analyze', '--no-fatal-infos', '--no-fatal-warnings'],
-          workingDirectory: appDir.path,
+        analyzeResult = await Process.run('flutter', [
+          'analyze',
+          '--no-fatal-infos',
+          '--no-fatal-warnings',
+        ], workingDirectory: appDir.path);
+        expect(
+          analyzeResult.exitCode,
+          equals(0),
+          reason: 'App should analyze successfully',
         );
-        expect(analyzeResult.exitCode, equals(0),
-            reason: 'App should analyze successfully');
       },
       timeout: const Timeout(Duration(minutes: 10)),
     );
@@ -1009,73 +1175,75 @@ void main() {
 
     for (final template in TemplateType.values) {
       test(
-          'no canonical names remain after copying ${template.name} template',
-          () async {
-        final config = SetupConfig(
-          appName: 'my_custom_app',
-          orgDomain: 'com.custom',
-          baseClassName: 'MyCustomApp',
-          template: template,
-          outputDir: tempDir.path,
-          createModels: true,
-          createServer: true,
-        );
+        'no canonical names remain after copying ${template.name} template',
+        () async {
+          final config = SetupConfig(
+            appName: 'my_custom_app',
+            orgDomain: 'com.custom',
+            baseClassName: 'MyCustomApp',
+            template: template,
+            outputDir: tempDir.path,
+            createModels: true,
+            createServer: true,
+          );
 
-        final copier = TemplateCopier.withPath(config, getTemplatesPath());
+          final copier = TemplateCopier.withPath(config, getTemplatesPath());
 
-        // Skip if templates don't exist
-        if (!Directory(copier.getTemplatePath(template.directoryName))
-            .existsSync()) {
-          print('Skipping ${template.name} - template not found');
-          return;
-        }
+          // Skip if templates don't exist
+          if (!Directory(
+            copier.getTemplatePath(template.directoryName),
+          ).existsSync()) {
+            print('Skipping ${template.name} - template not found');
+            return;
+          }
 
-        await copier.copyAll();
+          await copier.copyAll();
 
-        // List of canonical names that should NOT appear
-        final canonicalNames = [
-          'arcane_app',
-          'arcane_beamer_app',
-          'arcane_dock_app',
-          'arcane_cli_app',
-          'arcane_models',
-          'arcane_server',
-          'ArcaneServer',
-          'ArcaneRunner',
-        ];
+          // List of canonical names that should NOT appear
+          final canonicalNames = [
+            'arcane_app',
+            'arcane_beamer_app',
+            'arcane_dock_app',
+            'arcane_cli_app',
+            'arcane_models',
+            'arcane_server',
+            'ArcaneServer',
+            'ArcaneRunner',
+          ];
 
-        // Check all Dart, YAML, and other text files
-        final outputDir = Directory(tempDir.path);
-        await for (final entity in outputDir.list(recursive: true)) {
-          if (entity is File) {
-            final ext = p.extension(entity.path).toLowerCase();
-            if (['.dart', '.yaml', '.yml'].contains(ext)) {
-              final content = await entity.readAsString();
-              for (final canonicalName in canonicalNames) {
-                // Skip checking for arcane_models/arcane_server in commented lines
-                // as they might be in template comments explaining structure
-                if (canonicalName == 'arcane_models' ||
-                    canonicalName == 'arcane_server') {
-                  // Check it's not in package imports
-                  expect(
-                    content,
-                    isNot(contains('package:$canonicalName/')),
-                    reason:
-                        'File ${entity.path} should not contain package:$canonicalName/',
-                  );
-                } else {
-                  expect(
-                    content,
-                    isNot(contains(canonicalName)),
-                    reason:
-                        'File ${entity.path} should not contain $canonicalName',
-                  );
+          // Check all Dart, YAML, and other text files
+          final outputDir = Directory(tempDir.path);
+          await for (final entity in outputDir.list(recursive: true)) {
+            if (entity is File) {
+              final ext = p.extension(entity.path).toLowerCase();
+              if (['.dart', '.yaml', '.yml'].contains(ext)) {
+                final content = await entity.readAsString();
+                for (final canonicalName in canonicalNames) {
+                  // Skip checking for arcane_models/arcane_server in commented lines
+                  // as they might be in template comments explaining structure
+                  if (canonicalName == 'arcane_models' ||
+                      canonicalName == 'arcane_server') {
+                    // Check it's not in package imports
+                    expect(
+                      content,
+                      isNot(contains('package:$canonicalName/')),
+                      reason:
+                          'File ${entity.path} should not contain package:$canonicalName/',
+                    );
+                  } else {
+                    expect(
+                      content,
+                      isNot(contains(canonicalName)),
+                      reason:
+                          'File ${entity.path} should not contain $canonicalName',
+                    );
+                  }
                 }
               }
             }
           }
-        }
-      });
+        },
+      );
     }
   });
 }

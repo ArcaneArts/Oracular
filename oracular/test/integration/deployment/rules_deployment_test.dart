@@ -166,17 +166,6 @@ service cloud.firestore {
           final File indexesFile = File(p.join(projectPath, 'firestore.indexes.json'));
           await indexesFile.writeAsString('{"indexes": [], "fieldOverrides": []}');
 
-          // Create config pointing to this directory
-          final SetupConfig config = SetupConfig(
-            appName: 'firestore_test',
-            orgDomain: 'com.test',
-            baseClassName: 'FirestoreTest',
-            template: TemplateType.arcaneTemplate,
-            outputDir: projectPath, // Use projectPath as outputDir since deployFirestore uses config.outputDir
-            useFirebase: true,
-            firebaseProjectId: DeploymentTestConfig.projectId,
-          );
-
           // Adjust: FirebaseService.deployFirestore uses config.outputDir
           // So we need to create the config with outputDir = parent of project
           final SetupConfig adjustedConfig = SetupConfig(
@@ -494,7 +483,7 @@ class _AuthenticatedProcessRunner extends ProcessRunner {
     String? workingDirectory,
     Map<String, String>? environment,
     String? operationName,
-    bool interactive = true,
+    bool? interactive,
   }) {
     final Map<String, String> mergedEnv = <String, String>{
       ...this.environment,

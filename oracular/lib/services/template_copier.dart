@@ -33,7 +33,9 @@ class TemplateCopier {
     SetupConfig config, {
     void Function(String message)? onProgress,
   }) async {
-    final String templatesPath = await _findTemplatesPath(onProgress: onProgress);
+    final String templatesPath = await _findTemplatesPath(
+      onProgress: onProgress,
+    );
     return TemplateCopier._(config, templatesPath);
   }
 
@@ -81,8 +83,9 @@ class TemplateCopier {
     );
 
     // For Jaspr templates, use webPackageName; for others, use appName
-    final String targetName =
-        config.template.isJasprApp ? config.webPackageName : config.appName;
+    final String targetName = config.template.isJasprApp
+        ? config.webPackageName
+        : config.appName;
     final Directory targetDir = Directory(p.join(config.outputDir, targetName));
 
     if (!templateDir.existsSync()) {
@@ -104,9 +107,67 @@ class TemplateCopier {
     // Add models dependency if needed
     if (config.createModels) {
       await _replacer.addModelsDependency(pubspecFile);
+
+      // Pure-Dart targets (Jaspr, Dart CLI) cannot resolve `arcane_models`
+      // out of the box because `artifact -> json_compress -> jpatch` pulls in
+      // the Flutter SDK via jpatch's pubspec. Vendor a pure-Dart jpatch shim
+      // and inject a `dependency_overrides` so the project resolves cleanly.
+      if (!config.template.isFlutterApp) {
+        await _vendorJpatchOverride(pubspecFile);
+      }
+    }
+
+    if (config.template.isJasprDocs) {
+      await _prepareJasprDocsDependencies();
     }
 
     success('App template copied to: ${targetDir.path}');
+  }
+
+  /// Docs template no longer requires the legacy `.oracular_deps/arcane_*`
+  /// vendoring step because its pubspec now references the upstream packages
+  /// via git directly. Kept as a no-op for forward compatibility — extra
+  /// docs-specific setup can be added here later if needed.
+  Future<void> _prepareJasprDocsDependencies() async {}
+
+  /// Vendor a pure-Dart `jpatch` shim into the project so that pure-Dart
+  /// targets (Jaspr web apps, Dart CLIs) can consume `arcane_models` without
+  /// dragging in the Flutter SDK.
+  ///
+  /// The published `jpatch 1.0.1` declares a Flutter SDK dependency in its
+  /// pubspec even though every line of its source is pure Dart. That single
+  /// declaration cascades through `artifact -> json_compress -> jpatch` and
+  /// blocks resolution for any non-Flutter consumer.
+  ///
+  /// This method:
+  ///   1. Copies `templates/_vendor/jpatch/` into
+  ///      `<outputDir>/.oracular_deps/jpatch/` (idempotent — does nothing if
+  ///      already vendored).
+  ///   2. Adds a `dependency_overrides` entry to [pubspecFile] so that the
+  ///      vendored copy wins over the published one during pub resolution.
+  Future<void> _vendorJpatchOverride(File pubspecFile) async {
+    final Directory shimSource = Directory(
+      p.join(templatesBasePath, '_vendor', 'jpatch'),
+    );
+    if (!shimSource.existsSync()) {
+      warn(
+        'jpatch shim not found at ${shimSource.path}; '
+        'skipping pure-Dart override (Jaspr+models may fail to resolve)',
+      );
+      return;
+    }
+
+    final Directory depsRoot = Directory(
+      p.join(config.outputDir, '.oracular_deps'),
+    );
+    final Directory shimTarget = Directory(p.join(depsRoot.path, 'jpatch'));
+    if (!shimTarget.existsSync()) {
+      await shimTarget.create(recursive: true);
+      await _copyDirectory(shimSource, shimTarget);
+      verbose('  Vendored pure-Dart jpatch shim to: ${shimTarget.path}');
+    }
+
+    await _replacer.addJpatchOverride(pubspecFile);
   }
 
   /// Copy the models template
@@ -173,7 +234,9 @@ class TemplateCopier {
   /// Copy the references folder
   Future<void> copyReferences() async {
     final Directory templateDir = Directory(getTemplatePath('references'));
-    final Directory targetDir = Directory(p.join(config.outputDir, 'references'));
+    final Directory targetDir = Directory(
+      p.join(config.outputDir, 'references'),
+    );
 
     if (!templateDir.existsSync()) {
       warn('References directory not found, skipping');
@@ -257,9 +320,8 @@ class TemplateCopier {
     }
 
     // Build list of templates to copy
-    final List<(String, Future<void> Function())> templates = <(String, Future<void> Function())>[
-      ('Main app', copyAppTemplate),
-    ];
+    final List<(String, Future<void> Function())> templates =
+        <(String, Future<void> Function())>[('Main app', copyAppTemplate)];
 
     if (config.createModels) {
       templates.add(('Models package', copyModelsTemplate));
@@ -275,7 +337,11 @@ class TemplateCopier {
       UserPrompt.showProgress(i, templates.length, 'Copying $name...');
       await copier();
     }
-    UserPrompt.showProgress(templates.length, templates.length, 'All templates copied');
+    UserPrompt.showProgress(
+      templates.length,
+      templates.length,
+      'All templates copied',
+    );
   }
 
   /// Get list of files that would be copied (dry run)
@@ -287,7 +353,9 @@ class TemplateCopier {
       getTemplatePath(config.template.directoryName),
     );
     if (appTemplate.existsSync()) {
-      await for (final FileSystemEntity entity in appTemplate.list(recursive: true)) {
+      await for (final FileSystemEntity entity in appTemplate.list(
+        recursive: true,
+      )) {
         if (entity is File) {
           files.add(p.relative(entity.path, from: appTemplate.path));
         }

@@ -4,6 +4,7 @@ import 'package:fast_log/fast_log.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/setup_config.dart';
+import '../models/template_info.dart';
 
 /// Service for generating configuration files
 class ConfigGenerator {
@@ -20,6 +21,8 @@ class ConfigGenerator {
 
     info('Generating firebase.json...');
 
+    final String hostingPublicPath = _hostingPublicPath();
+
     final String content =
         '''
 {
@@ -33,7 +36,7 @@ class ConfigGenerator {
   "hosting": [
     {
       "target": "release",
-      "public": "${config.appName}/build/web",
+      "public": "$hostingPublicPath",
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -48,7 +51,7 @@ class ConfigGenerator {
     },
     {
       "target": "beta",
-      "public": "${config.appName}/build/web",
+      "public": "$hostingPublicPath",
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -68,6 +71,14 @@ class ConfigGenerator {
     final File file = File(p.join(config.outputDir, 'firebase.json'));
     await file.writeAsString(content);
     success('Generated: firebase.json');
+  }
+
+  /// Resolve hosting output folder for the selected template.
+  String _hostingPublicPath() {
+    if (config.template.isJasprApp) {
+      return '${config.webPackageName}/build/jaspr';
+    }
+    return '${config.appName}/build/web';
   }
 
   /// Generate .firebaserc

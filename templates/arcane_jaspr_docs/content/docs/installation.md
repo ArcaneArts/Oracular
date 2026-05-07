@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: How to install and set up the documentation site
+description: Set up the docs site and align package examples with the primary Arcane Jaspr surface
 layout: kb
 previous:
   url: /docs
@@ -12,21 +12,7 @@ next:
 
 # Installation
 
-Follow these steps to get the documentation site running locally.
-
-## Prerequisites
-
-Make sure you have the following installed:
-
-- **Dart SDK** >= 3.10.0
-- **Git** for version control
-
-## Clone the Repository
-
-```bash
-git clone https://github.com/your-org/your-repo.git
-cd your-repo
-```
+Set up the docs site first, then keep package examples aligned with the primary Arcane Jaspr import surface.
 
 ## Install Dependencies
 
@@ -34,39 +20,29 @@ cd your-repo
 dart pub get
 ```
 
-## Run Development Server
-
-```bash
-dart run scripts/serve
-```
-
-Or using Jaspr directly:
+## Run the Docs Site
 
 ```bash
 jaspr serve
 ```
 
-The site will be available at `http://localhost:8080`.
-
-## Build for Production
+## Build Static Output
 
 ```bash
 jaspr build
 ```
 
-This generates static files in `build/jaspr/` ready for deployment.
+## Package Example Rule
 
-## Project Structure
+Use this import in normal examples:
 
+```dart
+import 'package:arcane_jaspr/arcane_jaspr.dart';
 ```
-your-project/
-├── content/              # Markdown documentation
-│   ├── index.md
-│   └── docs/
-├── lib/
-│   ├── components/       # Reusable components
-│   ├── layouts/          # Page layouts
-│   └── main.server.dart  # Server entry point
-├── web/                  # Static assets
-└── pubspec.yaml          # Dependencies
+
+Only add these when a page is explicitly about advanced escape hatches:
+
+```dart
+import 'package:arcane_jaspr/html.dart';
+import 'package:arcane_jaspr/web.dart';
 ```

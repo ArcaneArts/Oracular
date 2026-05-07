@@ -148,7 +148,7 @@ Jaspr is a Dart web framework that renders to semantic HTML, CSS, and JavaScript
 
 | Solution | Flutter + Arcane | Jaspr + Arcane Jaspr |
 |----------|------------------|----------------------|
-| Built-in | StatefulWidget, InheritedWidget | StatefulComponent |
+| Built-in | StatefulWidget, InheritedWidget | StatefulWidget, State, ArcaneApp |
 | Pylon | Yes | Yes |
 | Riverpod | Yes | Partial |
 | Provider | Yes | No |
@@ -240,9 +240,9 @@ my_web_app/
 ├── lib/
 │   ├── main.server.dart          # Server entry (SSG/SSR)
 │   ├── main.client.dart          # Client entry (hydration)
-│   ├── app.dart                  # App component
-│   ├── screens/                  # Page components
-│   ├── components/               # Reusable components
+│   ├── app.dart                  # App widget
+│   ├── screens/                  # Page widgets
+│   ├── components/               # Reusable widgets
 │   ├── layouts/                  # Page layouts
 │   ├── services/                 # Business logic
 │   └── utils/                    # Utilities
@@ -256,7 +256,7 @@ my_web_app/
 ```
 
 **Key Patterns:**
-- StatefulComponent for local state
+- StatefulWidget and State for local state
 - ArcaneApp for theming
 - Content-driven pages with jaspr_content
 - ArcaneStyleData for type-safe styling
@@ -270,7 +270,7 @@ my_web_app/
 
 | Aspect | Consideration |
 |--------|---------------|
-| Widgets to Components | Replace Flutter widgets with Arcane Jaspr components |
+| Widget surface | Replace Flutter widgets with Arcane Jaspr widgets |
 | Routing | Navigator to jaspr_router |
 | State Management | Keep Pylon, adapt others |
 | Assets | Move to web/ folder |
@@ -281,7 +281,7 @@ my_web_app/
 
 | Aspect | Consideration |
 |--------|---------------|
-| Components to Widgets | Replace Arcane Jaspr with Arcane widgets |
+| Widget surface | Replace Arcane Jaspr widgets with Arcane Flutter widgets |
 | Styling | ArcaneStyleData to widget properties |
 | Routing | jaspr_router to Navigator/Beamer |
 | Content | Markdown to Flutter widgets |
@@ -364,7 +364,7 @@ oracular create app --template arcane_jaspr_docs --name my_docs_site
 ## Additional Resources
 
 - [Arcane UI Documentation](https://github.com/ArcaneArts/arcane)
-- [Arcane Jaspr Documentation](https://arcanecarts.github.io/arcane_jaspr)
+- [Arcane Jaspr Documentation](https://arcanearts.github.io/arcane_jaspr)
 - [Jaspr Framework](https://jaspr.site)
 - [Flutter Documentation](https://flutter.dev)
 - [Oracular Templates](../templates/)

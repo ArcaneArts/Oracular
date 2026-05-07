@@ -293,8 +293,10 @@ class PlaceholderReplacer {
         'firebase_auth',
         'cloud_firestore',
         'firebase_storage',
+        'firebase_dart',
         'arcane_fluf',
         'arcane_auth',
+        'arcane_auth_jaspr',
         'fire_crud',
       ];
       for (final String pkg in firebasePackages) {
@@ -312,13 +314,25 @@ class PlaceholderReplacer {
 
     String content = await pubspecFile.readAsString();
 
-    // Check if dependency already exists
-    if (content.contains('${config.modelsPackageName}:')) {
+    // Check if dependency already exists as a real (uncommented) dependency.
+    // We can't use a simple `contains()` check because the template may
+    // already mention the dependency in a comment.
+    final List<String> lines = content.split('\n');
+    final String escaped = RegExp.escape(config.modelsPackageName);
+    final RegExp realDep = RegExp('^\\s+$escaped:');
+    final bool hasReal = lines.any(
+      (String line) =>
+          realDep.hasMatch(line) && !line.trimLeft().startsWith('#'),
+    );
+    if (hasReal) {
       return;
     }
 
     // Find the dependencies section and add models dependency
-    final RegExp dependenciesPattern = RegExp(r'^dependencies:\s*$', multiLine: true);
+    final RegExp dependenciesPattern = RegExp(
+      r'^dependencies:\s*$',
+      multiLine: true,
+    );
     final RegExpMatch? match = dependenciesPattern.firstMatch(content);
 
     if (match != null) {
@@ -337,5 +351,63 @@ class PlaceholderReplacer {
       await pubspecFile.writeAsString(content);
       verbose('  Added models dependency to: ${p.basename(pubspecFile.path)}');
     }
+  }
+
+  /// Inject a `dependency_overrides` entry that points `jpatch` at the
+  /// vendored pure-Dart shim under `<outputDir>/.oracular_deps/jpatch`.
+  ///
+  /// If a `dependency_overrides:` block already exists, the entry is appended
+  /// to it. Otherwise a new block is added at the bottom of the file. The
+  /// method is idempotent — repeated calls are safe and no-op once the
+  /// override is in place.
+  Future<void> addJpatchOverride(File pubspecFile) async {
+    if (!pubspecFile.existsSync()) return;
+
+    String content = await pubspecFile.readAsString();
+
+    // If `jpatch:` already appears in a (real) dependency_overrides line, bail.
+    final List<String> existingLines = content.split('\n');
+    bool inOverrides = false;
+    for (final String line in existingLines) {
+      if (line.trimLeft().startsWith('#')) continue;
+      if (RegExp(r'^dependency_overrides:\s*$').hasMatch(line)) {
+        inOverrides = true;
+        continue;
+      }
+      // Top-level key resets context.
+      if (inOverrides && RegExp(r'^[a-zA-Z_]').hasMatch(line)) {
+        inOverrides = false;
+      }
+      if (inOverrides && RegExp(r'^\s+jpatch:').hasMatch(line)) {
+        return;
+      }
+    }
+
+    const String overrideEntry =
+        '  jpatch:\n'
+        '    path: ../.oracular_deps/jpatch\n';
+
+    final RegExp overridesHeader = RegExp(
+      r'^dependency_overrides:\s*$',
+      multiLine: true,
+    );
+    final RegExpMatch? headerMatch = overridesHeader.firstMatch(content);
+
+    if (headerMatch != null) {
+      final int insertPosition = headerMatch.end;
+      content =
+          '${content.substring(0, insertPosition)}\n'
+          '$overrideEntry'
+          '${content.substring(insertPosition)}';
+    } else {
+      if (!content.endsWith('\n')) content += '\n';
+      content += '\ndependency_overrides:\n$overrideEntry';
+    }
+
+    await pubspecFile.writeAsString(content);
+    verbose(
+      '  Added jpatch dependency_overrides to: '
+      '${p.basename(pubspecFile.path)}',
+    );
   }
 }

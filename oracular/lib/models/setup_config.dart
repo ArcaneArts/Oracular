@@ -177,8 +177,7 @@ ${serviceAccountKeyPath != null ? 'SERVICE_ACCOUNT_KEY=$serviceAccountKeyPath' :
       baseClassName: values['BASE_CLASS_NAME'] ?? 'MyApp',
       template: template,
       outputDir: values['OUTPUT_DIR'] ?? Directory.current.path,
-      platforms: (values['PLATFORMS'] ?? 'android,ios,web,linux,macos,windows')
-          .split(','),
+      platforms: _parsePlatforms(values['PLATFORMS'], template),
       createModels: values['CREATE_MODELS'] == 'yes',
       createServer: values['CREATE_SERVER'] == 'yes',
       useFirebase: values['USE_FIREBASE'] == 'yes',
@@ -227,4 +226,21 @@ ${serviceAccountKeyPath != null ? 'SERVICE_ACCOUNT_KEY=$serviceAccountKeyPath' :
   @override
   String toString() =>
       'SetupConfig(appName: $appName, template: ${template.name})';
+
+  static List<String> _parsePlatforms(String? value, TemplateType template) {
+    if (value == null) {
+      return template.supportedPlatforms;
+    }
+
+    final String trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return <String>[];
+    }
+
+    return trimmed
+        .split(',')
+        .map((String platform) => platform.trim())
+        .where((String platform) => platform.isNotEmpty)
+        .toList();
+  }
 }

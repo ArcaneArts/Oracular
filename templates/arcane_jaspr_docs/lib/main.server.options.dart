@@ -39,9 +39,9 @@ ServerOptions get defaultServerOptions => ServerOptions(
     ),
   },
   styles: () => [
-    ..._card_carousel.ArcaneCardCarousel.styles,
     ..._card_carousel.ArcaneHeroCarousel.styles,
     ..._card_carousel.ArcaneNavigableCarousel.styles,
+    ..._card_carousel.CardCarousel.styles,
     ..._infinite_carousel.ArcaneInfiniteCarousel.styles,
     ..._field.ArcaneFieldStyles.styles,
     ..._avatar.ArcaneAvatarBadge.styles,

@@ -29,12 +29,12 @@ The build output will be in `build/jaspr/`.
 ```
 lib/
   main.client.dart    # Client entry point
-  app.dart            # Main app component with theming
+  app.dart            # Main app widget with theming
   routes/
     app_router.dart   # Route definitions and navigation
   screens/
-    home_screen.dart  # Home page
-    about_screen.dart # About page
+    home_screen.dart  # Home widget
+    about_screen.dart # About widget
   utils/
     constants.dart    # Route constants and configuration
 web/
@@ -45,7 +45,7 @@ web/
 
 ## Adding New Screens
 
-1. Create a new screen component in `lib/screens/`
+1. Create a new screen widget in `lib/screens/`
 2. Add the route constant in `lib/utils/constants.dart`
 3. Add the route case in `lib/routes/app_router.dart`
 

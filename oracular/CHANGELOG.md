@@ -1,4 +1,49 @@
-## x.x.x
+## 3.1.0
+
+### Added
+- Wizard intro now asks for the **target location** up front. Press Enter to use
+  the current directory, type an absolute or relative path, or use `~` as a
+  shortcut for your home directory. Missing directories can be auto-created.
+- Pure-Dart `jpatch` shim vendored under `templates/_vendor/jpatch/` and
+  auto-injected into Jaspr/Dart-CLI projects that depend on `arcane_models`,
+  so pure-Dart targets resolve **without** dragging in the Flutter SDK.
+- Spinner prompts now accept a `failedMessage` so failed steps render an `✗`
+  with stderr output instead of a misleading `✓`.
+
+### Changed
+- Templates upgraded to `arcane_jaspr ^3.3.0` with `arcane_jaspr_shadcn` pulled
+  via git from the monorepo. `app.dart` switched from `child:` to the new
+  `home:` API.
+- `arcane_jaspr_docs` template now references `arcane_jaspr_shadcn` and
+  `arcane_lexicon` via git deps instead of brittle `.oracular_deps/...` paths.
+- `arcane_models` template no longer pulls in `arcane_admin` (which dragged
+  Flutter into pure-Dart consumers).
+- `arcane_server` template uses `listenPortFromEnvironment()` from current
+  `google_cloud`.
+- Pinned `package_info_plus` / `launch_at_startup` / etc. across templates to
+  versions that actually resolve, removed unused `interact` dep from
+  `arcane_cli_app`.
+- Spinner-wrapped CLI processes now run in non-interactive mode so they can't
+  deadlock waiting for TTY input behind the spinner.
+
+### Fixed
+- **Firebase web app provisioning**: switched all `firebase apps:*` calls to
+  `--json` mode with explicit success/failure detection, fixing the
+  `Failed to create Firebase web app` / `Failed to list Firebase web apps`
+  cascade when configuring FlutterFire for Jaspr projects.
+- **Wizard reporting failures as success**: the wizard now tracks failed steps
+  and prints a `✗ Project Created With Issues` banner with the list of failed
+  steps when anything went wrong, instead of always printing the success box.
+- **Spinner showing `✓ Done` on failure**: the spinner now renders `✗` with
+  the actual error message on failure.
+- **Jaspr + server + models permutation**: end-to-end resolution and
+  compilation now works (no Flutter SDK leakage) and is covered by integration
+  tests.
+- `addModelsDependency` no longer skips the dependency when the package name
+  appears in a comment, and no longer crashes on regex matches that span
+  newlines.
+
+## 3.0.0
 
 ### Added
 - New `oracular gitignore` command to add the standard `.gitignore` to any project

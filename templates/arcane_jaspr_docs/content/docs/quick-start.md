@@ -1,6 +1,6 @@
 ---
 title: Quick Start
-description: Get up and running in 5 minutes
+description: Example page content for a Flutter-first Arcane Jaspr docs site
 layout: kb
 previous:
   url: /docs/installation
@@ -9,79 +9,43 @@ previous:
 
 # Quick Start
 
-Get your first documentation page live in under 5 minutes.
-
-## Create a New Page
-
-Add a new markdown file to the `content/` directory:
-
-```markdown
----
-title: My New Page
-description: A brief description
-layout: kb
----
-
-# My New Page
-
-Your content here.
-```
-
-## Frontmatter
-
-Each page starts with YAML frontmatter:
-
-| Field | Description |
-|-------|-------------|
-| `title` | Page title (used in header and navigation) |
-| `description` | Brief description for meta tags |
-| `layout` | Layout to use (`docs` for documentation) |
-| `previous` | Optional link to previous page |
-| `next` | Optional link to next page |
-
-## Markdown Features
-
-The documentation supports standard Markdown plus:
-
-### Code Blocks
-
-Use triple backticks with a language identifier:
+Use a simple counter app as the baseline example for the primary Arcane Jaspr surface.
 
 ```dart
-void main() {
-  print('Hello, Jaspr!');
+import 'package:arcane_jaspr/arcane_jaspr.dart';
+
+class CounterExample extends StatefulWidget {
+  const CounterExample({super.key});
+
+  @override
+  State<CounterExample> createState() => _CounterExampleState();
+}
+
+class _CounterExampleState extends State<CounterExample> {
+  int _count = 0;
+
+  void _increment() {
+    setState(() => _count += 1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ArcaneBox(
+      style: const ArcaneStyleData(
+        display: Display.flex,
+        flexDirection: FlexDirection.column,
+        gap: Gap.md,
+      ),
+      children: [
+        Text.heading3('Count: $_count'),
+        Button.primary(
+          label: 'Increment',
+          onPressed: _increment,
+        ),
+      ],
+    );
+  }
 }
 ```
 
-### Headings
-
-Headings automatically get anchor links and appear in the table of contents.
-
-### Links
-
-Both internal and external links work:
-
-- [Internal link](/docs)
-- [External link](https://jaspr.site)
-
-## Update Navigation
-
-Edit `lib/components/docs_sidebar.dart` to add your page to the navigation:
-
-```dart
-SidebarItem(
-  label: 'My New Page',
-  icon: Icons.file,
-  href: '/docs/my-new-page',
-  active: currentPath == '/docs/my-new-page',
-),
-```
-
-## Deploy
-
-Build and deploy to any static hosting:
-
-```bash
-jaspr build
-# Upload build/jaspr/ to your host
-```
+Keep examples on this surface unless the page is explicitly about advanced HTML wrappers or raw Jaspr escape hatches.

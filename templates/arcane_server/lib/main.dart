@@ -45,7 +45,7 @@ class ArcaneServer implements Routing {
 
     // Start Server
     verbose("STARTING arcane_server");
-    server = await serve(_pipeline, InternetAddress.anyIPv4, listenPort());
+    server = await serve(_pipeline, InternetAddress.anyIPv4, listenPortFromEnvironment());
     verbose("Server listening on port ${server.port}");
   }
 
