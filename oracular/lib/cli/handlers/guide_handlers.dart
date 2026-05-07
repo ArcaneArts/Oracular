@@ -4,6 +4,7 @@ import 'package:fast_log/fast_log.dart';
 import 'package:path/path.dart' as p;
 
 import '../../models/setup_config.dart';
+import '../../services/docs_generator.dart';
 import '../../utils/link_opener.dart';
 import '../../utils/project_config_loader.dart';
 import '../../utils/setup_guidance.dart';
@@ -20,7 +21,9 @@ Future<void> handleGuide(
   }
 
   final File guide = await SetupGuidance.writeProjectGuide(config);
+  final Directory docs = await DocsGenerator.write(config);
   success('Wrote setup guide: ${guide.path}');
+  success('Wrote docs folder: ${docs.path}');
 
   if (flags['print'] == true) {
     print('');
@@ -31,6 +34,7 @@ Future<void> handleGuide(
   print('');
   UserPrompt.printList(<String>[
     'Open guide: oracular open guide',
+    'Open docs: oracular open docs',
     'Open app folder: oracular open app',
     if (config.useFirebase) 'Open Firebase: oracular open firebase',
     if (config.createServer) 'Open server folder: oracular open server',
@@ -53,6 +57,9 @@ Future<void> handleOpenTarget(String target) async {
   if (target == 'guide' && !File(destination).existsSync()) {
     await SetupGuidance.writeProjectGuide(config);
   }
+  if (target == 'docs' && !Directory(destination).existsSync()) {
+    await DocsGenerator.write(config);
+  }
 
   if (await LinkOpener.open(destination)) {
     success('Opened: $destination');
@@ -66,6 +73,7 @@ void _printOpenHelp(SetupConfig config) {
   print('Open targets:');
   UserPrompt.printList(<String>[
     'guide - ${SetupGuidance.projectGuidePath(config)}',
+    'docs  - ${DocsGenerator.docsDir(config)}/',
     'root - ${config.outputDir}',
     'app - ${SetupGuidance.mainProjectPath(config)}',
     if (config.createModels)
@@ -92,6 +100,8 @@ String? _resolveOpenTarget(SetupConfig config, String target) {
   switch (normalized) {
     case 'guide':
       return SetupGuidance.projectGuidePath(config);
+    case 'docs':
+      return DocsGenerator.docsDir(config);
     case 'root':
       return config.outputDir;
     case 'app':

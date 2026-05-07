@@ -51,12 +51,20 @@ web/
 
 ## Firebase Integration
 
-To enable Firebase:
+The base template ships with the Firebase JS SDK loaded in `web/index.html`
+(loaded only after you fill in your project config). It does **not** depend on
+any Firebase Auth package by default - the base template is intended to be a
+clean husk so you can layer in only what you need.
+
+To enable Firebase services:
 
 1. Uncomment the Firebase scripts in `web/index.html`
-2. Update the Firebase config with your project details
-3. Add `arcane_auth_jaspr` dependency in `pubspec.yaml`
-4. Wrap your app with `ArcaneAuthProvider` in `app.dart`
+2. Update the Firebase config with your project details (`oracular deploy
+   firebase-setup` will do this for you)
+3. Add the specific Jaspr-compatible packages you actually need to
+   `pubspec.yaml`. There is currently no published `arcane_auth_jaspr` that is
+   compatible with Jaspr `^0.23.0`; for now wire auth via the Firebase JS SDK
+   directly or call your own `arcane_server` endpoints.
 
 ## Deployment
 

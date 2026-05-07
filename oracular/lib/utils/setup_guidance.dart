@@ -63,6 +63,7 @@ class SetupGuidance {
           ? 'config/ - Generated setup and Firebase configuration'
           : 'config/ - Generated setup configuration',
       'references/ - Arcane and project reference docs',
+      'docs/ - Commands, how-to guides, troubleshooting',
       'GET_STARTED.md - Step-by-step setup guide',
     ];
   }
@@ -99,7 +100,9 @@ class SetupGuidance {
     print('');
     UserPrompt.printList(<String>[
       'Full setup guide: ${projectGuidePath(config)}',
-      'Reopen it later with: oracular guide',
+      'Docs folder: ${p.join(config.outputDir, 'docs')}/',
+      'Reopen the guide later with: oracular guide',
+      'Open the docs folder with: oracular open docs',
     ]);
   }
 

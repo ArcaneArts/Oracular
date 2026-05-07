@@ -1,3 +1,36 @@
+## 3.1.2
+
+### Added
+- **Welcome banner** now shows the running Oracular version (e.g. `Arcane
+  Template System  ·  v3.1.2`). Section headers in the wizard's reset-viewport
+  also show `v$version  ·  Step N of 5`.
+- **`docs/` folder** is generated at the root of every created project with a
+  full set of how-to guides tailored to your config:
+  - `README.md` (table of contents + project-at-a-glance summary)
+  - `01-getting-started.md` - run the project, install deps, wire Firebase
+  - `02-commands.md` - every Oracular subcommand and pubspec script available
+  - `03-project-structure.md` - folder layout for the chosen template
+  - `04-development.md` - hot reload, code-gen, adding routes/screens
+  - `05-firebase.md` (or `Firebase Later` when not enabled)
+  - `06-deployment.md` - hosting, firestore, storage rules
+  - `07-server.md` - service account flow + Cloud Run
+  - `08-models.md` - artifact patterns + path dependencies
+  - `09-troubleshooting.md` - jaspr / arcane_auth_jaspr / FlutterFire fixes
+  - `10-resources.md` - upstream docs links
+- New `oracular open docs` target opens the docs folder in the OS file
+  browser. `oracular guide` regenerates both `GET_STARTED.md` and `docs/`.
+
+### Fixed
+- **`arcane_auth_jaspr` no longer auto-uncommented** when Firebase is enabled.
+  The published `arcane_auth_jaspr` is pinned to `jaspr ^0.22.0` while the
+  Jaspr template uses `jaspr ^0.23.0`, so auto-enabling it produced
+  `version solving failed` errors during `dart pub get`. The base Jaspr
+  template is now a clean husk with **no auth dependency** by default.
+- Jaspr template README updated to reflect the correct Firebase wiring path
+  for `jaspr 0.23.x` (use the JS SDK directly or call `arcane_server`
+  endpoints; do not add `arcane_auth_jaspr` until a `0.23.x`-compatible
+  release ships).
+
 ## 3.1.1
 
 ### Changed

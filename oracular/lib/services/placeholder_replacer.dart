@@ -287,7 +287,10 @@ class PlaceholderReplacer {
 
     // Handle Firebase dependencies
     if (config.useFirebase) {
-      // Uncomment Firebase packages
+      // Uncomment Firebase packages. We deliberately exclude
+      // `arcane_auth_jaspr` here: it's pinned to `jaspr ^0.22.0` while the
+      // Jaspr template uses `jaspr ^0.23.0`, so auto-uncommenting it would
+      // make pub resolution fail. Auth is opt-in and documented per-template.
       final List<String> firebasePackages = <String>[
         'firebase_core',
         'firebase_auth',
@@ -296,7 +299,6 @@ class PlaceholderReplacer {
         'firebase_dart',
         'arcane_fluf',
         'arcane_auth',
-        'arcane_auth_jaspr',
         'fire_crud',
       ];
       for (final String pkg in firebasePackages) {

@@ -7,6 +7,7 @@ import '../../models/setup_config.dart';
 import '../../models/template_info.dart';
 import '../../services/config_generator.dart';
 import '../../services/dependency_manager.dart';
+import '../../services/docs_generator.dart';
 import '../../services/project_creator.dart';
 import '../../services/server_setup.dart';
 import '../../services/template_copier.dart';
@@ -350,6 +351,7 @@ Future<void> _executeCreation(SetupConfig config) async {
   }
   await config.saveToFile(p.join(configDir.path, 'setup_config.env'));
   final File guide = await SetupGuidance.writeProjectGuide(config);
+  final Directory docs = await DocsGenerator.write(config);
 
   // Print success message
   print('');
@@ -363,7 +365,9 @@ Future<void> _executeCreation(SetupConfig config) async {
   print('');
   UserPrompt.printList(<String>[
     'Generated guide: ${guide.path}',
-    'Open it with: oracular open guide',
+    'Docs folder: ${docs.path}/',
+    'Open the guide: oracular open guide',
+    'Open the docs:  oracular open docs',
   ]);
   print('');
   UserPrompt.printSuccessBox('Happy coding!');

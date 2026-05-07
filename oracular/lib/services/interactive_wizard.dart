@@ -11,8 +11,10 @@ import '../utils/string_utils.dart';
 import '../utils/setup_guidance.dart';
 import '../utils/user_prompt.dart';
 import '../utils/validators.dart';
+import '../version.dart';
 import 'config_generator.dart';
 import 'dependency_manager.dart';
+import 'docs_generator.dart';
 import 'firebase_service.dart';
 import 'project_creator.dart';
 import 'server_setup.dart';
@@ -118,7 +120,7 @@ class InteractiveWizard {
     UserPrompt.clearScreen();
     UserPrompt.printBanner(
       'Welcome to Oracular Setup Wizard',
-      subtitle: 'Arcane Template System v2.1',
+      subtitle: 'Arcane Template System  \u00b7  v$oracularVersion',
     );
     info('This wizard will help you create a new Arcane project.');
     print('');
@@ -236,7 +238,8 @@ class InteractiveWizard {
     UserPrompt.clearScreen();
     UserPrompt.printBanner(
       'Oracular Setup',
-      subtitle: 'Step ${_currentStep + 1} of $_totalSteps · $section',
+      subtitle: 'v$oracularVersion  \u00b7  Step ${_currentStep + 1} of '
+          '$_totalSteps  \u00b7  $section',
     );
     if (contextLines.isNotEmpty) {
       UserPrompt.printList(contextLines);
@@ -608,6 +611,7 @@ class InteractiveWizard {
           }
           await config.saveToFile(p.join(configDir.path, 'setup_config.env'));
           await SetupGuidance.writeProjectGuide(config);
+          await DocsGenerator.write(config);
         },
         doneMessage: '✓ Configuration saved',
         failedMessage: '✗ Configuration save failed',
@@ -615,7 +619,8 @@ class InteractiveWizard {
     } catch (e) {
       _recordFailure(
         'Configuration save',
-        hint: 'Could not write setup_config.env or GET_STARTED.md. Error: $e',
+        hint:
+            'Could not write setup_config.env, GET_STARTED.md or docs/. Error: $e',
       );
     }
 
