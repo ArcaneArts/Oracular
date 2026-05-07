@@ -1,3 +1,19 @@
+## 3.1.1
+
+### Changed
+- **Service account key prompt**: instead of asking the user to type a long
+  absolute path (which the terminal input clips), Oracular now opens the
+  destination folder in Finder/Explorer/file manager, instructs the user to
+  drop their `*.json` key file into that folder, and auto-detects/renames it
+  to `service-account.json`. Press Enter when done, or type `skip` to add it
+  later. Multiple JSON files are disambiguated with a numbered picker.
+- **Multi-select / picker viewport**: each major section in the wizard
+  (Template Selection, Target Platforms, Additional Packages, Cloud Services)
+  now starts with a clean screen and a compact context strip showing the
+  choices made so far. Fixes the issue where pressing arrow keys inside the
+  Target Platforms multi-select made the console "go up" and look awful as
+  the prompt redrew over previously printed help text.
+
 ## 3.1.0
 
 ### Added

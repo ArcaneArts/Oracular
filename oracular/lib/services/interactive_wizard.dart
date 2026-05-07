@@ -224,6 +224,26 @@ class InteractiveWizard {
     return p.normalize(p.absolute(value));
   }
 
+  /// Clear the terminal and re-print a compact section header so that the
+  /// upcoming interactive prompt (especially multi-selects) has a clean
+  /// viewport. Without this, prompts that wipe-and-redraw on every keypress
+  /// (interact's `MultiSelect`) leave visual artifacts as the cursor scrolls
+  /// over previously printed help text.
+  void _resetViewport(
+    List<String> contextLines, {
+    required String section,
+  }) {
+    UserPrompt.clearScreen();
+    UserPrompt.printBanner(
+      'Oracular Setup',
+      subtitle: 'Step ${_currentStep + 1} of $_totalSteps · $section',
+    );
+    if (contextLines.isNotEmpty) {
+      UserPrompt.printList(contextLines);
+      print('');
+    }
+  }
+
   Future<bool> _checkTools() async {
     final result = await _toolChecker.checkRequired();
 
@@ -270,7 +290,10 @@ class InteractiveWizard {
     );
 
     // ── Section 2: Template Selection ──
-    UserPrompt.printDivider(title: 'Template Selection');
+    _resetViewport(<String>[
+      'App: $appName  ·  Org: $orgDomain  ·  Class: $baseClassName',
+      'Target: $_targetLocation',
+    ], section: 'Template Selection');
 
     // Template selection with descriptions
     final templateIndex = await UserPrompt.askTheme(
@@ -284,7 +307,6 @@ class InteractiveWizard {
     // Output directory was selected during the intro; reuse it here so the
     // user isn't prompted twice.
     final String outputDir = _targetLocation;
-    info('Output directory: $outputDir');
 
     // ── Section 3: Platform Selection ──
     // Only show for Flutter apps that have platform choices
@@ -297,11 +319,13 @@ class InteractiveWizard {
         template.supportedPlatforms.length > 1;
 
     if (showPlatformSelection) {
-      UserPrompt.printDivider(title: 'Target Platforms');
-      print('  Select the platforms you want to target:');
+      _resetViewport(<String>[
+        'Template: ${template.displayName}',
+        'Space to toggle  ·  Enter to confirm  ·  At least one required',
+      ], section: 'Target Platforms');
 
       final platformIndices = await UserPrompt.askMultiSelect(
-        'Target platforms (Space to toggle)',
+        'Target platforms',
         template.supportedPlatforms,
         defaultSelected: template.supportedPlatforms,
       );
@@ -344,13 +368,10 @@ class InteractiveWizard {
 
     if (template.isDartCli) {
       // Dart CLI: only offer models package (server is unusual for CLI)
-      UserPrompt.printDivider(title: 'Additional Packages');
-      print('  Optional package:');
-      UserPrompt.printList(<String>[
-        'Shared Models Package: reusable data models and serialization for sharing types across apps.',
-        'Pick this if your CLI will share entities with a server/mobile/web app.',
-        'Prompt control: press Enter to accept the default choice.',
-      ]);
+      _resetViewport(<String>[
+        'Template: ${template.displayName}',
+        'Shared Models Package = reusable data classes for CLI + app/server.',
+      ], section: 'Additional Packages');
       createModels = await UserPrompt.askYesNo(
         'Create shared models package?',
         defaultValue: true,
@@ -358,16 +379,14 @@ class InteractiveWizard {
       // Skip server for CLI apps
     } else {
       // Flutter apps: offer both models and server
-      UserPrompt.printDivider(title: 'Additional Packages');
-      print('  Optional packages:');
-      UserPrompt.printList(<String>[
-        'Shared Models Package: keeps data classes in one place so app/server use the same schema.',
-        'Server Application: backend service for APIs, admin tasks, and private logic not run on client apps.',
-        'Controls: use ↑↓ to move, Space to toggle a package, Enter to confirm.',
-      ]);
+      _resetViewport(<String>[
+        'Template: ${template.displayName}',
+        'Models = shared data classes  ·  Server = backend API',
+        'Space to toggle  ·  Enter to confirm',
+      ], section: 'Additional Packages');
 
       final additionalFeatures = await UserPrompt.askMultiSelectNames(
-        'Select additional packages to create (Space to toggle)',
+        'Select additional packages',
         ['Shared Models Package', 'Server Application'],
         defaultSelected: ['Shared Models Package'],
       );
@@ -377,7 +396,17 @@ class InteractiveWizard {
     }
 
     // ── Section 5: Firebase Integration ──
-    UserPrompt.printDivider(title: 'Cloud Services');
+    final List<String> cloudContext = <String>[
+      'Template: ${template.displayName}',
+    ];
+    if (createModels || createServer) {
+      final List<String> packages = <String>[
+        if (createModels) 'Models',
+        if (createServer) 'Server',
+      ];
+      cloudContext.add('Packages: ${packages.join(' + ')}');
+    }
+    _resetViewport(cloudContext, section: 'Cloud Services');
 
     // Firebase
     final useFirebase = await UserPrompt.askYesNo(
