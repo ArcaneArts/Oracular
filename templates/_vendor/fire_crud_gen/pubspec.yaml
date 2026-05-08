@@ -1,0 +1,17 @@
+name: fire_crud_gen
+description: |
+  Pure-shim drop-in for `fire_crud_gen` used by Oracular-scaffolded Jaspr web/docs apps
+  that also depend on `arcane_models`.
+
+  See `templates/_vendor/artifact_gen/pubspec.yaml` for the full rationale — the same
+  analyzer version conflict applies (published gen package pins `analyzer ^8.0.0`,
+  jaspr_builder pins `^10.0.0`). The upstream `fire_crud` package declares its builder
+  with `auto_apply: dependents`, so this shim is required for the web app to resolve.
+version: 1.1.5
+publish_to: none
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  build: ^4.0.0

@@ -4,6 +4,8 @@ import 'package:path/path.dart' as p;
 
 import '../models/setup_config.dart';
 import '../models/template_info.dart';
+import '../services/firebase_setup_orchestrator.dart'
+    show OrchestratorReport, SetupStepResult, WizardSubStep;
 import 'user_prompt.dart';
 
 /// Shared setup guidance for post-create and deployment flows.
@@ -68,7 +70,10 @@ class SetupGuidance {
     ];
   }
 
-  static void printPostCreationChecklist(SetupConfig config) {
+  static void printPostCreationChecklist(
+    SetupConfig config, {
+    OrchestratorReport? report,
+  }) {
     UserPrompt.printDivider(title: 'Project Setup Checklist');
 
     final List<String> steps = <String>[
@@ -76,15 +81,18 @@ class SetupGuidance {
       runCommand(config),
     ];
 
-    if (config.useFirebase) {
+    // Only show "run firebase-setup-full" if the orchestrator hasn't
+    // already done it successfully (i.e. report is null or the FlutterFire/
+    // FirebaseLogin/Configure step was not successful).
+    if (config.useFirebase && _firebaseSetupNeeded(report)) {
       steps.add('cd ${config.outputDir}');
-      steps.add('oracular deploy firebase-setup');
+      steps.add('oracular deploy firebase-setup-full');
     }
 
     UserPrompt.printNumberedList(steps);
 
     if (config.useFirebase) {
-      _printFirebaseChecklist(config);
+      _printFirebaseChecklist(config, report: report);
     } else {
       _printEnableFirebaseLater(config);
     }
@@ -94,7 +102,7 @@ class SetupGuidance {
     }
 
     if (config.createServer) {
-      _printServerChecklist(config);
+      _printServerChecklist(config, report: report);
     }
 
     print('');
@@ -104,6 +112,28 @@ class SetupGuidance {
       'Reopen the guide later with: oracular guide',
       'Open the docs folder with: oracular open docs',
     ]);
+  }
+
+  /// Build a set of [WizardSubStep] values the orchestrator finished
+  /// successfully on the most recent run. Used by the post-create
+  /// checklist to suppress steps that no longer need user attention.
+  static Set<WizardSubStep> _completedSteps(OrchestratorReport? report) {
+    if (report == null) return <WizardSubStep>{};
+    return report.results
+        .where((SetupStepResult r) => r.success)
+        .map((SetupStepResult r) => r.step)
+        .toSet();
+  }
+
+  /// True when the user still needs to run `firebase-setup-full`. Returns
+  /// false when login + configure-client + at least one rules deploy
+  /// succeeded (in which case running the umbrella command would be a
+  /// no-op).
+  static bool _firebaseSetupNeeded(OrchestratorReport? report) {
+    if (report == null) return true;
+    final Set<WizardSubStep> done = _completedSteps(report);
+    return !(done.contains(WizardSubStep.firebaseLogin) &&
+        done.contains(WizardSubStep.configureClient));
   }
 
   static void printHostingSuccess(SetupConfig config, {required bool beta}) {
@@ -174,7 +204,10 @@ class SetupGuidance {
     return 'https://$projectId-beta.web.app';
   }
 
-  static void _printFirebaseChecklist(SetupConfig config) {
+  static void _printFirebaseChecklist(
+    SetupConfig config, {
+    OrchestratorReport? report,
+  }) {
     final String? projectId = config.firebaseProjectId;
     if (projectId == null) {
       return;
@@ -182,14 +215,29 @@ class SetupGuidance {
 
     UserPrompt.printDivider(title: 'Firebase & Hosting');
 
+    final Set<WizardSubStep> done = _completedSteps(report);
     final List<String> deploySteps = <String>[
-      'oracular deploy firestore',
-      'oracular deploy storage',
-      if (supportsWebHosting(config)) 'oracular deploy hosting',
-      if (supportsWebHosting(config)) 'oracular deploy hosting-beta',
+      if (!done.contains(WizardSubStep.deployFirestoreRules))
+        'oracular deploy firestore',
+      if (!done.contains(WizardSubStep.deployStorageRules))
+        'oracular deploy storage',
+      if (supportsWebHosting(config) &&
+          !done.contains(WizardSubStep.deployHostingRelease))
+        'oracular deploy hosting',
+      if (supportsWebHosting(config) &&
+          !done.contains(WizardSubStep.deployHostingBeta))
+        'oracular deploy hosting-beta',
     ];
 
-    UserPrompt.printNumberedList(deploySteps);
+    if (deploySteps.isEmpty) {
+      print('');
+      UserPrompt.printList(<String>[
+        '✓ All Firebase deploy steps already complete on the last run.',
+        'Re-deploy at any time with `oracular deploy <command>`.',
+      ]);
+    } else {
+      UserPrompt.printNumberedList(deploySteps);
+    }
 
     if (!supportsWebHosting(config)) {
       print('');
@@ -199,7 +247,7 @@ class SetupGuidance {
         '  cd ${mainProjectPath(config)}',
         '  flutter create --platforms=web .',
       ]);
-    } else {
+    } else if (!done.contains(WizardSubStep.deployHostingBeta)) {
       printBetaSiteHint(projectId);
     }
 
@@ -209,8 +257,14 @@ class SetupGuidance {
       linkLine('Firebase project overview', firebaseOverviewUrl(projectId)),
       linkLine('Hosting console', firebaseHostingConsoleUrl(projectId)),
       linkLine('Firebase Hosting docs', _firebaseHostingDocs),
-      linkLine('Release URL (after deploy)', releaseHostingUrl(projectId)),
-      linkLine('Beta URL (after deploy)', betaHostingUrl(projectId)),
+      if (!done.contains(WizardSubStep.deployHostingRelease))
+        linkLine('Release URL (after deploy)', releaseHostingUrl(projectId)),
+      if (done.contains(WizardSubStep.deployHostingRelease))
+        linkLine('Live release URL', releaseHostingUrl(projectId)),
+      if (!done.contains(WizardSubStep.deployHostingBeta))
+        linkLine('Beta URL (after deploy)', betaHostingUrl(projectId)),
+      if (done.contains(WizardSubStep.deployHostingBeta))
+        linkLine('Live beta URL', betaHostingUrl(projectId)),
       if (config.template.isFlutterApp)
         linkLine('Flutter web deployment docs', _flutterWebDeployDocs),
       if (config.template.isJasprApp) linkLine('Jaspr docs', _jasprDocs),
@@ -229,7 +283,7 @@ class SetupGuidance {
       'Edit $configPath and set:',
       '  USE_FIREBASE=yes',
       '  FIREBASE_PROJECT_ID=<your-project-id>',
-      'Then run: oracular deploy firebase-setup',
+      'Then run: oracular deploy firebase-setup-full',
     ]);
 
     print('');
@@ -240,13 +294,20 @@ class SetupGuidance {
     ]);
   }
 
-  static void _printServerChecklist(SetupConfig config) {
+  static void _printServerChecklist(
+    SetupConfig config, {
+    OrchestratorReport? report,
+  }) {
     UserPrompt.printDivider(title: 'Server Deployment');
     final String serverServiceAccountPath = p.join(
       config.outputDir,
       config.serverPackageName,
       'service-account.json',
     );
+
+    final Set<WizardSubStep> done = _completedSteps(report);
+    final bool cleanupApplied =
+        done.contains(WizardSubStep.applyArtifactCleanupPolicy);
 
     UserPrompt.printNumberedList(<String>[
       'cd ${p.join(config.outputDir, config.serverPackageName)}',
@@ -258,6 +319,12 @@ class SetupGuidance {
       'Use service account key file name: service-account.json',
       'Server key path: $serverServiceAccountPath',
       'When replacing keys, keep only the 2 latest backups (.bak.1 and .bak.2).',
+      cleanupApplied
+          ? '✓ Artifact Registry cleanup policy already installed '
+              '(${config.artifactKeepRecent} recent + delete >'
+              '${config.artifactDeleteOlderDays}d).'
+          : 'After your first deploy, install cleanup with: '
+              'oracular deploy artifact-cleanup',
     ]);
 
     if (config.firebaseProjectId != null) {
@@ -284,6 +351,8 @@ class SetupGuidance {
       'Local dependencies are copied to $depsPath.',
       'Keep .oracular_deps/ next to ${config.webPackageName}/.',
       'If you move folders, update path dependencies in $docsPubspec.',
+      '`jaspr serve` hot-reloads code changes; restart the server to '
+          'pick up new docs content (markdown additions, new pages).',
     ]);
   }
 
@@ -360,7 +429,7 @@ class SetupGuidance {
       buffer.writeln('- Edit `$configPath`.');
       buffer.writeln('- Set `USE_FIREBASE=yes`.');
       buffer.writeln('- Set `FIREBASE_PROJECT_ID=<your-project-id>`.');
-      buffer.writeln('- Run `oracular deploy firebase-setup`.');
+      buffer.writeln('- Run `oracular deploy firebase-setup-full`.');
       buffer.writeln('- Open Firebase: <$_firebaseConsoleBase>');
       buffer.writeln();
     }
@@ -394,8 +463,22 @@ class SetupGuidance {
 
   static void _writeFirebaseGuide(StringBuffer buffer, SetupConfig config) {
     final String projectId = config.firebaseProjectId!;
+    final bool isJaspr = config.template.isJasprApp;
 
     buffer.writeln('## 4. Firebase Setup');
+    buffer.writeln();
+    buffer.writeln(
+      'Run the umbrella command to log in, configure the client, '
+      'bootstrap Firestore + Storage, deploy rules, and (when web is '
+      'supported) deploy the release + beta hosting sites:',
+    );
+    buffer.writeln();
+    buffer.writeln('```bash');
+    buffer.writeln('cd ${config.outputDir}');
+    buffer.writeln('oracular deploy firebase-setup-full');
+    buffer.writeln('```');
+    buffer.writeln();
+    buffer.writeln('### Manual console steps');
     buffer.writeln();
     buffer.writeln('1. Open Firebase project overview:');
     buffer.writeln('   <${firebaseOverviewUrl(projectId)}>');
@@ -415,23 +498,46 @@ class SetupGuidance {
       buffer.writeln('   <${firebaseHostingConsoleUrl(projectId)}>');
     }
     buffer.writeln();
-    buffer.writeln('Then run:');
+    buffer.writeln('### Independent re-runnable commands');
     buffer.writeln();
     buffer.writeln('```bash');
-    buffer.writeln('cd ${config.outputDir}');
-    buffer.writeln('oracular deploy firebase-setup');
-    buffer.writeln('oracular deploy firestore');
-    buffer.writeln('oracular deploy storage');
+    buffer.writeln('# Auth + bootstrap');
+    buffer.writeln('oracular deploy firestore-init      # default DB');
+    buffer.writeln('oracular deploy storage-init        # default bucket');
+    buffer.writeln('oracular deploy auth-providers      # email + Google');
+    buffer.writeln('oracular check billing              # Spark vs Blaze');
+    buffer.writeln();
+    buffer.writeln('# Rules + content');
+    buffer.writeln('oracular deploy firestore           # rules + indexes');
+    buffer.writeln('oracular deploy storage             # rules');
     if (supportsWebHosting(config)) {
-      buffer.writeln('oracular deploy hosting');
-      buffer.writeln('oracular deploy hosting-beta');
+      buffer.writeln();
+      buffer.writeln(
+        '# Hosting (${isJaspr ? "Jaspr" : "Flutter web"})',
+      );
+      buffer.writeln(
+        'oracular deploy hosting-init        # creates `<project>-beta` site',
+      );
+      buffer.writeln('oracular deploy hosting             # release channel');
+      buffer.writeln('oracular deploy hosting-beta        # beta channel');
     }
     buffer.writeln('```');
     buffer.writeln();
+    if (isJaspr) {
+      buffer.writeln(
+        '> Jaspr hosting builds use `jaspr build` — the orchestrator '
+        'invokes it automatically. For a static export, the public dir '
+        'is `${config.webPackageName}/build/jaspr/web/`.',
+      );
+      buffer.writeln();
+    }
   }
 
   static void _writeServerGuide(StringBuffer buffer, SetupConfig config) {
-    final String serverPath = p.join(config.outputDir, config.serverPackageName);
+    final String serverPath = p.join(
+      config.outputDir,
+      config.serverPackageName,
+    );
     final String keyPath = p.join(serverPath, 'service-account.json');
 
     buffer.writeln('## Server Deployment');
@@ -447,11 +553,40 @@ class SetupGuidance {
       buffer.writeln('  <${cloudRunConsoleUrl(config.firebaseProjectId!)}>');
     }
     buffer.writeln();
-    buffer.writeln('Run:');
+    buffer.writeln('### Deploy');
+    buffer.writeln();
+    buffer.writeln(
+      'The generated `script_deploy.sh` is idempotent — every gcloud step '
+      'gracefully handles already-existing resources, and every run '
+      'applies the cleanup policy + caps Cloud Run revisions:',
+    );
     buffer.writeln();
     buffer.writeln('```bash');
     buffer.writeln('cd $serverPath');
     buffer.writeln('./script_deploy.sh');
+    buffer.writeln('```');
+    buffer.writeln();
+    buffer.writeln('### Cleanup tunables');
+    buffer.writeln();
+    buffer.writeln(
+      '- Keep ${config.artifactKeepRecent} most-recent Artifact Registry '
+      'image versions',
+    );
+    buffer.writeln(
+      '- Delete versions older than ${config.artifactDeleteOlderDays} days',
+    );
+    buffer.writeln(
+      '- Cap Cloud Run revisions at ${config.cloudRunKeepRevisions} (only '
+      'non-traffic-serving older revisions are pruned)',
+    );
+    buffer.writeln();
+    buffer.writeln('Re-apply just the cleanup pieces independently:');
+    buffer.writeln();
+    buffer.writeln('```bash');
+    buffer.writeln('oracular deploy artifact-cleanup    # AR repo + policy');
+    buffer.writeln(
+      'oracular deploy cloudrun-prune      # delete old Cloud Run revisions',
+    );
     buffer.writeln('```');
     buffer.writeln();
   }

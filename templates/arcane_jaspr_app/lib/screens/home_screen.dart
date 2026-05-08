@@ -1,6 +1,7 @@
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 
 import '../components/app_header.dart';
+import '../seo/seo.dart';
 import '../utils/constants.dart';
 
 /// Home screen - landing page for the application
@@ -12,26 +13,43 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ArcaneBox(
-      style: const ArcaneStyleData(
-        minHeight: '100vh',
-        display: Display.flex,
-        flexDirection: FlexDirection.column,
-      ),
-      children: [
-        // Header
-        AppHeader(
-          isDark: isDark,
-          onThemeToggle: onThemeToggle,
-          currentPath: AppRoutes.home,
+    return Seo(
+      // Per-page SEO. Site-wide defaults (WebSite/Organization JSON-LD) come
+      // from the outer [App] widget; here we only override what's specific
+      // to the home page.
+      title: null, // null -> uses bare site name as <title>
+      description:
+          '${AppConstants.appName} - ${AppConstants.appDescription}. '
+          'Built with Jaspr and the Arcane design system.',
+      canonicalPath: AppRoutes.home,
+      structuredData: <StructuredData>[
+        StructuredData.webPage(
+          name: AppConstants.appName,
+          description: AppConstants.appDescription,
+          url: SeoConfig.absoluteUrl(AppRoutes.home),
         ),
-
-        // Hero section
-        const _HeroSection(),
-
-        // Features section
-        const _FeaturesSection(),
       ],
+      child: ArcaneBox(
+        style: const ArcaneStyleData(
+          minHeight: '100vh',
+          display: Display.flex,
+          flexDirection: FlexDirection.column,
+        ),
+        children: [
+          // Header
+          AppHeader(
+            isDark: isDark,
+            onThemeToggle: onThemeToggle,
+            currentPath: AppRoutes.home,
+          ),
+
+          // Hero section
+          const _HeroSection(),
+
+          // Features section
+          const _FeaturesSection(),
+        ],
+      ),
     );
   }
 }

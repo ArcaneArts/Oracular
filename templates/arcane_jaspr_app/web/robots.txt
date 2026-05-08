@@ -1,0 +1,11 @@
+# robots.txt for ArcaneJasprApp
+#
+# Replace https://example.com with your real domain after deploying.
+# To block staging/preview deployments from being indexed, swap
+# the User-agent / Allow directives below for `Disallow: /`.
+
+User-agent: *
+Allow: /
+
+# Sitemap location (used by Google, Bing, Yandex, DuckDuckGo)
+Sitemap: https://example.com/sitemap.xml

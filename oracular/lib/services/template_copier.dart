@@ -115,6 +115,20 @@ class TemplateCopier {
       if (!config.template.isFlutterApp) {
         await _vendorJpatchOverride(pubspecFile);
       }
+
+      // Jaspr targets (web app + docs) bring in `jaspr_builder` (analyzer
+      // ^10.0.0). The published `artifact_gen` and `fire_crud_gen` packages
+      // pin `analyzer ^8.0.0`, which makes `pub get` impossible to resolve
+      // when both are present. Vendor pure-shim drop-ins for the gen
+      // packages so build_runner can satisfy `auto_apply: dependents` in the
+      // upstream `artifact` and `fire_crud` `build.yaml` files without
+      // dragging analyzer 8 into the resolution. The actual model
+      // generation still happens in the dedicated models package (which
+      // does NOT depend on jaspr_builder), so the web app only consumes
+      // the already-generated `.g.dart` files.
+      if (config.template.isJasprApp) {
+        await _vendorJasprBuilderShims(pubspecFile);
+      }
     }
 
     if (config.template.isJasprDocs) {
@@ -168,6 +182,70 @@ class TemplateCopier {
     }
 
     await _replacer.addJpatchOverride(pubspecFile);
+  }
+
+  /// Vendor pure-shim drop-ins for `artifact_gen` and `fire_crud_gen` so a
+  /// Jaspr web app (or docs site) can consume `arcane_models` while also
+  /// using `jaspr_builder`.
+  ///
+  /// **Why this is necessary**
+  ///
+  /// Published `artifact_gen` and `fire_crud_gen` pin `analyzer ^8.0.0`.
+  /// `jaspr_builder` (transitively required by every Jaspr template via
+  /// `dev_dependencies`) pins `analyzer ^10.0.0`. Those constraints are
+  /// disjoint — `pub get` cannot resolve them in the same project.
+  ///
+  /// Model generation already happens in the dedicated models package,
+  /// which does NOT depend on `jaspr_builder`. The web app only ever
+  /// imports the already-generated `.g.dart` files; it never needs to
+  /// re-run those builders. But the upstream `artifact` and `fire_crud`
+  /// packages declare their builders with `auto_apply: dependents` — that
+  /// means `build_runner` tries to load
+  /// `package:artifact_gen/artifact_gen.dart` and
+  /// `package:fire_crud_gen/crud_builder.dart` for any package that depends
+  /// on `artifact` / `fire_crud` — including the web. Without something
+  /// providing those imports, `pub get` fails.
+  ///
+  /// This method:
+  ///   1. Copies `templates/_vendor/artifact_gen/` and
+  ///      `templates/_vendor/fire_crud_gen/` (no-op shim packages whose
+  ///      Builders produce zero output) into
+  ///      `<outputDir>/.oracular_deps/`.
+  ///   2. Adds `dependency_overrides` entries for both shims so they win
+  ///      over the published versions during pub resolution.
+  Future<void> _vendorJasprBuilderShims(File pubspecFile) async {
+    const List<String> shimNames = <String>['artifact_gen', 'fire_crud_gen'];
+
+    for (final String shimName in shimNames) {
+      final Directory shimSource = Directory(
+        p.join(templatesBasePath, '_vendor', shimName),
+      );
+      if (!shimSource.existsSync()) {
+        warn(
+          '$shimName shim not found at ${shimSource.path}; '
+          'skipping Jaspr builder override (web build may fail with '
+          'analyzer version conflict between artifact_gen ^8.0.0 and '
+          'jaspr_builder ^10.0.0)',
+        );
+        continue;
+      }
+
+      final Directory depsRoot = Directory(
+        p.join(config.outputDir, '.oracular_deps'),
+      );
+      final Directory shimTarget = Directory(p.join(depsRoot.path, shimName));
+      if (!shimTarget.existsSync()) {
+        await shimTarget.create(recursive: true);
+        await _copyDirectory(shimSource, shimTarget);
+        verbose('  Vendored $shimName shim to: ${shimTarget.path}');
+      }
+
+      await _replacer.addVendoredOverride(
+        pubspecFile,
+        packageName: shimName,
+        relativeShimPath: '../.oracular_deps/$shimName',
+      );
+    }
   }
 
   /// Copy the models template

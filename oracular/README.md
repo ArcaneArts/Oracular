@@ -75,26 +75,55 @@ oracular check docker             # Check Docker installation
 oracular check gcloud             # Check Google Cloud SDK
 oracular check server             # Check server deployment tools
 oracular check doctor             # Run flutter doctor -v
+oracular check billing            # Detect Spark vs Blaze billing plan
 ```
 
 ### Firebase Deployment
 
-```bash
-oracular deploy all               # Deploy all Firebase resources
-oracular deploy firestore         # Deploy Firestore rules/indexes
-oracular deploy storage           # Deploy Storage rules
-oracular deploy hosting           # Build web & deploy to release
-oracular deploy hosting-beta      # Build web & deploy to beta
-oracular deploy firebase-setup    # Initial Firebase/FlutterFire setup
-oracular deploy generate-configs  # Generate Firebase config files
-```
-
-### Server Deployment
+End-to-end setup is one command:
 
 ```bash
-oracular deploy server-setup      # Generate Dockerfiles & scripts
-oracular deploy server-build      # Build production Docker image
+oracular deploy firebase-setup-full   # Login → billing → bootstrap →
+                                      # rules → web build → release +
+                                      # beta hosting → server APIs →
+                                      # cleanup. Idempotent — safe to
+                                      # rerun. Works for Flutter web AND
+                                      # both Jaspr modes (static + client).
 ```
+
+Each stage is also independently re-runnable:
+
+```bash
+oracular deploy firebase-setup        # Alias for firebase-setup-full
+oracular deploy firestore-init        # Create the default Firestore DB
+oracular deploy storage-init          # Create the default Storage bucket
+oracular deploy auth-providers        # Open console hand-off for Email
+                                      # / Google providers
+oracular deploy firestore             # Deploy Firestore rules/indexes
+oracular deploy storage               # Deploy Storage rules
+oracular deploy hosting-init          # Create `<project>-beta` site +
+                                      # apply firebase target:apply
+oracular deploy hosting               # Build web & deploy release channel
+oracular deploy hosting-beta          # Build web & deploy beta channel
+oracular deploy generate-configs      # Regenerate firebase.json/.firebaserc
+oracular deploy all                   # Deploy all Firebase rules at once
+```
+
+### Server Deployment & Cleanup
+
+```bash
+oracular deploy server-setup          # Generate Dockerfiles & scripts
+oracular deploy server-build          # Build production Docker image
+oracular deploy artifact-cleanup      # Ensure Artifact Registry repo +
+                                      # apply cleanup policy (keeps N
+                                      # most-recent + deletes >Dd images)
+oracular deploy cloudrun-prune        # Cap Cloud Run revisions at N
+                                      # (preserves traffic-serving revs)
+```
+
+The generated `script_deploy.sh` (in your server package) runs both
+cleanup steps automatically after every push to keep Artifact Registry
+storage and Cloud Run revision counts bounded.
 
 ### Configuration
 

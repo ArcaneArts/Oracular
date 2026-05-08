@@ -1,6 +1,7 @@
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 
 import '../components/app_header.dart';
+import '../seo/seo.dart';
 import '../utils/constants.dart';
 
 /// About screen - information about the application
@@ -12,23 +13,45 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ArcaneBox(
-      style: const ArcaneStyleData(
-        minHeight: '100vh',
-        display: Display.flex,
-        flexDirection: FlexDirection.column,
-      ),
-      children: [
-        // Header
-        AppHeader(
-          isDark: isDark,
-          onThemeToggle: onThemeToggle,
-          currentPath: AppRoutes.about,
+    return Seo(
+      // Per-page SEO for /about. Note the BreadcrumbList structured data
+      // - this enables breadcrumb chips in Google search results.
+      title: 'About',
+      description:
+          'About ${AppConstants.appName} - a modern web application '
+          'template built with Jaspr and the Arcane design system.',
+      canonicalPath: AppRoutes.about,
+      structuredData: <StructuredData>[
+        StructuredData.webPage(
+          name: 'About',
+          description:
+              'About ${AppConstants.appName} - a modern web application '
+              'template built with Jaspr and the Arcane design system.',
+          url: SeoConfig.absoluteUrl(AppRoutes.about),
         ),
-
-        // Content
-        const _Content(),
+        StructuredData.breadcrumbList(<({String name, String url})>[
+          (name: 'Home', url: SeoConfig.absoluteUrl(AppRoutes.home)),
+          (name: 'About', url: SeoConfig.absoluteUrl(AppRoutes.about)),
+        ]),
       ],
+      child: ArcaneBox(
+        style: const ArcaneStyleData(
+          minHeight: '100vh',
+          display: Display.flex,
+          flexDirection: FlexDirection.column,
+        ),
+        children: [
+          // Header
+          AppHeader(
+            isDark: isDark,
+            onThemeToggle: onThemeToggle,
+            currentPath: AppRoutes.about,
+          ),
+
+          // Content
+          const _Content(),
+        ],
+      ),
     );
   }
 }

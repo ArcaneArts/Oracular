@@ -363,13 +363,39 @@ class PlaceholderReplacer {
   /// method is idempotent — repeated calls are safe and no-op once the
   /// override is in place.
   Future<void> addJpatchOverride(File pubspecFile) async {
+    await addVendoredOverride(
+      pubspecFile,
+      packageName: 'jpatch',
+      relativeShimPath: '../.oracular_deps/jpatch',
+    );
+  }
+
+  /// Inject a `dependency_overrides` entry pointing [packageName] at a
+  /// vendored shim package under [relativeShimPath].
+  ///
+  /// Used by the template copier to wire up multiple shim packages
+  /// (`jpatch`, `artifact_gen`, `fire_crud_gen`, …) without duplicating
+  /// the override-injection logic.
+  ///
+  /// The method is idempotent. If a `dependency_overrides:` block already
+  /// contains [packageName], it does nothing. Otherwise it appends or
+  /// creates the block.
+  Future<void> addVendoredOverride(
+    File pubspecFile, {
+    required String packageName,
+    required String relativeShimPath,
+  }) async {
     if (!pubspecFile.existsSync()) return;
 
     String content = await pubspecFile.readAsString();
 
-    // If `jpatch:` already appears in a (real) dependency_overrides line, bail.
+    // If `<packageName>:` already appears in a (real) dependency_overrides
+    // line, bail.
     final List<String> existingLines = content.split('\n');
     bool inOverrides = false;
+    final RegExp packageEntry = RegExp(
+      '^\\s+${RegExp.escape(packageName)}:',
+    );
     for (final String line in existingLines) {
       if (line.trimLeft().startsWith('#')) continue;
       if (RegExp(r'^dependency_overrides:\s*$').hasMatch(line)) {
@@ -380,14 +406,14 @@ class PlaceholderReplacer {
       if (inOverrides && RegExp(r'^[a-zA-Z_]').hasMatch(line)) {
         inOverrides = false;
       }
-      if (inOverrides && RegExp(r'^\s+jpatch:').hasMatch(line)) {
+      if (inOverrides && packageEntry.hasMatch(line)) {
         return;
       }
     }
 
-    const String overrideEntry =
-        '  jpatch:\n'
-        '    path: ../.oracular_deps/jpatch\n';
+    final String overrideEntry =
+        '  $packageName:\n'
+        '    path: $relativeShimPath\n';
 
     final RegExp overridesHeader = RegExp(
       r'^dependency_overrides:\s*$',
@@ -408,7 +434,7 @@ class PlaceholderReplacer {
 
     await pubspecFile.writeAsString(content);
     verbose(
-      '  Added jpatch dependency_overrides to: '
+      '  Added $packageName dependency_overrides to: '
       '${p.basename(pubspecFile.path)}',
     );
   }

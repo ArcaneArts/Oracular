@@ -1,0 +1,27 @@
+name: artifact_gen
+description: |
+  Pure-shim drop-in for `artifact_gen` used by Oracular-scaffolded Jaspr web/docs apps that
+  also depend on `arcane_models`.
+
+  WHY THIS EXISTS
+  ---------------
+  The published `artifact_gen` package pins `analyzer: ^8.0.0` (transitively through
+  `source_gen`). Jaspr 0.23.x ships `jaspr_builder` which pins `analyzer: ^10.0.0`.
+  Those two cannot resolve in the same `pub get`.
+
+  Because Firebase model generation already runs inside the dedicated models package
+  (where `jaspr_builder` is NOT a dependency), the web app does NOT need to re-run those
+  generators. It only consumes the already-generated `.g.dart` files.
+
+  The upstream `artifact` package declares its builder with `auto_apply: dependents` in
+  its `build.yaml`. That forces build_runner to require `artifact_gen` for ANY package
+  that depends on `artifact` — including the web. This shim satisfies that requirement
+  with a no-op Builder so resolution succeeds without dragging analyzer 8 into the tree.
+version: 1.3.10
+publish_to: none
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  build: ^4.0.0

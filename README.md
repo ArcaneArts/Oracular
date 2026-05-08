@@ -102,25 +102,46 @@ oracular check firebase           # Check Firebase CLI
 oracular check docker             # Check Docker
 oracular check gcloud             # Check Google Cloud SDK
 oracular check doctor             # Run flutter doctor
+oracular check billing            # Detect Spark vs Blaze billing plan
 ```
 
 ### Firebase Deployment
 
-```bash
-oracular deploy all               # Deploy all Firebase resources
-oracular deploy firestore         # Deploy Firestore rules
-oracular deploy storage           # Deploy Storage rules
-oracular deploy hosting           # Deploy to release hosting
-oracular deploy hosting-beta      # Deploy to beta hosting
-oracular deploy firebase-setup    # Initial Firebase setup
-```
-
-### Server Deployment
+End-to-end one-command setup (works for Flutter web + Jaspr static & client):
 
 ```bash
-oracular deploy server-setup      # Generate Docker configs
-oracular deploy server-build      # Build Docker image
+oracular deploy firebase-setup-full   # Login, billing check, FlutterFire/
+                                      # Jaspr JS SDK config, Firestore +
+                                      # Storage bootstrap, rules deploy,
+                                      # web build, release + beta hosting,
+                                      # Cloud Run APIs + cleanup. Idempotent.
 ```
+
+Each stage is independently re-runnable:
+
+```bash
+oracular deploy firestore-init        # Create the default Firestore DB
+oracular deploy storage-init          # Create the default Storage bucket
+oracular deploy auth-providers        # Email + Google sign-in hand-off
+oracular deploy firestore             # Deploy Firestore rules + indexes
+oracular deploy storage               # Deploy Storage rules
+oracular deploy hosting-init          # Create `<project>-beta` site
+oracular deploy hosting               # Build web + deploy release channel
+oracular deploy hosting-beta          # Build web + deploy beta channel
+oracular deploy all                   # Deploy all Firebase rules
+```
+
+### Server Deployment & Cleanup
+
+```bash
+oracular deploy server-setup          # Generate Docker configs + scripts
+oracular deploy server-build          # Build production Docker image
+oracular deploy artifact-cleanup      # Apply Artifact Registry cleanup policy
+oracular deploy cloudrun-prune        # Cap Cloud Run revisions
+```
+
+The generated `script_deploy.sh` runs both cleanup steps automatically
+after every deploy.
 
 ## Templates
 

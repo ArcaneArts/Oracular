@@ -38,6 +38,110 @@ void main() {
       expect(config.setupCloudRun, isFalse);
     });
 
+    test('defaults end-to-end Firebase fields for Flutter web', () {
+      final config = SetupConfig(
+        appName: 'my_app',
+        orgDomain: 'com.example',
+        baseClassName: 'MyApp',
+        template: TemplateType.arcaneTemplate,
+        outputDir: '/tmp/test',
+      );
+
+      // Flutter template defaults to all platforms including web.
+      expect(config.supportsWebHosting, isTrue);
+      expect(config.deployHostingRelease, isTrue);
+      expect(config.deployHostingBeta, isTrue);
+      expect(config.firestoreRegion, equals('nam5'));
+      expect(config.initializeFirestore, isTrue);
+      expect(config.initializeStorage, isTrue);
+      expect(config.enableEmailAuth, isTrue);
+      expect(config.enableGoogleAuth, isTrue);
+      expect(config.requireBlaze, isFalse);
+      expect(config.setupArtifactCleanup, isFalse);
+      expect(config.artifactKeepRecent, equals(5));
+      expect(config.artifactDeleteOlderDays, equals(30));
+      expect(config.cloudRunKeepRevisions, equals(3));
+    });
+
+    test('hosting defaults are true for Jaspr docs (static)', () {
+      final config = SetupConfig(
+        appName: 'docs_site',
+        orgDomain: 'com.example',
+        baseClassName: 'DocsSite',
+        template: TemplateType.arcaneJasprDocs,
+        outputDir: '/tmp/test',
+      );
+
+      expect(config.supportsWebHosting, isTrue);
+      expect(config.deployHostingRelease, isTrue);
+      expect(config.deployHostingBeta, isTrue);
+    });
+
+    test('hosting defaults are true for Jaspr client (SPA)', () {
+      final config = SetupConfig(
+        appName: 'web_app',
+        orgDomain: 'com.example',
+        baseClassName: 'WebApp',
+        template: TemplateType.arcaneJaspr,
+        outputDir: '/tmp/test',
+      );
+
+      expect(config.supportsWebHosting, isTrue);
+      expect(config.deployHostingRelease, isTrue);
+      expect(config.deployHostingBeta, isTrue);
+    });
+
+    test('hosting defaults are false for CLI / desktop-only', () {
+      final cli = SetupConfig(
+        appName: 'cli_app',
+        orgDomain: 'com.example',
+        baseClassName: 'CliApp',
+        template: TemplateType.arcaneCli,
+        outputDir: '/tmp/test',
+        platforms: const <String>[],
+      );
+      expect(cli.supportsWebHosting, isFalse);
+      expect(cli.deployHostingRelease, isFalse);
+      expect(cli.deployHostingBeta, isFalse);
+
+      final dock = SetupConfig(
+        appName: 'dock_app',
+        orgDomain: 'com.example',
+        baseClassName: 'DockApp',
+        template: TemplateType.arcaneDock,
+        outputDir: '/tmp/test',
+        platforms: const <String>['linux', 'macos', 'windows'],
+      );
+      expect(dock.supportsWebHosting, isFalse);
+      expect(dock.deployHostingRelease, isFalse);
+      expect(dock.deployHostingBeta, isFalse);
+    });
+
+    test('requireBlaze auto-enables when server or Cloud Run is enabled', () {
+      final withServer = SetupConfig(
+        appName: 'my_app',
+        orgDomain: 'com.example',
+        baseClassName: 'MyApp',
+        template: TemplateType.arcaneTemplate,
+        outputDir: '/tmp/test',
+        createServer: true,
+      );
+      expect(withServer.requireBlaze, isTrue);
+      expect(withServer.setupArtifactCleanup, isFalse);
+
+      final withCloudRun = SetupConfig(
+        appName: 'my_app',
+        orgDomain: 'com.example',
+        baseClassName: 'MyApp',
+        template: TemplateType.arcaneTemplate,
+        outputDir: '/tmp/test',
+        createServer: true,
+        setupCloudRun: true,
+      );
+      expect(withCloudRun.requireBlaze, isTrue);
+      expect(withCloudRun.setupArtifactCleanup, isTrue);
+    });
+
     test('generates correct package names', () {
       final config = SetupConfig(
         appName: 'my_app',

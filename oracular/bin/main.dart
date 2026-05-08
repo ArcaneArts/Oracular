@@ -3,6 +3,7 @@ import 'package:fast_log/fast_log.dart';
 
 import 'package:oracular/cli/commands.dart';
 import 'package:oracular/services/interactive_wizard.dart';
+import 'package:oracular/version.dart';
 
 /// Entry point for oracular CLI application
 void main(List<String> arguments) async {
@@ -32,6 +33,6 @@ void main(List<String> arguments) async {
 ║               Arcane Template System                      ║
 ╚═══════════════════════════════════════════════════════════╝
 ''',
-    customVersionResponse: () => 'Oracular CLI v2.0.0',
+    customVersionResponse: () => 'Oracular CLI v$oracularVersion',
   );
 }

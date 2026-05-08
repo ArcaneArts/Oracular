@@ -1,0 +1,12 @@
+# robots.txt for the documentation site
+#
+# Replace https://example.com with your real domain after deploying.
+# To block staging/preview deployments from being indexed, swap
+# the User-agent / Allow directives below for `Disallow: /`.
+
+User-agent: *
+Allow: /
+
+# arcane_lexicon writes a sitemap to web/sitemap.xml at build time
+# when SiteConfig.baseUrl is set.
+Sitemap: https://example.com/sitemap.xml

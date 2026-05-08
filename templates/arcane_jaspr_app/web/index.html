@@ -1,14 +1,97 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- ============================================================
+       PAGE BASICS
+       Update title + description per environment / per deployment.
+       Per-page overrides come from lib/seo/seo.dart via Document.head.
+       ============================================================ -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ArcaneJasprApp</title>
+  <meta name="description" content="A modern web application built with Jaspr and Arcane UI">
+  <meta name="generator" content="Jaspr + Arcane">
+  <meta name="author" content="ArcaneJasprApp">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10b981">
+  <meta name="color-scheme" content="dark light">
+  <meta name="format-detection" content="telephone=no">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="assets/icon.png">
+  <!-- ============================================================
+       CANONICAL URL
+       Replace https://example.com with your real domain. The Seo
+       widget overrides this per-page when you set canonicalPath.
+       ============================================================ -->
+  <link rel="canonical" href="https://example.com/">
 
-  <!-- Theme initialization - runs before page renders to prevent flash -->
+  <!-- ============================================================
+       OPEN GRAPH (Facebook, LinkedIn, Discord, Slack, iMessage...)
+       ============================================================ -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ArcaneJasprApp">
+  <meta property="og:title" content="ArcaneJasprApp">
+  <meta property="og:description" content="A modern web application built with Jaspr and Arcane UI">
+  <meta property="og:url" content="https://example.com/">
+  <meta property="og:image" content="https://example.com/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="ArcaneJasprApp">
+  <meta property="og:locale" content="en_US">
+
+  <!-- ============================================================
+       TWITTER / X CARD
+       ============================================================ -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ArcaneJasprApp">
+  <meta name="twitter:description" content="A modern web application built with Jaspr and Arcane UI">
+  <meta name="twitter:image" content="https://example.com/assets/og-image.png">
+  <!-- <meta name="twitter:site" content="@yourhandle"> -->
+  <!-- <meta name="twitter:creator" content="@yourhandle"> -->
+
+  <!-- ============================================================
+       FAVICONS + PWA MANIFEST
+       Recommended icon sources at https://realfavicongenerator.net
+       ============================================================ -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon.png">
+  <link rel="mask-icon" href="/assets/icon.png" color="#10b981">
+  <link rel="manifest" href="/manifest.webmanifest">
+
+  <!-- ============================================================
+       STRUCTURED DATA (JSON-LD)
+       Site-wide WebSite + Organization schema. Per-page schemas
+       (Article, FAQPage, BreadcrumbList...) are emitted by the
+       StructuredData widget at runtime.
+       ============================================================ -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "ArcaneJasprApp",
+    "url": "https://example.com/"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "ArcaneJasprApp",
+    "url": "https://example.com/",
+    "logo": "https://example.com/assets/icon.png"
+  }
+  </script>
+
+  <!-- ============================================================
+       PERFORMANCE: preconnect + dns-prefetch for common origins
+       ============================================================ -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- ============================================================
+       THEME BOOT (prevents FOUC)
+       ============================================================ -->
   <script>
     (function() {
       var savedTheme = localStorage.getItem('arcane-theme-preset') || 'green';

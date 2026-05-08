@@ -1,6 +1,9 @@
 import 'package:fast_log/fast_log.dart';
 
+import '../../services/firebase_billing_service.dart';
 import '../../services/tool_checker.dart';
+import '../../utils/project_config_loader.dart';
+import '../../utils/user_prompt.dart';
 
 final _checker = ToolChecker();
 
@@ -83,4 +86,58 @@ Future<void> handleDoctor() async {
 Future<void> handleCheckServer() async {
   final result = await _checker.checkServerTools();
   result.printSummary();
+}
+
+/// Check Firebase billing plan (Spark vs Blaze).
+///
+/// Implemented in T3 (FirebaseBillingService); the orchestrator gates
+/// Cloud Run / cleanup steps on the result via [BlazeStatus.enabled].
+Future<void> handleCheckBilling() async {
+  final config = await ProjectConfigLoader.load();
+  if (config == null) {
+    ProjectConfigLoader.printMissingConfigHelp();
+    return;
+  }
+  if (!config.useFirebase || config.firebaseProjectId == null) {
+    error('Firebase is not enabled or project ID not set.');
+    return;
+  }
+
+  final FirebaseBillingService billing = FirebaseBillingService(
+    config.firebaseProjectId!,
+  );
+
+  info('Checking billing for ${config.firebaseProjectId}...');
+  final BillingCheckResult result = await billing.checkBlazeStatus();
+
+  switch (result.status) {
+    case BlazeStatus.enabled:
+      success('Project is on Blaze (pay-as-you-go).');
+      if (result.billingAccountName != null) {
+        print('Linked account: ${result.billingAccountName}');
+      }
+      break;
+    case BlazeStatus.notEnabled:
+      warn('Project is on Spark. Cloud Run / cleanup features are gated.');
+      print('');
+      UserPrompt.printList(<String>[
+        'Upgrade at: '
+            '${FirebaseBillingService.upgradeUrl(config.firebaseProjectId!)}',
+        'Spark covers Hosting, Firestore (small), Auth, Storage (small).',
+        'Blaze is required for Cloud Run, Artifact Registry cleanup,',
+        '  scheduled jobs, and most production workloads.',
+      ]);
+      break;
+    case BlazeStatus.unknown:
+      error(
+        'Could not determine billing status: ${result.message ?? 'unknown error'}',
+      );
+      print('');
+      UserPrompt.printList(<String>[
+        'Verify gcloud is installed and authenticated: `gcloud auth login`',
+        'Check the project ID in config/setup_config.env',
+        'You can still continue; Blaze-gated steps will simply be skipped.',
+      ]);
+      break;
+  }
 }

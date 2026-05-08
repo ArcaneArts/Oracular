@@ -11,11 +11,14 @@ import '../utils/string_utils.dart';
 import '../utils/setup_guidance.dart';
 import '../utils/user_prompt.dart';
 import '../utils/validators.dart';
+import '../utils/wizard_navigation.dart';
 import '../version.dart';
+import '../cli/handlers/rebuild_handlers.dart' as rebuild_handler;
 import 'config_generator.dart';
 import 'dependency_manager.dart';
 import 'docs_generator.dart';
-import 'firebase_service.dart';
+import 'firebase_billing_service.dart' show BlazeStatus;
+import 'firebase_setup_orchestrator.dart';
 import 'project_creator.dart';
 import 'server_setup.dart';
 import 'template_copier.dart';
@@ -26,12 +29,28 @@ class InteractiveWizard {
   final ToolChecker _toolChecker = ToolChecker();
   final bool verbose;
 
-  // Wizard step tracking
-  static const int _totalSteps = 5;
+  // Wizard step tracking. Step 5 is "Cloud Setup" which the orchestrator
+  // expands into 5.1 – 5.12 (Firebase) plus 6.x for Cloud Run / cleanup
+  // when the project requested a server. Total stays at 6 to keep the top
+  // banner consistent regardless of branching.
+  static const int _totalSteps = 6;
   int _currentStep = 0;
 
   /// Failures encountered during setup, surfaced at the end of the wizard.
   final List<_WizardFailure> _failures = <_WizardFailure>[];
+
+  /// Most recent orchestrator report — used by `_printSuccess` to render the
+  /// "What was deployed" block (release URL, beta URL, Firestore region,
+  /// Storage bucket, billing status).
+  OrchestratorReport? _firebaseReport;
+
+  /// Sub-step counters per top-level step (5 or 6). Reset whenever the
+  /// wizard transitions phases so we can render labels like "Step 5.1",
+  /// "Step 5.2" or "Step 6.1".
+  final Map<int, int> _subStepCounters = <int, int>{
+    5: 0,
+    6: 0,
+  };
 
   /// Process runner used while spinner UI is active. Non-interactive so
   /// failed commands don't try to prompt the user from behind the spinner.
@@ -54,6 +73,110 @@ class InteractiveWizard {
   Future<void> run() async {
     _printWelcome();
 
+    // Top-level action menu: pick whether to start fresh, rebuild an
+    // existing project, or quit. Lets users invoke the rebuild flow
+    // without remembering the `oracular rebuild` command.
+    final _StartAction action = await _chooseStartAction();
+    switch (action) {
+      case _StartAction.start:
+        await _runFreshSetup();
+        return;
+      case _StartAction.rebuild:
+        await _runRebuildFlow();
+        return;
+      case _StartAction.quit:
+        info('Goodbye.');
+        return;
+    }
+  }
+
+  /// First-screen menu so users can pick between a fresh setup, rebuilding
+  /// an existing project (purge + rescaffold), or bailing out without
+  /// having to remember the named subcommand.
+  Future<_StartAction> _chooseStartAction() async {
+    print('');
+    UserPrompt.printDivider(title: 'What would you like to do?');
+    final List<String> options = <String>[
+      'Start a new project setup',
+      'Rebuild / refresh an existing project (purge + rescaffold, Firebase untouched)',
+      'Quit',
+    ];
+    try {
+      final int choice = await UserPrompt.showMenu(
+        'Select an action',
+        options,
+        defaultIndex: 0,
+      );
+      switch (choice) {
+        case 0:
+          return _StartAction.start;
+        case 1:
+          return _StartAction.rebuild;
+        default:
+          return _StartAction.quit;
+      }
+    } on Object {
+      // Fallback path: any unexpected error → assume start.
+      return _StartAction.start;
+    }
+  }
+
+  /// Run the rebuild flow by delegating to the shared `oracular rebuild`
+  /// handler. Runs interactively so the user gets the same purge plan
+  /// preview / confirm UX as the CLI command.
+  Future<void> _runRebuildFlow() async {
+    print('');
+    info(
+      'Rebuild reuses the SetupConfig saved at <project>/config/setup_config.env.',
+    );
+    UserPrompt.printList(<String>[
+      'You will be prompted for the project root.',
+      'Only the folders Oracular originally created are deleted.',
+      'Firebase / IAM / Cloud Run setup is left untouched.',
+    ]);
+    print('');
+
+    String? configPath;
+    String? outputDir;
+    while (true) {
+      try {
+        outputDir = await WizardNav.askString(
+          'Project root (contains config/setup_config.env)',
+          defaultValue: Directory.current.path,
+          fromStep: 'rebuild project root',
+        );
+        break;
+      } on BackNavigation {
+        // User asked to go back from the only prompt — return to the
+        // action menu by re-running the wizard from the top.
+        await run();
+        return;
+      } on CancelNavigation {
+        warn('Rebuild cancelled.');
+        return;
+      }
+    }
+
+    final String resolved = _resolveTargetPath(outputDir);
+    final String defaultConfig =
+        p.join(resolved, 'config', 'setup_config.env');
+    if (File(defaultConfig).existsSync()) {
+      configPath = defaultConfig;
+    }
+
+    final Map<String, dynamic> rebuildArgs = <String, dynamic>{
+      'output-dir': resolved,
+    };
+    if (configPath != null) {
+      rebuildArgs['config'] = configPath;
+    }
+    await rebuild_handler.handleRebuild(rebuildArgs, <String, dynamic>{});
+  }
+
+  /// The original linear "fresh setup" pipeline, lifted out of `run()`
+  /// so the action menu can route to it cleanly. Behaviourally identical
+  /// to v3.3.6 — only relocated.
+  Future<void> _runFreshSetup() async {
     // Intro: pick the target location before anything else so the user
     // knows exactly where the project will land.
     if (!await _askTargetLocation()) {
@@ -102,13 +225,15 @@ class InteractiveWizard {
     );
     await _executeSetup(config);
 
-    // Step 5: Optional Firebase setup
+    // Step 5: Optional Firebase + Cloud Run / Cleanup setup. The
+    // orchestrator dispatches Step 5.x (Firebase) and Step 6.x (Cloud Run +
+    // cleanup) based on the SetupConfig flags.
     _currentStep = 4;
     if (config.useFirebase) {
       UserPrompt.printStepIndicator(
         _currentStep,
         _totalSteps,
-        'Firebase Setup',
+        'Cloud Setup',
       );
       await _offerFirebaseSetup(config);
     }
@@ -128,6 +253,8 @@ class InteractiveWizard {
       'Use \u2191\u2193 arrow keys to navigate menus',
       'Press Space to toggle selections',
       'Press Enter to confirm',
+      'Type "back" / "b" / "<" at any prompt to go back one step',
+      'Type "quit" / "q" to abort the wizard',
     ]);
     print('');
   }
@@ -638,100 +765,259 @@ class InteractiveWizard {
   Future<void> _offerFirebaseSetup(SetupConfig config) async {
     UserPrompt.printDivider(title: 'Firebase Setup');
 
-    final setupNow = await UserPrompt.askYesNo(
+    final bool setupNow = await UserPrompt.askYesNo(
       'Would you like to setup Firebase now?',
       defaultValue: true,
     );
 
     if (!setupNow) {
       print('');
-      UserPrompt.printList([
+      UserPrompt.printList(<String>[
         'You can run Firebase setup later with:',
-        '  oracular deploy firebase-setup',
+        '  oracular deploy firebase-setup-full',
       ]);
       return;
     }
 
-    final firebase = FirebaseService(config, runner: _spinnerRunner);
+    // Gating questions to override SetupConfig defaults *before* running
+    // the orchestrator. Keeps us from interrupting the run with 12
+    // separate yes/no prompts.
+    final SetupConfig effective = await _gatherFirebaseSubStepConfig(config);
 
-    // Login to Firebase with spinner
-    final bool loginOk = await UserPrompt.withSpinner(
-      'Logging in to Firebase...',
-      () async => await firebase.login(),
-      doneMessage: '✓ Firebase login complete',
-      failedMessage: '✗ Firebase login failed',
-    );
-    if (!loginOk) {
-      _recordFailure(
-        'Firebase login',
-        hint:
-            'Run `firebase login` (or place a service-account.json) and rerun `oracular deploy firebase-setup`.',
-      );
-      // Without login, the rest will fail too. Surface guidance and bail.
-      return;
-    }
+    final FirebaseSetupOrchestrator orchestrator =
+        FirebaseSetupOrchestrator(effective, runner: _spinnerRunner);
 
-    // Login to gcloud if Cloud Run enabled
-    if (config.setupCloudRun) {
-      final bool gcloudOk = await UserPrompt.withSpinner(
-        'Logging in to Google Cloud...',
-        () async => await firebase.gcloudLogin(),
-        doneMessage: '✓ Google Cloud login complete',
-        failedMessage: '✗ Google Cloud login failed',
-      );
-      if (!gcloudOk) {
-        _recordFailure(
-          'gcloud login',
-          hint:
-              'Run `gcloud auth login` (or activate a service account) before deploying Cloud Run.',
-        );
-      }
-    }
+    // Reset per-phase sub-step counters so labelling starts at 5.1 / 6.1.
+    _subStepCounters[5] = 0;
+    _subStepCounters[6] = 0;
 
-    // Configure FlutterFire with spinner
-    final flutterFireSuccess = await UserPrompt.withSpinner(
-      'Configuring FlutterFire...',
-      () async => await firebase.configureFlutterFire(),
-      doneMessage: '✓ FlutterFire configured',
-      failedMessage: '✗ FlutterFire configuration failed',
+    final OrchestratorReport report = await orchestrator.runAll(
+      confirm: (WizardSubStep step) async {
+        _printSubStepStarting(step);
+        return true;
+      },
+      onStep: (SetupStepResult result) async {
+        _printSubStepResult(result);
+        if (result.failed) {
+          _recordFailure(
+            'Step ${_subStepLabelFor(result.step)} ${result.step.label}',
+            hint: result.fixHint.isNotEmpty
+                ? 'Run: ${result.fixHint}'
+                : (result.message.isNotEmpty
+                    ? result.message
+                    : 'See the orchestrator output above for details.'),
+          );
+        }
+      },
+      onFailure: _promptFailureAction,
     );
 
-    if (!flutterFireSuccess) {
-      _recordFailure(
-        'FlutterFire configuration',
-        hint: 'Retry with: oracular deploy firebase-setup',
-      );
-      UserPrompt.printErrorBox(
-        'FlutterFire configuration failed',
-        hint: 'You can retry with: oracular deploy firebase-setup',
-      );
-    }
-
-    // Enable APIs
-    if (config.setupCloudRun) {
-      final bool apisOk = await UserPrompt.withSpinner(
-        'Enabling Google Cloud APIs...',
-        () async => await firebase.enableGoogleApis(),
-        doneMessage: '✓ APIs enabled',
-        failedMessage: '✗ Could not enable all APIs',
-      );
-      if (!apisOk) {
-        _recordFailure(
-          'Google Cloud APIs',
-          hint:
-              'Manually run `gcloud services enable artifactregistry.googleapis.com run.googleapis.com --project ${config.firebaseProjectId}`.',
-        );
-      }
-    }
+    _firebaseReport = report;
 
     print('');
-    if (_failures.isEmpty) {
-      UserPrompt.printSuccessBox('Firebase setup complete!');
+    if (report.aborted) {
+      UserPrompt.printErrorBox(
+        'Firebase setup aborted at your request',
+        hint:
+            'Fix the issue above, then run: oracular deploy firebase-setup-full',
+      );
+    } else if (report.success && report.failedCount == 0) {
+      final List<String> details = <String>[];
+      if (report.releaseUrl != null) {
+        details.add('Release: ${report.releaseUrl}');
+      }
+      if (report.betaUrl != null) {
+        details.add('Beta:    ${report.betaUrl}');
+      }
+      if (report.firestoreRegion != null) {
+        details.add('Firestore region: ${report.firestoreRegion}');
+      }
+      if (report.storageBucketName != null) {
+        details.add('Storage bucket:  gs://${report.storageBucketName}');
+      }
+      UserPrompt.printSuccessBox(
+        'Firebase setup complete!',
+        details: details.isEmpty ? null : details,
+      );
     } else {
       UserPrompt.printErrorBox(
-        'Firebase setup completed with issues',
+        'Firebase setup completed with ${report.failedCount} issue(s)',
         hint: 'Review the issues at the end of the wizard output.',
       );
+    }
+  }
+
+  /// Convert the high-level config flags into the actual orchestrator
+  /// inputs by asking the user a small set of gating questions. This
+  /// replaces the per-substep `confirm` prompts so the user is not
+  /// interrupted in the middle of the run.
+  Future<SetupConfig> _gatherFirebaseSubStepConfig(SetupConfig config) async {
+    print('');
+    info('Tell me which parts of Firebase setup to run now.');
+    info('You can rerun any step later with `oracular deploy <command>`.');
+    print('');
+
+    // ── Hosting ────────────────────────────────────────────────────────────
+    bool deployRelease = config.deployHostingRelease;
+    bool deployBeta = config.deployHostingBeta;
+    if (SetupGuidance.supportsWebHosting(config)) {
+      final String releaseLabel = config.template.isJasprApp
+          ? 'Build & deploy the Jaspr release site (`${config.firebaseProjectId}.web.app`) now?'
+          : 'Build & deploy the Flutter release site (`${config.firebaseProjectId}.web.app`) now?';
+      deployRelease = await UserPrompt.askYesNo(
+        releaseLabel,
+        defaultValue: deployRelease,
+      );
+
+      deployBeta = await UserPrompt.askYesNo(
+        'Also create + deploy `${config.firebaseProjectId}-beta` site?',
+        defaultValue: deployBeta,
+      );
+    }
+
+    // ── Firestore + Storage bootstrapping ──────────────────────────────────
+    final bool initFirestore = await UserPrompt.askYesNo(
+      'Initialize the default Firestore database (region: ${config.firestoreRegion})?',
+      defaultValue: config.initializeFirestore,
+    );
+
+    final bool initStorage = await UserPrompt.askYesNo(
+      'Initialize the default Storage bucket (gs://${config.firebaseProjectId}.firebasestorage.app)?',
+      defaultValue: config.initializeStorage,
+    );
+
+    // ── Auth providers ─────────────────────────────────────────────────────
+    final bool wantAuth = await UserPrompt.askYesNo(
+      'Enable Email/Password + Google sign-in providers? (manual hand-off)',
+      defaultValue: config.enableEmailAuth || config.enableGoogleAuth,
+    );
+
+    // ── Cloud Run cleanup (only if Cloud Run / server enabled) ─────────────
+    bool setupCleanup = config.setupArtifactCleanup;
+    if (config.setupCloudRun || config.createServer) {
+      setupCleanup = await UserPrompt.askYesNo(
+        'Apply Artifact Registry cleanup + cap Cloud Run revisions? '
+        '(keeps storage bounded)',
+        defaultValue: setupCleanup,
+      );
+    }
+
+    return config.copyWith(
+      deployHostingRelease: deployRelease,
+      deployHostingBeta: deployBeta,
+      initializeFirestore: initFirestore,
+      initializeStorage: initStorage,
+      enableEmailAuth: wantAuth,
+      enableGoogleAuth: wantAuth,
+      setupArtifactCleanup: setupCleanup,
+    );
+  }
+
+  /// Prompt the user when a Firebase sub-step fails: Retry / Skip / Abort.
+  ///
+  /// Pretty-prints the failure with the `fixHint` (if any) so the user can
+  /// run a manual command in another terminal before choosing **Retry**.
+  /// Honours fail-fast: by default the wizard aborts the whole run on the
+  /// first failure unless the user explicitly skips.
+  Future<FailureAction> _promptFailureAction(
+    SetupStepResult result, {
+    required int attempt,
+  }) async {
+    print('');
+    UserPrompt.printDivider(title: 'Step failed');
+    error('  Step ${_subStepLabelFor(result.step)} · ${result.step.label}');
+    if (result.message.isNotEmpty) {
+      error('  Reason: ${result.message}');
+    }
+    if (result.fixHint.isNotEmpty) {
+      info('  Suggested fix: ${result.fixHint}');
+    }
+    if (attempt > 1) {
+      info('  Retry attempt #$attempt');
+    }
+    print('');
+    info('What would you like to do?');
+    info('  [r] Retry this step (default)');
+    info('  [s] Skip this step and continue with the rest of setup');
+    info('  [a] Abort Firebase setup (you can resume later with: oracular deploy firebase-setup-full)');
+    print('');
+
+    while (true) {
+      final String answer = (await UserPrompt.askString(
+        'Action [r/s/a]',
+        defaultValue: 'r',
+      ))
+          .trim()
+          .toLowerCase();
+      switch (answer) {
+        case '':
+        case 'r':
+        case 'retry':
+          return FailureAction.retry;
+        case 's':
+        case 'skip':
+          return FailureAction.skip;
+        case 'a':
+        case 'abort':
+        case 'q':
+        case 'quit':
+          return FailureAction.abort;
+        default:
+          error('Please answer r (retry), s (skip), or a (abort).');
+      }
+    }
+  }
+
+  /// Top-level phase number (5 or 6) a sub-step belongs to.
+  int _phaseNumberFor(WizardSubStep step) {
+    switch (step) {
+      case WizardSubStep.enableServerApis:
+      case WizardSubStep.ensureArtifactRegistryRepo:
+      case WizardSubStep.applyArtifactCleanupPolicy:
+      case WizardSubStep.capCloudRunRevisions:
+        return 6;
+      default:
+        return 5;
+    }
+  }
+
+  /// "5.3" / "6.1" — incremented every time `confirm` fires.
+  String _subStepLabelFor(WizardSubStep step) {
+    final int phase = _phaseNumberFor(step);
+    final int counter = _subStepCounters[phase] ?? 0;
+    return '$phase.$counter';
+  }
+
+  void _printSubStepStarting(WizardSubStep step) {
+    final int phase = _phaseNumberFor(step);
+    _subStepCounters[phase] = (_subStepCounters[phase] ?? 0) + 1;
+    print('');
+    print(
+      '  ▶ Step ${_subStepLabelFor(step)} · ${step.label}…',
+    );
+  }
+
+  void _printSubStepResult(SetupStepResult result) {
+    final String label = _subStepLabelFor(result.step);
+    final String message = result.message.isNotEmpty
+        ? '  ·  ${result.message}'
+        : '';
+    switch (result.status) {
+      case SetupStepStatus.success:
+        success('  ✓ Step $label · ${result.step.label}$message');
+        break;
+      case SetupStepStatus.skipped:
+        info('  ⏭  Step $label · ${result.step.label}$message');
+        if (result.fixHint.isNotEmpty) {
+          info('     Run later: ${result.fixHint}');
+        }
+        break;
+      case SetupStepStatus.failed:
+        error('  ✗ Step $label · ${result.step.label}$message');
+        if (result.fixHint.isNotEmpty) {
+          info('     Fix: ${result.fixHint}');
+        }
+        break;
     }
   }
 
@@ -748,11 +1034,15 @@ class InteractiveWizard {
     print('Created:');
     UserPrompt.printList(createdItems);
 
+    if (_firebaseReport != null) {
+      _printDeploymentSummary(config, _firebaseReport!);
+    }
+
     if (_failures.isNotEmpty) {
       _printFailureSummary();
     }
 
-    SetupGuidance.printPostCreationChecklist(config);
+    SetupGuidance.printPostCreationChecklist(config, report: _firebaseReport);
 
     print('');
     if (_failures.isEmpty) {
@@ -763,6 +1053,129 @@ class InteractiveWizard {
         hint: 'Resolve the items listed under "Setup Issues" before deploying.',
       );
     }
+  }
+
+  /// Render a "What was deployed" summary block (live URLs + Firebase /
+  /// Cloud consoles) once the orchestrator has run. Skipped pieces are
+  /// silently omitted — the post-creation checklist (T12) tells the user
+  /// what to do next.
+  void _printDeploymentSummary(SetupConfig config, OrchestratorReport report) {
+    final String? projectId = config.firebaseProjectId;
+    if (projectId == null) {
+      return;
+    }
+
+    print('');
+    UserPrompt.printDivider(title: 'What was deployed');
+
+    final List<String> lines = <String>[];
+
+    // ── Live hosting URLs ────────────────────────────────────────────────
+    if (report.releaseUrl != null) {
+      final String label = config.template.isJasprApp
+          ? (config.template == TemplateType.arcaneJasprDocs
+              ? 'Jaspr docs site (release)'
+              : 'Jaspr web app (release)')
+          : 'Flutter web app (release)';
+      lines.add('$label: ${report.releaseUrl}');
+    }
+    if (report.betaUrl != null) {
+      final String label = config.template.isJasprApp
+          ? (config.template == TemplateType.arcaneJasprDocs
+              ? 'Jaspr docs site (beta)'
+              : 'Jaspr web app (beta)')
+          : 'Flutter web app (beta)';
+      lines.add('$label: ${report.betaUrl}');
+    }
+
+    // ── Bootstrapped Firebase resources ──────────────────────────────────
+    if (report.firestoreRegion != null) {
+      lines.add(
+        'Firestore default database: ${report.firestoreRegion}  '
+        '(${SetupGuidance.firebaseFirestoreConsoleUrl(projectId)})',
+      );
+    }
+    if (report.storageBucketName != null) {
+      lines.add(
+        'Storage bucket: gs://${report.storageBucketName}  '
+        '(${SetupGuidance.firebaseStorageConsoleUrl(projectId)})',
+      );
+    }
+
+    // ── Auth providers (if requested + setup completed) ──────────────────
+    final bool authConfigured = report.results.any(
+      (SetupStepResult r) =>
+          r.step == WizardSubStep.enableAuthProviders && r.success,
+    );
+    if (authConfigured) {
+      final List<String> providers = <String>[
+        if (config.enableEmailAuth) 'Email/Password',
+        if (config.enableGoogleAuth) 'Google',
+      ];
+      lines.add(
+        'Auth providers: ${providers.join(' + ')}  '
+        '(${SetupGuidance.firebaseAuthenticationConsoleUrl(projectId)})',
+      );
+    }
+
+    // ── Billing status ──────────────────────────────────────────────────
+    if (report.blazeStatus != null) {
+      switch (report.blazeStatus!) {
+        case BlazeStatus.enabled:
+          lines.add('Billing: Blaze (pay-as-you-go) — Cloud Run enabled');
+          break;
+        case BlazeStatus.notEnabled:
+          lines.add(
+            'Billing: Spark (free) — Cloud Run skipped. Upgrade later: '
+            'https://console.firebase.google.com/project/$projectId/usage/details',
+          );
+          break;
+        case BlazeStatus.unknown:
+          lines.add(
+            'Billing: not detected — verify with `oracular check billing`',
+          );
+          break;
+      }
+    }
+
+    // ── Cloud Run + Artifact Registry (when server steps ran) ────────────
+    final bool cloudRunReady = report.results.any(
+      (SetupStepResult r) =>
+          r.step == WizardSubStep.enableServerApis && r.success,
+    );
+    if (cloudRunReady && config.createServer) {
+      final String service = config.serverPackageName.replaceAll('_', '-');
+      lines.add(
+        'Cloud Run service: $service  '
+        '(${SetupGuidance.cloudRunConsoleUrl(projectId)})',
+      );
+    }
+    final bool cleanupApplied = report.results.any(
+      (SetupStepResult r) =>
+          r.step == WizardSubStep.applyArtifactCleanupPolicy && r.success,
+    );
+    if (cleanupApplied) {
+      lines.add(
+        'Artifact Registry cleanup: keep ${config.artifactKeepRecent} recent + '
+        'delete >${config.artifactDeleteOlderDays}d',
+      );
+    }
+
+    if (lines.isEmpty) {
+      // Nothing was actually deployed — the orchestrator ran but every
+      // hosting / init step was skipped or failed. Don't show the box.
+      return;
+    }
+
+    UserPrompt.printList(lines);
+
+    // Run summary footer
+    print('');
+    print(
+      '  ${report.successCount} succeeded · '
+      '${report.skippedCount} skipped · '
+      '${report.failedCount} failed',
+    );
   }
 
   void _printFailureSummary() {
@@ -785,4 +1198,17 @@ class _WizardFailure {
   final String? hint;
 
   _WizardFailure({required this.step, this.hint});
+}
+
+/// Top-level action picked from the wizard's welcome menu.
+enum _StartAction {
+  /// Run the original linear setup wizard.
+  start,
+
+  /// Purge + rescaffold an existing project from saved config — same flow
+  /// as `oracular rebuild` from the CLI.
+  rebuild,
+
+  /// Exit without doing anything.
+  quit,
 }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:oracular/models/setup_config.dart';
 import 'package:oracular/models/template_info.dart';
 import 'package:oracular/services/placeholder_replacer.dart';
@@ -288,6 +290,153 @@ class MyAppServer {
       // This is expected behavior since we use simple string replacement
       final result = replacer.replaceInContent('arcane_apple');
       expect(result, equals('my_apple'));
+    });
+  });
+
+  group('addVendoredOverride', () {
+    late Directory tmpDir;
+
+    setUp(() {
+      tmpDir = Directory.systemTemp.createTempSync('placeholder_test_');
+    });
+
+    tearDown(() {
+      if (tmpDir.existsSync()) {
+        tmpDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('appends override entry when no dependency_overrides block exists',
+        () async {
+      final pubspec = File('${tmpDir.path}/pubspec.yaml')
+        ..writeAsStringSync(
+          'name: my_app\nversion: 1.0.0\n\ndependencies:\n  jaspr: ^0.23.0\n',
+        );
+
+      await replacer.addVendoredOverride(
+        pubspec,
+        packageName: 'artifact_gen',
+        relativeShimPath: '../.oracular_deps/artifact_gen',
+      );
+
+      final content = pubspec.readAsStringSync();
+      expect(content, contains('dependency_overrides:'));
+      expect(content, contains('  artifact_gen:'));
+      expect(content, contains('    path: ../.oracular_deps/artifact_gen'));
+    });
+
+    test('appends override entry to existing dependency_overrides block',
+        () async {
+      final pubspec = File('${tmpDir.path}/pubspec.yaml')
+        ..writeAsStringSync(
+          'name: my_app\n'
+          'version: 1.0.0\n'
+          '\n'
+          'dependencies:\n'
+          '  jaspr: ^0.23.0\n'
+          '\n'
+          'dependency_overrides:\n'
+          '  jpatch:\n'
+          '    path: ../.oracular_deps/jpatch\n',
+        );
+
+      await replacer.addVendoredOverride(
+        pubspec,
+        packageName: 'fire_crud_gen',
+        relativeShimPath: '../.oracular_deps/fire_crud_gen',
+      );
+
+      final content = pubspec.readAsStringSync();
+      // Both entries should still be there.
+      expect(content, contains('  jpatch:'));
+      expect(content, contains('  fire_crud_gen:'));
+      expect(content, contains('    path: ../.oracular_deps/fire_crud_gen'));
+      // Single dependency_overrides header.
+      final headerCount =
+          'dependency_overrides:'.allMatches(content).length;
+      expect(headerCount, equals(1));
+    });
+
+    test('is idempotent — re-running does not duplicate override', () async {
+      final pubspec = File('${tmpDir.path}/pubspec.yaml')
+        ..writeAsStringSync(
+          'name: my_app\nversion: 1.0.0\n\ndependencies:\n  jaspr: ^0.23.0\n',
+        );
+
+      await replacer.addVendoredOverride(
+        pubspec,
+        packageName: 'artifact_gen',
+        relativeShimPath: '../.oracular_deps/artifact_gen',
+      );
+      final firstContent = pubspec.readAsStringSync();
+
+      await replacer.addVendoredOverride(
+        pubspec,
+        packageName: 'artifact_gen',
+        relativeShimPath: '../.oracular_deps/artifact_gen',
+      );
+      final secondContent = pubspec.readAsStringSync();
+
+      expect(secondContent, equals(firstContent));
+      // Single occurrence of artifact_gen entry.
+      final entryCount =
+          RegExp(r'^\s+artifact_gen:', multiLine: true)
+              .allMatches(secondContent)
+              .length;
+      expect(entryCount, equals(1));
+    });
+
+    test('addJpatchOverride wraps the generic helper with jpatch defaults',
+        () async {
+      final pubspec = File('${tmpDir.path}/pubspec.yaml')
+        ..writeAsStringSync(
+          'name: my_app\nversion: 1.0.0\n\ndependencies:\n  jaspr: ^0.23.0\n',
+        );
+
+      await replacer.addJpatchOverride(pubspec);
+
+      final content = pubspec.readAsStringSync();
+      expect(content, contains('dependency_overrides:'));
+      expect(content, contains('  jpatch:'));
+      expect(content, contains('    path: ../.oracular_deps/jpatch'));
+    });
+
+    test('does nothing when pubspec file is missing', () async {
+      final missing = File('${tmpDir.path}/does_not_exist.yaml');
+      await replacer.addVendoredOverride(
+        missing,
+        packageName: 'artifact_gen',
+        relativeShimPath: '../.oracular_deps/artifact_gen',
+      );
+      expect(missing.existsSync(), isFalse);
+    });
+
+    test('does not match commented-out override entries as duplicates',
+        () async {
+      final pubspec = File('${tmpDir.path}/pubspec.yaml')
+        ..writeAsStringSync(
+          'name: my_app\n'
+          'dependencies:\n'
+          '  jaspr: ^0.23.0\n'
+          '\n'
+          'dependency_overrides:\n'
+          '  # artifact_gen:\n'
+          '  #   path: ../.oracular_deps/artifact_gen\n',
+        );
+
+      await replacer.addVendoredOverride(
+        pubspec,
+        packageName: 'artifact_gen',
+        relativeShimPath: '../.oracular_deps/artifact_gen',
+      );
+
+      final content = pubspec.readAsStringSync();
+      // Real entry was added even though a commented-out one was present.
+      expect(
+        RegExp(r'^\s+artifact_gen:', multiLine: true).allMatches(content).length,
+        equals(1),
+      );
+      expect(content, contains('    path: ../.oracular_deps/artifact_gen'));
     });
   });
 }
