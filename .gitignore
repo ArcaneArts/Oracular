@@ -238,3 +238,7 @@ web/main.dart.js.deps
 web/main.dart.js.map
 web/main.dart.mjs
 plans/
+
+# Templates Release pipeline (scripts/, .github/workflows/templates-release.yml)
+/dist/
+

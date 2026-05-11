@@ -40,6 +40,35 @@ Oracular/
 dart pub global activate oracular
 ```
 
+## Downloading Templates Without Installing the CLI
+
+Every release ships per-template ZIPs to the
+[GitHub Releases page](https://github.com/ArcaneArts/oracular/releases).
+If you just want a project skeleton — no `oracular` install required —
+you can download a ZIP for one template, extract it, and run the
+bundled `setup.dart`:
+
+```bash
+# 1. Grab the ZIP for your template (replace <X.Y.Z> with the latest version)
+curl -fLO https://github.com/ArcaneArts/oracular/releases/latest/download/arcane_app-v<X.Y.Z>.zip
+
+# 2. Extract + setup
+unzip arcane_app-v<X.Y.Z>.zip -d /tmp/my_app-extract
+cd /tmp/my_app-extract
+dart run setup.dart --name my_app --org com.example --output-dir ~/code/my_app
+```
+
+`setup.dart` does the same thing the interactive wizard does — placeholder
+replacement, jaspr render-mode patching, optional models/server companions,
+pub get — but takes its inputs from flags so it works on CI or any machine
+with the Dart SDK. The script ends with an optional offer to install
+`oracular` itself pinned to the same release version for easier ongoing
+work. See `SETUP_USAGE.md` inside each ZIP for the full flag reference.
+
+Releases are produced automatically by `.github/workflows/templates-release.yml`
+on every commit that contains `[Build]` in its message. The ZIP version
+matches `oracular/pubspec.yaml`, so the templates and CLI stay in lockstep.
+
 ## Quick Start
 
 ```bash

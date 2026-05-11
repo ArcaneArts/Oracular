@@ -15,6 +15,25 @@ Command-line interface for Arcane project scaffolding and script running.
 dart pub global activate oracular
 ```
 
+### Without installing the CLI
+
+Every release also publishes per-template ZIPs to the
+[GitHub Releases page](https://github.com/ArcaneArts/oracular/releases).
+Each ZIP is self-contained: extract it, run `dart run setup.dart …`, and
+you get the same scaffolded project that `oracular create` produces, but
+without needing the CLI on your `$PATH`. The two flows are equivalent:
+
+| Method | Command | When to use |
+|--------|---------|-------------|
+| CLI flow | `oracular create -y -t arcane_app -n my_app -o com.example` | Repeated scaffolding, full wizard, ongoing project management |
+| ZIP flow | `dart run setup.dart --name my_app --org com.example` (after `unzip arcane_app-vX.Y.Z.zip`) | One-off scaffolding, CI, machines with only the Dart SDK |
+
+The ZIP flow's `setup.dart` is mechanically derived from the same
+`PlaceholderReplacer` / `TemplateCopier` services this CLI uses, so the
+on-disk result is structurally identical. The bundled script also offers
+to `dart pub global activate oracular <version>` at the end so the CLI
+flow becomes available going forward — see the root README for details.
+
 ## Commands
 
 ### Project Creation

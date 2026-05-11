@@ -1,0 +1,28 @@
+name: oracular_release_scripts
+description: |
+  Build-time scripts that package each `templates/<template>/` directory
+  into a downloadable ZIP, generate the standalone `setup.dart` script
+  that ships inside every ZIP, and assemble the Release bundle.
+
+  This package is NOT published. It exists only so `dart run` can resolve
+  `package:oracular/...` imports from the templates-release workflow.
+
+publish_to: none
+version: 0.0.0
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  # Path dependency: the scripts reuse `PlaceholderReplacer`,
+  # `TemplateCopier`, and `SetupConfig` directly so the generated
+  # `setup.dart` cannot desync from the wizard's behaviour.
+  oracular:
+    path: ../oracular
+
+  archive: ^4.0.9
+  path: ^1.9.1
+  yaml: ^3.1.3
+
+dev_dependencies:
+  lints: ^6.1.0

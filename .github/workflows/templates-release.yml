@@ -1,0 +1,530 @@
+name: Templates Release
+
+# Plan: plans/2026-05-11-templates-release-pipeline-v1.md
+#
+# Fires on every push to master/main. The `detect` job is the gate:
+# it short-circuits the whole workflow unless the head commit message
+# contains the literal substring `[Build]` (case-sensitive per plan
+# §12 Q1). When triggered, the pipeline:
+#
+#   1. Reads the source version from oracular/pubspec.yaml
+#   2. Fails fast if oracular/lib/version.dart disagrees
+#   3. Generates a single dist/setup.dart via scripts/generate_setup_script.dart
+#   4. Packages each of the 9 templates into <template>-v<X.Y.Z>.zip
+#   5. Bundles the 9 ZIPs into one arcane_templates_all-v<X.Y.Z>.zip
+#   6. Publishes a GitHub Release tagged templates-v<X.Y.Z>+<UTC-stamp>Z
+#      with all ZIPs, the bundle, setup.dart, and SHA256SUMS.txt
+#
+# Workflow can also be triggered manually via workflow_dispatch
+# (plan §T3.3) — the dispatch input `simulate_build` defaults to true
+# so a manual run produces an actual Release; set it to false to do a
+# dry run that builds everything but skips the release step.
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      simulate_build:
+        description: 'Pretend the head commit contained [Build]'
+        type: boolean
+        required: true
+        default: true
+      publish_release:
+        description: 'Run gh release create at the end'
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: write   # tag creation + release upload
+  actions: read     # matrix artifact download
+
+concurrency:
+  # One run per ref. Back-to-back [Build] commits cancel the earlier
+  # in-flight run; the latter wins. Avoids gh-release-create races.
+  group: templates-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  # 1. detect — parse commit message + version. Always runs (~5s).
+  # ────────────────────────────────────────────────────────────────
+  detect:
+    name: detect (read version, gate on [Build])
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.gate.outputs.should_build }}
+      version: ${{ steps.gate.outputs.version }}
+      version_mirror: ${{ steps.gate.outputs.version_mirror }}
+      commit_short: ${{ steps.gate.outputs.commit_short }}
+      utc_stamp: ${{ steps.gate.outputs.utc_stamp }}
+      build_id: ${{ steps.gate.outputs.build_id }}
+      tag: ${{ steps.gate.outputs.tag }}
+      title: ${{ steps.gate.outputs.title }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Parse commit + version
+        id: gate
+        env:
+          DISPATCH_SIMULATE: ${{ github.event_name == 'workflow_dispatch' && inputs.simulate_build || 'false' }}
+        run: |
+          set -euo pipefail
+
+          # Commit subject + body (head commit only).
+          commit_msg=$(git log -1 --pretty=%B)
+          commit_short=$(git rev-parse --short HEAD)
+
+          # [Build] substring detection (case-sensitive per §12 Q1).
+          if [[ "$commit_msg" == *"[Build]"* ]] || [[ "$DISPATCH_SIMULATE" == "true" ]]; then
+            should_build=true
+          else
+            should_build=false
+          fi
+          echo "should_build=$should_build" >> "$GITHUB_OUTPUT"
+          echo "Commit message subject: $(echo "$commit_msg" | head -n1)"
+          echo "should_build = $should_build"
+
+          if [[ "$should_build" != "true" ]]; then
+            echo "Skipping: head commit does not contain [Build]."
+            exit 0
+          fi
+
+          # Authoritative version from oracular/pubspec.yaml.
+          version=$(awk '/^version:/ {print $2; exit}' oracular/pubspec.yaml)
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not read version: from oracular/pubspec.yaml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # Sanity-check oracular/lib/version.dart mirror (§5.4).
+          mirror=$(grep --color=never -oE "oracularVersion *= *'[^']+'" oracular/lib/version.dart \
+            | sed -E "s/.*'([^']+)'/\1/")
+          echo "version_mirror=$mirror" >> "$GITHUB_OUTPUT"
+          if [[ "$version" != "$mirror" ]]; then
+            echo "::error::version mismatch: pubspec=$version mirror=$mirror"
+            exit 1
+          fi
+
+          # UTC stamp.
+          utc_stamp=$(date -u +'%Y%m%dT%H%M%SZ')
+          build_id="${version}+${utc_stamp}-${commit_short}"
+          tag="templates-v${version}+${utc_stamp}"
+          title="Templates v${version} — $(date -u +'%Y-%m-%d %H:%M UTC') (${commit_short})"
+
+          echo "commit_short=$commit_short" >> "$GITHUB_OUTPUT"
+          echo "utc_stamp=$utc_stamp" >> "$GITHUB_OUTPUT"
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+
+          # Paranoia: refuse to clobber an existing tag.
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "::error::tag $tag already exists — pubspec version + clock collision"
+            exit 1
+          fi
+
+          echo "build_id = $build_id"
+          echo "tag      = $tag"
+
+  # ────────────────────────────────────────────────────────────────
+  # 2. validate — run the parity + smoke + install-offer tests before
+  #    we ship anything. Halts the whole pipeline if setup.dart is
+  #    broken so we never publish a corrupt template ZIP. ~1-2min.
+  # ────────────────────────────────────────────────────────────────
+  validate:
+    name: validate (test setup.dart pipeline)
+    runs-on: ubuntu-latest
+    needs: detect
+    if: needs.detect.outputs.should_build == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: dart pub get (oracular)
+        working-directory: oracular
+        run: dart pub get
+
+      - name: dart pub get (scripts)
+        working-directory: scripts
+        run: dart pub get
+
+      - name: Run parity test
+        working-directory: oracular
+        run: dart test test/unit/setup_script_parity_test.dart
+
+      - name: Run per-template smoke test
+        working-directory: oracular
+        run: dart test test/integration/setup_script_smoke_test.dart
+
+      - name: Run install-offer state machine test
+        working-directory: oracular
+        run: dart test test/integration/setup_install_offer_test.dart
+
+  # ────────────────────────────────────────────────────────────────
+  # 3. generate-setup-script — emits one shared dist/setup.dart that
+  #    every package job consumes. Runs once (~30s).
+  # ────────────────────────────────────────────────────────────────
+  generate-setup-script:
+    name: generate setup.dart
+    runs-on: ubuntu-latest
+    needs: [detect, validate]
+    if: needs.detect.outputs.should_build == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: dart pub get (scripts)
+        working-directory: scripts
+        run: dart pub get
+
+      - name: Generate dist/setup.dart
+        run: |
+          dart run scripts/generate_setup_script.dart \
+            --version '${{ needs.detect.outputs.version }}' \
+            --build-id '${{ needs.detect.outputs.build_id }}' \
+            --out dist/setup.dart
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: setup-dart
+          path: dist/setup.dart
+          if-no-files-found: error
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────
+  # 4. package-templates — matrix, one job per template. Each produces
+  #    a single <template>-v<X.Y.Z>.zip artifact.
+  # ────────────────────────────────────────────────────────────────
+  package-templates:
+    name: package ${{ matrix.template }}
+    runs-on: ubuntu-latest
+    needs: [detect, generate-setup-script]
+    if: needs.detect.outputs.should_build == 'true'
+    strategy:
+      # Fail-fast for releases — one broken template should not
+      # produce a partial Release (plan §6.3).
+      fail-fast: true
+      matrix:
+        template:
+          - arcane_app
+          - arcane_beamer_app
+          - arcane_dock_app
+          - arcane_cli_app
+          - arcane_jaspr_app
+          - arcane_jaspr_docs
+          - arcane_jaspr_flutter_embed
+          - arcane_models
+          - arcane_server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: dart pub get (scripts)
+        working-directory: scripts
+        run: dart pub get
+
+      - name: Download setup.dart artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: setup-dart
+          path: dist/
+
+      - name: Package ${{ matrix.template }}
+        run: |
+          dart run scripts/package_template.dart \
+            --template ${{ matrix.template }} \
+            --version '${{ needs.detect.outputs.version }}' \
+            --build-id '${{ needs.detect.outputs.build_id }}' \
+            --setup-script dist/setup.dart \
+            --out dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tpl-${{ matrix.template }}
+          path: dist/${{ matrix.template }}-v${{ needs.detect.outputs.version }}.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────
+  # 5. bundle — merge all 9 per-template ZIPs into one bundle ZIP.
+  # ────────────────────────────────────────────────────────────────
+  bundle:
+    name: bundle (arcane_templates_all)
+    runs-on: ubuntu-latest
+    needs: [detect, package-templates]
+    if: needs.detect.outputs.should_build == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all template ZIPs
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: tpl-*
+          merge-multiple: true
+
+      - name: Assemble bundle ZIP
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+          BUILD_ID: ${{ needs.detect.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          bundle_dir="bundle/arcane_templates_all-v${VERSION}"
+          mkdir -p "$bundle_dir"
+          cp artifacts/*.zip "$bundle_dir/"
+
+          # Bundle root README.
+          cat > "$bundle_dir/README.md" <<EOF
+          # arcane_templates_all v${VERSION}
+
+          Build id: \`${BUILD_ID}\`
+
+          This bundle contains every per-template ZIP for Oracular
+          templates release **v${VERSION}**.
+
+          ## Files inside
+
+          $(for f in "$bundle_dir"/*.zip; do echo "- $(basename "$f")"; done)
+
+          ## How to use
+
+          Pick the template you want, unzip it, and run \`dart run setup.dart\`.
+
+          \`\`\`bash
+          unzip arcane_app-v${VERSION}.zip -d /tmp/aa
+          cd /tmp/aa
+          dart run setup.dart --name my_app --org com.example --output-dir ../my_app
+          \`\`\`
+
+          See https://github.com/ArcaneArts/oracular for the source.
+          EOF
+
+          # Bundle VERSION.
+          cat > "$bundle_dir/VERSION" <<EOF
+          ORACULAR_VERSION=${VERSION}
+          BUILD_ID=${BUILD_ID}
+          BUNDLE=arcane_templates_all
+          EOF
+
+          (cd bundle && zip -r -X "../dist/arcane_templates_all-v${VERSION}.zip" "arcane_templates_all-v${VERSION}/")
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-all
+          path: dist/arcane_templates_all-v${{ needs.detect.outputs.version }}.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────────
+  # 6. release — gather every asset and gh release create.
+  # ────────────────────────────────────────────────────────────────
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    needs: [detect, generate-setup-script, package-templates, bundle]
+    if: |
+      needs.detect.outputs.should_build == 'true' &&
+      (github.event_name != 'workflow_dispatch' || inputs.publish_release == true)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download setup.dart
+        uses: actions/download-artifact@v4
+        with:
+          name: setup-dart
+          path: dist/
+
+      - name: Download all template ZIPs
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          pattern: tpl-*
+          merge-multiple: true
+
+      - name: Download bundle ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-all
+          path: dist/
+
+      - name: Compute SHA256SUMS.txt
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          : > SHA256SUMS.txt
+          for f in *.zip setup.dart; do
+            [[ -e "$f" ]] || continue
+            sha256sum "$f" >> SHA256SUMS.txt
+          done
+          cat SHA256SUMS.txt
+          echo "---"
+          ls -la
+
+      - name: Render release notes
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+          BUILD_ID: ${{ needs.detect.outputs.build_id }}
+          TAG: ${{ needs.detect.outputs.tag }}
+          COMMIT_SHORT: ${{ needs.detect.outputs.commit_short }}
+          UTC_STAMP: ${{ needs.detect.outputs.utc_stamp }}
+        run: |
+          set -euo pipefail
+          commit_subject=$(git log -1 --pretty=%s)
+          cat > dist/RELEASE_NOTES.md <<EOF
+          # Templates v${VERSION}
+
+          Build id: \`${BUILD_ID}\`
+          Source commit: \`${COMMIT_SHORT}\` — *${commit_subject}*
+          Generated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+
+          ## What's in this release
+
+          | Asset | Purpose |
+          |---|---|
+          | \`arcane_app-v${VERSION}.zip\` | Basic multi-platform Flutter app. |
+          | \`arcane_beamer_app-v${VERSION}.zip\` | Flutter app with Beamer navigation. |
+          | \`arcane_dock_app-v${VERSION}.zip\` | Desktop system-tray app. |
+          | \`arcane_cli_app-v${VERSION}.zip\` | Dart CLI application. |
+          | \`arcane_jaspr_app-v${VERSION}.zip\` | Jaspr web app (CSR / SSG / SSR / hybrid). |
+          | \`arcane_jaspr_docs-v${VERSION}.zip\` | Static documentation site. |
+          | \`arcane_jaspr_flutter_embed-v${VERSION}.zip\` | Jaspr host + embedded Flutter guest. |
+          | \`arcane_models-v${VERSION}.zip\` | Shared models package. |
+          | \`arcane_server-v${VERSION}.zip\` | Shelf REST API server. |
+          | \`arcane_templates_all-v${VERSION}.zip\` | All 9 templates in one bundle. |
+          | \`setup.dart\` | Standalone wizard-replacement script (also inside every ZIP). |
+          | \`SHA256SUMS.txt\` | Checksums for every asset above. |
+
+          ## How to use
+
+          \`\`\`bash
+          # Pick a template — say arcane_app:
+          curl -fLO https://github.com/${{ github.repository }}/releases/latest/download/arcane_app-v${VERSION}.zip
+          unzip arcane_app-v${VERSION}.zip -d /tmp/aa
+          cd /tmp/aa
+          dart run setup.dart --name my_app --org com.example --output-dir ../my_app
+          \`\`\`
+
+          See \`SETUP_USAGE.md\` inside any ZIP (or
+          [the source](https://github.com/${{ github.repository }}/blob/${COMMIT_SHORT}/templates/SETUP_USAGE.md))
+          for the full flag reference.
+
+          ## Stable URLs
+
+          The asset filenames intentionally omit the build stamp so that
+          tools fetching "latest" can hardcode:
+
+          \`https://github.com/${{ github.repository }}/releases/latest/download/<template>-v<X.Y.Z>.zip\`
+
+          ## Tag scheme
+
+          Tag: \`${TAG}\` — versions are sortable by ISO 8601 UTC stamp.
+          Multiple \`[Build]\` commits at the same source version (${VERSION})
+          will publish as distinct tags but reuse identical asset
+          filenames for stable-URL fetching.
+
+          EOF
+          echo "---"
+          cat dist/RELEASE_NOTES.md
+
+      - name: Verify all expected assets exist
+        working-directory: dist
+        env:
+          VERSION: ${{ needs.detect.outputs.version }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for tpl in arcane_app arcane_beamer_app arcane_dock_app \
+                    arcane_cli_app arcane_jaspr_app arcane_jaspr_docs \
+                    arcane_jaspr_flutter_embed arcane_models arcane_server; do
+            if [[ ! -f "${tpl}-v${VERSION}.zip" ]]; then
+              echo "::error::Missing asset: ${tpl}-v${VERSION}.zip"
+              missing=$((missing + 1))
+            fi
+          done
+          for f in "arcane_templates_all-v${VERSION}.zip" setup.dart SHA256SUMS.txt RELEASE_NOTES.md; do
+            if [[ ! -f "$f" ]]; then
+              echo "::error::Missing required file: $f"
+              missing=$((missing + 1))
+            fi
+          done
+          if (( missing > 0 )); then
+            echo "::error::release pre-flight failed ($missing missing asset(s))"
+            exit 1
+          fi
+          echo "All expected assets present."
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.detect.outputs.tag }}
+          TITLE: ${{ needs.detect.outputs.title }}
+        run: |
+          set -euo pipefail
+          cd dist
+          # --target locks the tag to the source commit so re-runs
+          # cannot accidentally tag a different SHA.
+          # Use ./ prefix so dashed filenames are not parsed as flags.
+          assets=( ./*.zip ./setup.dart ./SHA256SUMS.txt )
+          gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes-file RELEASE_NOTES.md \
+            --target "${GITHUB_SHA}" \
+            "${assets[@]}"
+          echo "Release $TAG created with ${#assets[@]} assets."
+
+      - name: Cleanup on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.detect.outputs.tag }}
+        run: |
+          # Best-effort cleanup so a half-created Release doesn't linger.
+          # `|| true` because the release might not exist yet, which is fine.
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          git push --delete origin "$TAG" 2>/dev/null || true
+
+  # ────────────────────────────────────────────────────────────────
+  # 7. summary — emit a friendly summary even when skipped.
+  # ────────────────────────────────────────────────────────────────
+  summary:
+    name: summary
+    runs-on: ubuntu-latest
+    needs: [detect, release]
+    if: always()
+    steps:
+      - name: Render summary
+        env:
+          SHOULD: ${{ needs.detect.outputs.should_build }}
+          VERSION: ${{ needs.detect.outputs.version }}
+          TAG: ${{ needs.detect.outputs.tag }}
+          REL_RESULT: ${{ needs.release.result }}
+        run: |
+          {
+            echo "# Templates Release — workflow summary"
+            echo ""
+            if [[ "$SHOULD" != "true" ]]; then
+              echo "**Result:** skipped (head commit did not contain \`[Build]\`)."
+              exit 0
+            fi
+            echo "- Source version: \`$VERSION\`"
+            echo "- Target tag:     \`$TAG\`"
+            echo "- Release job:    \`$REL_RESULT\`"
+            echo ""
+            if [[ "$REL_RESULT" == "success" ]]; then
+              echo "Release: https://github.com/${{ github.repository }}/releases/tag/$TAG"
+            elif [[ "$REL_RESULT" == "skipped" ]]; then
+              echo "Release publication was skipped (workflow_dispatch \`publish_release=false\` or upstream job did not run)."
+            else
+              echo "Release job did not succeed; see logs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

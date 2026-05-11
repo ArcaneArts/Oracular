@@ -191,6 +191,136 @@ dedicated build-and-deploy page for every Jaspr project that documents:
 Standalone page (not buried inside `06-deployment.md`) so render-mode
 operators have a single bookmarkable URL.
 
+### Added — Templates release pipeline (downloadable ZIPs)
+
+Every push to `master` whose head-commit message contains the literal
+substring `[Build]` (case-sensitive, brackets included) now triggers a
+new `.github/workflows/templates-release.yml` workflow that packages
+each template into a self-contained ZIP and publishes them as a single
+GitHub Release. Commits without `[Build]` cost zero CI minutes — the
+gate short-circuits before any setup work.
+
+Each ZIP is **structurally identical** to what `oracular create -y -t
+<template>` produces today, but extractable on a machine that has only
+the Dart SDK — no `oracular` install required. The ZIP filenames are
+version-aligned with `oracular/pubspec.yaml:3` (e.g.
+`arcane_app-v3.5.0.zip`), so the templates and the CLI that scaffolds
+them are versioned in lockstep.
+
+| Asset | Contents |
+|---|---|
+| `arcane_app-vX.Y.Z.zip` | Template source + `setup.dart` + `README.md` + `SETUP_USAGE.md` + `LICENSE` + `VERSION` |
+| `arcane_beamer_app-vX.Y.Z.zip` | Same shape for Beamer template |
+| `arcane_dock_app-vX.Y.Z.zip` | Same shape for desktop tray template |
+| `arcane_cli_app-vX.Y.Z.zip` | Same shape for Dart CLI template |
+| `arcane_jaspr_app-vX.Y.Z.zip` | Same shape, includes vendored `_vendor/` shims |
+| `arcane_jaspr_docs-vX.Y.Z.zip` | Same shape, includes vendored `_vendor/` shims |
+| `arcane_jaspr_flutter_embed-vX.Y.Z.zip` | Dual-package layout (`_web/` + `_app/`) in one ZIP |
+| `arcane_models-vX.Y.Z.zip` | Same shape for models package |
+| `arcane_server-vX.Y.Z.zip` | Same shape for server package |
+| `all-templates-vX.Y.Z.zip` | Bundle of all 9 above |
+
+Per-ZIP `setup.dart` replicates the wizard non-interactively:
+
+```bash
+unzip arcane_jaspr_app-v3.5.0.zip
+cd arcane_jaspr_app-v3.5.0
+dart run setup.dart \
+  --name my_site --org com.example \
+  --render-mode ssr --with-server --with-firebase
+```
+
+After scaffolding, the script offers to
+`dart pub global activate oracular <matching-version>` so the user can
+opt into the full CLI flow going forward. The offer is suppressed in
+non-TTY environments (CI) and can be forced or skipped via
+`--install-oracular` / `--no-install-oracular`. Project scaffolding is
+always atomic — the optional install never failure-cascades.
+
+The packager/generator/setup tooling lives in a new top-level
+`scripts/` directory (`scripts/generate_setup_script.dart`,
+`scripts/package_template.dart`,
+`scripts/setup_template_template.dart`). The setup script is
+mechanically derived from the same `PlaceholderReplacer` /
+`TemplateCopier` services the CLI uses, with a parity unit test
+(`oracular/test/unit/setup_script_parity_test.dart` — 17 cases) that
+fails CI if the two ever diverge, plus an end-to-end smoke test
+(`oracular/test/integration/setup_script_smoke_test.dart` — 14
+cases: 10 per-template smoke + 2 regression cases for the
+`--with-models` no-bundled-models edge + 2 regression cases for the
+`--output-dir` overlap refusal) that extracts every published
+ZIP and runs `setup.dart` against it, and a state-machine test
+(`oracular/test/integration/setup_install_offer_test.dart` — 6 cases)
+covering the `--install-oracular` / `--no-install-oracular` / TTY
+prompt / non-TTY skip permutations. All 37 tests run on every
+workflow execution before any ZIP is published.
+
+The workflow is opt-in by design: commit message must contain `[Build]`
+to fire it, ZIPs are deterministic (running the packager twice with
+identical inputs yields byte-identical archives), packaging runs in a
+9-way matrix to minimize wall time, and the Release tag uses a
+`templates-v<X.Y.Z>+<UTC-stamp>Z` format so every build is uniquely
+addressable while the per-asset filename remains stable for
+`releases/latest/download/...` consumers.
+
+### Fixed — `setup.dart --output-dir` overlap no longer infinite-recurses
+
+When `setup.dart` was invoked with an `--output-dir` that overlapped
+the ZIP extraction directory (equal to it, or nested inside it),
+`stageTemplate` would list the ZIP root, see the newly-created output
+directory as one of its children, and `_copyDirectoryRaw` would
+infinite-recurse copying the partially-staged output back into itself
+until the OS aborted with a path-too-long error. Critically, the
+previous safety guard at `_run` only checked the `==` case using
+`pNormalize(absolute.path)`, which silently passed on macOS because
+`Directory.current` returns the symlink-resolved `/private/tmp/...`
+form while user-supplied paths stay as `/tmp/...`.
+
+Now both `_run` (`scripts/setup_template_template.dart:1435-1497`) and
+`stageTemplate` (`scripts/setup_template_template.dart:962-1001`)
+canonicalise paths via `resolveSymbolicLinksSync()` before comparing,
+and refuse three cases up-front:
+
+1. `outputDir == zipRoot` (e.g. `--output-dir .` from inside the ZIP)
+2. `outputDir` is **inside** `zipRoot` (e.g. `--output-dir ./myapp`)
+3. `zipRoot` inside `outputDir` (warned but not refused — non-destructive)
+
+For defense-in-depth, `stageTemplate` also re-checks each source entry
+against the target's canonical path and skips any entry that IS the
+target or lives below it.
+
+Regression tests in
+`oracular/test/integration/setup_script_smoke_test.dart:191-202`
+(via the new `_testOutputDirOverlapRefused()` factory at lines
+539-640) cover both refusal cases with a 30-second timeout that
+would catch any future regression that reintroduces the recursion.
+
+### Fixed — `setup.dart --with-models` no longer breaks `pub get` on per-template ZIPs
+
+When `setup.dart` is invoked with `--with-models` against a
+per-template ZIP (e.g. `arcane_jaspr_app-v3.5.0.zip`, which by design
+does **not** carry the `arcane_models/` template), the script
+previously wrote an *active* `path: ../<name>_models` line into
+`pubspec.yaml` even though no such sibling package would exist on
+disk. `dart pub get` would then fail with "Couldn't find
+`<name>_models` at `../<name>_models`."
+
+Now the script tracks whether the models template was actually staged
+(`scripts/setup_template_template.dart:1502-1530`). If it was, the
+active dep is written as before; if not, a brand-new
+`addCommentedModelsDependency` helper writes a *commented* hint plus
+a `logWarn` pointing the user at `arcane_models-vX.Y.Z.zip` from the
+same Release. Same treatment is applied to the embed-guest pubspec.
+Net effect: `pub get` is green out of the box on the produced
+project, and the user has a copy-paste hint to enable models later
+without editing the pubspec from scratch.
+
+Regression tests in
+`oracular/test/integration/setup_script_smoke_test.dart:171-184`
+(via the new `_testCommentedModelsHint()` factory at lines 349-518)
+cover both the `arcane_jaspr_app --render-mode ssr --with-models` and
+`arcane_jaspr_flutter_embed --render-mode embed --with-models` paths.
+
 ### Fixed — `arcane_server` Dockerfile missing Linux desktop toolchain
 
 `ServerSetup.generateDockerfile`
@@ -247,6 +377,19 @@ with a one-line `warn(…)` so the user sees what changed.
 | `oracular/lib/utils/firebase_setup_prompts.dart` | New `DiscoveredServiceAccount` + `findExistingServiceAccountKey` walker. |
 | `templates/arcane_jaspr_flutter_embed/` | New template (host `_web` + guest `_app`). |
 | `templates/arcane_jaspr_app/` | Added `Dockerfile.jaspr`, `main.server.dart`, `routes/dynamic_routes.dart`, `routes/static_routes.dart`, `.dockerignore`. |
+| `scripts/setup_template_template.dart` | New. Canonical source of the standalone `setup.dart` shipped inside every template ZIP. Mirrors `PlaceholderReplacer` + `TemplateCopier` semantics so the ZIP flow stays in lockstep with the CLI flow. Includes the optional oracular install/upgrade offer. |
+| `scripts/generate_setup_script.dart` | New. Substitutes `__GENERATED:*__` markers in the skeleton with build-time metadata (version, build-id, default template) and emits `dist/setup.dart`. Fails fast on `oracular/pubspec.yaml` ↔ `oracular/lib/version.dart` mismatch. |
+| `scripts/package_template.dart` | New. Stages a template directory, drops in the generated `setup.dart`, `README.md`, `SETUP_USAGE.md`, `LICENSE`, and `VERSION`, then emits a deterministic `<template>-v<X.Y.Z>.zip`. Handles the dual-package layout for `arcane_jaspr_flutter_embed` and the vendored `_vendor/` shims for Jaspr templates. |
+| `scripts/pubspec.yaml` | New. Isolates the packaging toolchain's deps (`archive`, `path`) from the CLI's `pubspec.yaml`. |
+| `.github/workflows/templates-release.yml` | New. `[Build]`-gated workflow: `detect` → `validate-setup-script` (runs the 33 parity/smoke/install-offer tests) → `generate-setup-script` → `package-templates` (9-way matrix) → `bundle` → `release`. Includes a `workflow_dispatch` self-test path that can run the entire pipeline without a real commit. |
+| `templates/RELEASE_README_TEMPLATE.md` | New. README emitted into the root of every per-template ZIP. Explains the ZIP layout, the `setup.dart` flags, and how the ZIP flow relates to the `oracular create` flow. |
+| `templates/SETUP_USAGE.md` | New. Detailed `setup.dart --help` companion: every flag, every permutation, every CI snippet. Shipped inside every ZIP. |
+| `oracular/test/unit/setup_script_parity_test.dart` | New. 17 cases asserting every `PlaceholderReplacer` rule produces the same output when invoked from the standalone `setup.dart` as it does from `oracular create`. |
+| `oracular/test/integration/setup_script_smoke_test.dart` | New. 14 cases: 10 build a ZIP for each template type, extract it to a tmpdir, run `setup.dart` against it, and assert the resulting project matches what `oracular create` would have produced; 2 regression cases assert that `setup.dart --with-models` on a per-template ZIP (no models bundled) injects a *commented* hint instead of an active `path:` dep that would crash `pub get`; 2 regression cases assert that `--output-dir` overlapping the ZIP root is refused with a clear error (instead of infinite-recursing through `_copyDirectoryRaw`). Caught four real bugs during development: `PlaceholderReplacer` getter exposure, empty `.oracular_deps/` leak, the `--with-models` no-models regression, and the symlink-aware `--output-dir` overlap refusal. |
+| `oracular/test/integration/setup_install_offer_test.dart` | New. 6 cases covering the install/upgrade offer state machine: `--install-oracular` forces install, `--no-install-oracular` skips, `--yes` implies install, no flag + TTY prompts, no flag + non-TTY skips, already-installed at matching version short-circuits. |
+| `README.md` | New "Releases & Templates" section between Installation and Quick Start. |
+| `oracular/README.md` | New "Without installing the CLI" subsection. |
+| `oracular/CHANGELOG.md` | This entry. |
 
 ### Tests
 
@@ -263,6 +406,14 @@ with a one-line `warn(…)` so the user sees what changed.
   `setup_guidance_test.dart`, `template_info_test.dart`, and
   `server_setup_test.dart` to cover the new render-mode permutations
   and the env-file round-trip.
+- 37 new tests for the templates release pipeline across three
+  files — `setup_script_parity_test.dart` (17 cases),
+  `setup_script_smoke_test.dart` (14 cases: 10 per-template smoke + 2
+  regression cases for `--with-models` on a single-template ZIP + 2
+  regression cases for `--output-dir` overlap refusal),
+  and `setup_install_offer_test.dart` (6 cases). All gated through
+  the workflow's `validate-setup-script` job so a regression in the
+  standalone setup script fails CI before any ZIP gets published.
 
 ### Migration
 
