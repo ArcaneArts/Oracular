@@ -1,0 +1,17 @@
+# Dockerfile.jaspr exclusions
+.git
+.github
+.idea
+.vscode
+.dart_tool
+build
+.flutter-plugins
+.flutter-plugins-dependencies
+**/*.lock
+**/*.log
+**/.DS_Store
+README.md
+oracular.log
+
+# Don't rebuild Jaspr output inside the image; the builder stage does it.
+web/styles.css.map

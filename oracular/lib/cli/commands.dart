@@ -1,6 +1,7 @@
 import 'package:darted_cli/darted_cli.dart';
 
 import '../version.dart';
+import 'handlers/build_handlers.dart';
 import 'handlers/check_handlers.dart';
 import 'handlers/config_handlers.dart';
 import 'handlers/create_handlers.dart';
@@ -10,6 +11,7 @@ import 'handlers/gitignore_handlers.dart';
 import 'handlers/rebuild_handlers.dart';
 import 'handlers/script_handlers.dart';
 import 'handlers/templates_handlers.dart';
+import 'handlers/update_handlers.dart';
 
 /// All CLI commands for Oracular
 final List<DartedCommand> commandsTree = [
@@ -25,6 +27,13 @@ final List<DartedCommand> commandsTree = [
       DartedArgument(name: 'output-dir', abbreviation: 'd'),
       DartedArgument(name: 'firebase-project-id', abbreviation: 'p'),
       DartedArgument(name: 'service-account-key', abbreviation: 'k'),
+      DartedArgument(
+        name: 'render-mode',
+        abbreviation: 'R',
+        description:
+            'Jaspr render mode: csr | ssg | ssr | hybrid | embed '
+            '(only meaningful for Jaspr templates; defaults derived from template).',
+      ),
     ],
     flags: [
       DartedFlag(name: 'with-models', abbreviation: 'm'),
@@ -35,12 +44,12 @@ final List<DartedCommand> commandsTree = [
       DartedFlag(name: 'skip-check', abbreviation: 'x'),
       DartedFlag.help,
     ],
-    callback: (args, flags) => handleCreate(args ?? {}, _boolToMap(flags)),
+    callback: (args, flags) => handleCreate(_argsMap(args), _boolToMap(flags)),
     subCommands: [
       DartedCommand(
         name: 'templates',
         helperDescription: 'List available templates',
-        callback: (args, flags) => handleListTemplates(args ?? {}, _boolToMap(flags)),
+        callback: (args, flags) => handleListTemplates(_argsMap(args), _boolToMap(flags)),
       ),
     ],
   ),
@@ -53,7 +62,7 @@ final List<DartedCommand> commandsTree = [
       DartedFlag(name: 'print', abbreviation: 'p'),
       DartedFlag.help,
     ],
-    callback: (args, flags) => handleGuide(args ?? {}, _boolToMap(flags)),
+    callback: (args, flags) => handleGuide(_argsMap(args), _boolToMap(flags)),
   ),
 
   // Open command
@@ -68,7 +77,7 @@ final List<DartedCommand> commandsTree = [
         description: 'guide, app, firebase, auth, firestore, storage, hosting',
       ),
     ],
-    callback: (args, _) => handleOpenTarget((args?['target'] ?? '').toString()),
+    callback: (args, _) => handleOpenTarget((_argsMap(args)['target'] ?? '').toString()),
   ),
 
   // Check command
@@ -121,6 +130,67 @@ final List<DartedCommand> commandsTree = [
     ],
   ),
 
+  // Build command — produce every artifact this project ships, in a
+  // mode-aware way. Distinct from `deploy`: `build` never pushes images
+  // or runs `firebase deploy`. Always safe to run.
+  DartedCommand(
+    name: 'build',
+    helperDescription: 'Build artifacts (Flutter platforms, Jaspr, embed, images)',
+    callback: (_, _) => _printBuildHelp(),
+    subCommands: [
+      // NOTE: every leaf name below MUST be globally unique across the
+      // entire command tree. darted_cli flattens subcommands by leaf
+      // name when matching the call stack, so `build flutter` would
+      // otherwise resolve to `check flutter`. See commands.dart:130.
+      DartedCommand(
+        name: 'everything',
+        helperDescription:
+            'Build every artifact applicable to this project',
+        callback: (_, _) => handleBuildAll(),
+      ),
+      DartedCommand(
+        name: 'flutter-app',
+        helperDescription:
+            'Build Flutter platforms (defaults to every platform in setup_config.env)',
+        arguments: [
+          DartedArgument(
+            name: 'platform',
+            abbreviation: 'p',
+            description:
+                'Single platform to build (web, ios, android, macos, linux, windows). '
+                'Omit to build every platform listed in setup_config.env.',
+          ),
+        ],
+        flags: [DartedFlag.help],
+        callback: (args, _) => handleBuildFlutter(_argsMap(args)),
+      ),
+      DartedCommand(
+        name: 'jaspr-site',
+        helperDescription:
+            'Build the Jaspr site (render-mode aware: CSR / SSG / SSR / Hybrid / Embed)',
+        callback: (_, _) => handleBuildJaspr(),
+      ),
+      DartedCommand(
+        name: 'jaspr-image',
+        helperDescription:
+            'Build the Cloud Run image for the Jaspr server (SSR / hybrid only)',
+        callback: (_, _) => handleBuildJasprServer(),
+      ),
+      DartedCommand(
+        name: 'flutter-embed',
+        helperDescription:
+            'Build the Flutter web guest + Jaspr host bundle (embed template only)',
+        callback: (_, _) => handleBuildFlutterEmbed(),
+      ),
+      DartedCommand(
+        name: 'cli-binary',
+        helperDescription:
+            'Compile the Dart CLI to a native binary (arcane_cli_app only)',
+        callback: (_, _) => handleBuildCli(),
+      ),
+    ],
+  ),
+
   // Deploy command
   DartedCommand(
     name: 'deploy',
@@ -146,6 +216,18 @@ final List<DartedCommand> commandsTree = [
         name: 'hosting-beta',
         helperDescription: 'Deploy to Firebase Hosting (beta)',
         callback: (_, _) => handleDeployHostingBeta(),
+      ),
+      DartedCommand(
+        name: 'jaspr-server',
+        helperDescription:
+            'Build + push + deploy the Jaspr server to Cloud Run (SSR / hybrid)',
+        callback: (_, _) => handleDeployJasprServer(),
+      ),
+      DartedCommand(
+        name: 'arcane-server',
+        helperDescription:
+            'Build + push + deploy the arcane_server companion to Cloud Run',
+        callback: (_, _) => handleDeployServer(),
       ),
       DartedCommand(
         name: 'all',
@@ -202,7 +284,13 @@ final List<DartedCommand> commandsTree = [
       DartedCommand(
         name: 'generate-configs',
         helperDescription: 'Generate Firebase configuration files',
-        callback: (_, _) => handleGenerateConfigs(),
+        arguments: [
+          DartedArgument(
+            name: 'hybrid-dynamic-prefix',
+            abbreviation: 'H',
+          ),
+        ],
+        callback: (args, _) => handleGenerateConfigs(_argsMap(args)),
       ),
       DartedCommand(
         name: 'server-setup',
@@ -227,13 +315,13 @@ final List<DartedCommand> commandsTree = [
         name: 'init',
         helperDescription: 'Initialize configuration file',
         flags: [DartedFlag(name: 'force', abbreviation: 'f')],
-        callback: (args, flags) => handleConfigInit(args ?? {}, _boolToMap(flags)),
+        callback: (args, flags) => handleConfigInit(_argsMap(args), _boolToMap(flags)),
       ),
       DartedCommand(
         name: 'get',
         helperDescription: 'Get a configuration value',
         arguments: [DartedArgument(name: 'key', abbreviation: 'k')],
-        callback: (args, flags) => handleConfigGet(args ?? {}, _boolToMap(flags)),
+        callback: (args, flags) => handleConfigGet(_argsMap(args), _boolToMap(flags)),
       ),
       DartedCommand(
         name: 'set',
@@ -242,7 +330,7 @@ final List<DartedCommand> commandsTree = [
           DartedArgument(name: 'key', abbreviation: 'k'),
           DartedArgument(name: 'value', abbreviation: 'v'),
         ],
-        callback: (args, flags) => handleConfigSet(args ?? {}, _boolToMap(flags)),
+        callback: (args, flags) => handleConfigSet(_argsMap(args), _boolToMap(flags)),
       ),
       DartedCommand(
         name: 'list',
@@ -273,7 +361,7 @@ final List<DartedCommand> commandsTree = [
         helperDescription: 'Execute a script',
         arguments: [DartedArgument(name: 'script', abbreviation: 's')],
         flags: [DartedFlag(name: 'stream', abbreviation: 't')],
-        callback: (args, flags) => handleScriptsExec(args ?? {}, _boolToMap(flags)),
+        callback: (args, flags) => handleScriptsExec(_argsMap(args), _boolToMap(flags)),
       ),
     ],
   ),
@@ -314,7 +402,7 @@ final List<DartedCommand> commandsTree = [
     flags: [
       DartedFlag(name: 'force', abbreviation: 'f'),
     ],
-    callback: (args, flags) => handleGitignore(args ?? {}, _boolToMap(flags)),
+    callback: (args, flags) => handleGitignore(_argsMap(args), _boolToMap(flags)),
   ),
 
   // Rebuild / refresh command
@@ -339,7 +427,7 @@ final List<DartedCommand> commandsTree = [
       DartedFlag(name: 'dry-run', abbreviation: 'n'),
       DartedFlag.help,
     ],
-    callback: (args, flags) => handleRebuild(args ?? {}, _boolToMap(flags)),
+    callback: (args, flags) => handleRebuild(_argsMap(args), _boolToMap(flags)),
   ),
 
   // Refresh — alias of rebuild for muscle memory.
@@ -355,7 +443,41 @@ final List<DartedCommand> commandsTree = [
       DartedFlag(name: 'dry-run', abbreviation: 'n'),
       DartedFlag.help,
     ],
-    callback: (args, flags) => handleRebuild(args ?? {}, _boolToMap(flags)),
+    callback: (args, flags) => handleRebuild(_argsMap(args), _boolToMap(flags)),
+  ),
+
+  // Update command — surgical updates to existing projects (IDE wiring,
+  // run configurations, etc.) without re-running the full wizard.
+  DartedCommand(
+    name: 'update',
+    helperDescription: 'Update IDE wiring and project assets in-place',
+    callback: (_, _) => _printUpdateHelp(),
+    subCommands: [
+      DartedCommand(
+        name: 'runs',
+        helperDescription:
+            'Add/refresh IntelliJ run configs (Deploy All + Jaspr Serve/Build/Killall)',
+        arguments: [
+          DartedArgument(
+            name: 'port',
+            abbreviation: 'p',
+            description:
+                'Port for jaspr serve / killall (default: 8080)',
+            defaultValue: '8080',
+          ),
+          DartedArgument(
+            name: 'dir',
+            abbreviation: 'd',
+            description:
+                'Project root containing config/setup_config.env (default: cwd)',
+          ),
+        ],
+        flags: [
+          DartedFlag.help,
+        ],
+        callback: (args, _) => handleUpdateRuns(_argsMap(args)),
+      ),
+    ],
   ),
 
   // Version command
@@ -369,10 +491,112 @@ final List<DartedCommand> commandsTree = [
   ),
 ];
 
-/// Convert bool map to dynamic map for handler compatibility
+/// Lazily-built lookup tables that mirror every CLI flag/argument key
+/// between its long-form name and short-form abbreviation. darted_cli stores
+/// each flag/arg under whichever spelling the user typed (e.g. `-y` lands
+/// under the `'y'` key, `--yes` lands under `'yes'`), so handlers that only
+/// check one spelling silently miss the other. We populate these registries
+/// once from [commandsTree] and use them to mirror keys in [_boolToMap] and
+/// [_argsMap] so callers can use either spelling reliably.
+///
+/// Abbreviations can collide across commands (e.g. `-t` is used for both
+/// `create --template` and `open --target`). To handle that we store
+/// every long-form name that an abbreviation expands to, and mirror
+/// to ALL of them in the output map. Handlers only read keys that
+/// belong to their own command, so the extra entries are harmless.
+final Map<String, Set<String>> _flagAbbrevToNames = <String, Set<String>>{};
+final Map<String, Set<String>> _flagNameToAbbrevs = <String, Set<String>>{};
+final Map<String, Set<String>> _argAbbrevToNames = <String, Set<String>>{};
+final Map<String, Set<String>> _argNameToAbbrevs = <String, Set<String>>{};
+bool _aliasesBuilt = false;
+
+void _ensureAliasMaps() {
+  if (_aliasesBuilt) return;
+  void addFlag(String abbr, String name) {
+    _flagAbbrevToNames.putIfAbsent(abbr, () => <String>{}).add(name);
+    _flagNameToAbbrevs.putIfAbsent(name, () => <String>{}).add(abbr);
+  }
+
+  void addArg(String abbr, String name) {
+    _argAbbrevToNames.putIfAbsent(abbr, () => <String>{}).add(name);
+    _argNameToAbbrevs.putIfAbsent(name, () => <String>{}).add(abbr);
+  }
+
+  void walk(List<DartedCommand> cmds) {
+    for (final cmd in cmds) {
+      for (final f in cmd.flags ?? const <DartedFlag>[]) {
+        final abbr = f.abbreviation;
+        if (abbr.isNotEmpty && abbr != f.name) {
+          addFlag(abbr, f.name);
+        }
+      }
+      for (final a in cmd.arguments ?? const <DartedArgument?>[]) {
+        if (a == null) continue;
+        final abbr = a.abbreviation;
+        if (abbr.isNotEmpty && abbr != a.name) {
+          addArg(abbr, a.name);
+        }
+      }
+      final subs = cmd.subCommands;
+      if (subs != null && subs.isNotEmpty) walk(subs);
+    }
+  }
+
+  walk(commandsTree);
+  _aliasesBuilt = true;
+}
+
+/// Normalise the flags map so handlers can read a flag by either its long
+/// name (`yes`) or short abbreviation (`y`) and get the same value.
 Map<String, dynamic> _boolToMap(Map<String, bool>? flags) {
-  if (flags == null) return {};
-  return flags.map((k, v) => MapEntry(k, v));
+  if (flags == null || flags.isEmpty) return <String, dynamic>{};
+  _ensureAliasMaps();
+  final out = <String, dynamic>{};
+  flags.forEach((k, v) {
+    out[k] = v;
+    final mirrors =
+        _flagAbbrevToNames[k] ?? _flagNameToAbbrevs[k] ?? const <String>{};
+    for (final mirror in mirrors) {
+      out[mirror] = v;
+    }
+  });
+  return out;
+}
+
+/// Same idea as [_boolToMap] but for positional/named string arguments.
+Map<String, dynamic> _argsMap(Map<String, dynamic>? args) {
+  if (args == null || args.isEmpty) return <String, dynamic>{};
+  _ensureAliasMaps();
+  final out = <String, dynamic>{};
+  args.forEach((k, v) {
+    out[k] = v;
+    final mirrors =
+        _argAbbrevToNames[k] ?? _argNameToAbbrevs[k] ?? const <String>{};
+    for (final mirror in mirrors) {
+      out[mirror] = v;
+    }
+  });
+  return out;
+}
+
+/// Print build help
+///
+/// Subcommand names are deliberately disambiguated (e.g. `flutter-app`
+/// instead of `flutter`) because darted_cli matches commands by leaf
+/// name from a flattened tree — `build flutter` would otherwise
+/// resolve to `check flutter`. Keep these names globally unique when
+/// adding new build steps.
+void _printBuildHelp() {
+  print('');
+  print('Build subcommands:');
+  print('  everything                  Build every artifact applicable to this project');
+  print('  flutter-app [--platform p]  Build one or all Flutter platforms');
+  print('  jaspr-site                  Build the Jaspr site (render-mode aware)');
+  print('  jaspr-image                 Build the Cloud Run image (SSR / hybrid)');
+  print('  flutter-embed               Build the Flutter+Jaspr embed bundle');
+  print('  cli-binary                  Compile the Dart CLI binary');
+  print('');
+  print('Run "oracular build <subcommand>" for more information.');
 }
 
 /// Print deploy help
@@ -383,6 +607,8 @@ void _printDeployHelp() {
   print('  storage               Deploy Storage rules');
   print('  hosting               Deploy to Firebase Hosting (release)');
   print('  hosting-beta          Deploy to Firebase Hosting (beta)');
+  print('  jaspr-server          Build/push/deploy Jaspr server (SSR/hybrid)');
+  print('  arcane-server        Build/push/deploy arcane_server companion');
   print('  all                   Deploy all Firebase resources');
   print('  firebase-setup        Setup Firebase (alias of firebase-setup-full)');
   print('  firebase-setup-full   End-to-end setup: billing, init, auth, deploy');
@@ -393,8 +619,25 @@ void _printDeployHelp() {
   print('  artifact-cleanup      Apply Artifact Registry cleanup policy');
   print('  cloudrun-prune        Prune Cloud Run revisions');
   print('  generate-configs      Generate Firebase configuration files');
+  print('                        --hybrid-dynamic-prefix <p1,p2,...>');
+  print('                        rewrites SSR prefixes for hybrid render mode');
   print('  server-setup          Setup server for deployment');
   print('  server-build          Build server Docker image');
   print('');
   print('Run "oracular deploy <subcommand>" for more information.');
+}
+
+/// Print update help
+void _printUpdateHelp() {
+  print('');
+  print('Update subcommands:');
+  print('  runs                  Add/refresh IntelliJ run configs');
+  print('                        - Deploy All (project root)');
+  print('                        - Serve / Build / Killall (per Jaspr package)');
+  print('');
+  print('Examples:');
+  print('  oracular update runs                  # default port 8080');
+  print('  oracular update runs --port 3000      # custom Jaspr port');
+  print('  oracular update runs --dir /path/proj # operate on a different project');
+  print('  oracular update runs -d ./my_jaspr_app -p 9000');
 }

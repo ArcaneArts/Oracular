@@ -161,17 +161,29 @@ class DependencyManager {
 
   /// Run build_runner for all projects that need it with progress
   Future<bool> runAllBuildRunners() async {
-    // Build list of projects needing build_runner
+    // Build list of projects needing build_runner. Only include a project if
+    // its pubspec.yaml actually depends on build_runner — otherwise
+    // `dart run build_runner build` blows up with
+    //   "Could not find package `build_runner` or file `build_runner`"
+    // and (in interactive mode) prompts the user for retry/skip/abort.
     final List<(String, String)> projects = <(String, String)>[];
 
     // Models package needs build_runner for serialization
     if (config.createModels) {
-      projects.add(('Models', p.join(config.outputDir, config.modelsPackageName)));
+      final String path = p.join(config.outputDir, config.modelsPackageName);
+      if (_pubspecDependsOnBuildRunner(path)) {
+        projects.add(('Models', path));
+      }
     }
 
-    // CLI apps need build_runner for cli_gen
+    // CLI apps may need build_runner for cli_gen; check the pubspec first
+    // so templates that ship without build_runner (the current
+    // arcane_cli_app does) do not trigger an unconditional failure.
     if (config.template == TemplateType.arcaneCli) {
-      projects.add(('CLI app', p.join(config.outputDir, config.appName)));
+      final String path = p.join(config.outputDir, config.appName);
+      if (_pubspecDependsOnBuildRunner(path)) {
+        projects.add(('CLI app', path));
+      }
     }
 
     if (projects.isEmpty) {
@@ -189,6 +201,18 @@ class DependencyManager {
     UserPrompt.showProgress(projects.length, projects.length, 'Code generation complete');
 
     return true;
+  }
+
+  /// Returns true when the pubspec.yaml at [projectPath] declares
+  /// `build_runner` either as a regular or dev dependency. Used to avoid
+  /// invoking `dart run build_runner build` against packages that never
+  /// depended on it (it errors with a confusing message and stalls the
+  /// non-interactive flow).
+  bool _pubspecDependsOnBuildRunner(String projectPath) {
+    final File pubspec = File(p.join(projectPath, 'pubspec.yaml'));
+    if (!pubspec.existsSync()) return false;
+    final String content = pubspec.readAsStringSync();
+    return RegExp(r'^\s*build_runner\s*:', multiLine: true).hasMatch(content);
   }
 
   /// Link models package to other projects by adding path dependency

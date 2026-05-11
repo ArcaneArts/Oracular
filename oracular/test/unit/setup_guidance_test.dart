@@ -164,8 +164,34 @@ void main() {
 
       expect(guide, contains('# Hosting (Jaspr)'));
       expect(guide, contains('jaspr build'));
-      expect(guide, contains('${config.webPackageName}/build/jaspr/web/'));
+      // Default mode for arcaneJaspr is CSR → public dir is build/jaspr/ (no /web).
+      expect(guide, contains('${config.webPackageName}/build/jaspr/'));
+      expect(
+        guide,
+        isNot(contains('${config.webPackageName}/build/jaspr/web/')),
+        reason: 'CSR mode should publish from build/jaspr/, not build/jaspr/web/',
+      );
     });
+
+    test(
+      'markdown points SSR Jaspr at build/jaspr/web/ public dir',
+      () {
+        final SetupConfig config = SetupConfig(
+          appName: 'my_app',
+          orgDomain: 'com.example',
+          baseClassName: 'MyApp',
+          template: TemplateType.arcaneJaspr,
+          outputDir: '/tmp/project',
+          useFirebase: true,
+          firebaseProjectId: 'example-project',
+          jasprRenderMode: JasprRenderMode.ssr,
+        );
+
+        final String guide = SetupGuidance.projectGuideMarkdown(config);
+
+        expect(guide, contains('${config.webPackageName}/build/jaspr/web/'));
+      },
+    );
 
     test('markdown lists Flutter-specific copy for Flutter web templates', () {
       final SetupConfig config = SetupConfig(

@@ -1,0 +1,61 @@
+# Multi-stage Dockerfile for Jaspr SSR / Hybrid render modes.
+#
+# Built and pushed by `oracular build jaspr-image` /
+# `oracular deploy jaspr-server`. The image is deployed to Cloud Run;
+# Firebase Hosting fronts the service via rewrites configured in
+# `firebase.json` (see oracular's render-mode-aware ConfigGenerator).
+#
+# ──────────────────────────────────────────────────────────────────
+# Stage 1 — builder: compile the Jaspr server entrypoint to a native
+# binary using the official Dart SDK image. We use `jaspr build`
+# itself (not raw `dart compile`) because jaspr_cli 0.20+ in
+# `mode: server` already:
+#   * emits the client hydration bundle to `build/jaspr/web/**`
+#   * emits the AOT server executable to `build/jaspr/app`
+# so we just copy those two outputs into the runtime image.
+# ──────────────────────────────────────────────────────────────────
+FROM dart:stable AS builder
+
+WORKDIR /app
+
+# Cache deps first.
+COPY pubspec.* ./
+RUN dart pub get
+
+# Now the source.
+COPY . .
+
+# Pin the Jaspr CLI used at build time. Bump in lockstep with the
+# template's pubspec dependency on `jaspr` (0.23.x requires Dart
+# SDK >= 3.11 — that's why this Dockerfile uses `dart:stable`, not
+# a pinned older minor).
+RUN dart pub global activate jaspr_cli 0.23.1
+
+# `jaspr build` in mode:server emits:
+#   build/jaspr/app         — AOT-compiled Dart server executable
+#   build/jaspr/web/**      — client hydration bundle + static assets
+RUN /root/.pub-cache/bin/jaspr build
+
+# ──────────────────────────────────────────────────────────────────
+# Stage 2 — runtime: minimal Debian slim with just the binary +
+# bundled assets. Cloud Run reads $PORT and serves on 0.0.0.0:$PORT.
+# ──────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the AOT-compiled server binary and the static client bundle
+# (the server's shelf_static handler serves the `web/` directory).
+COPY --from=builder /app/build/jaspr/app   ./server
+COPY --from=builder /app/build/jaspr/web   ./web
+
+ENV PORT=8080
+EXPOSE 8080
+
+# Cloud Run injects PORT; the Jaspr server reads it via
+# `Platform.environment['PORT']` (see lib/main.server.dart).
+CMD ["./server"]

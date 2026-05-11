@@ -100,6 +100,17 @@ class DocsGenerator {
       );
     }
 
+    if (config.template.isJasprApp ||
+        config.template == TemplateType.arcaneJasprFlutterEmbed) {
+      pages.add(
+        _DocPage(
+          filename: '07b-build-and-deploy.md',
+          title: 'Build & Deploy (Render Mode)',
+          content: _buildAndDeploy(config),
+        ),
+      );
+    }
+
     if (config.createModels) {
       pages.add(
         _DocPage(
@@ -738,12 +749,186 @@ class DocsGenerator {
     buf.writeln('oracular deploy storage');
     buf.writeln('```');
     buf.writeln();
+    if (config.template.isJasprApp) {
+      _writeJasprRenderModeBlock(buf, config);
+    }
+    if (config.template == TemplateType.arcaneJasprFlutterEmbed) {
+      _writeFlutterEmbedBlock(buf, config);
+    }
     if (config.createServer) {
       buf.writeln('## Server (Cloud Run)');
       buf.writeln();
       buf.writeln('See [Server Deployment](./07-server.md).');
     }
     return buf.toString();
+  }
+
+  /// Generates the standalone `07b-build-and-deploy.md` page for any
+  /// Jaspr template (T9.2 of the 2026-05-10 build/deploy/rendering-modes
+  /// plan). Duplicates the per-mode build/deploy block from
+  /// `06-deployment.md` so render-mode operators have a single page to
+  /// bookmark without scrolling past the generic hosting/Firestore
+  /// sections.
+  static String _buildAndDeploy(SetupConfig config) {
+    final StringBuffer buf = StringBuffer();
+    buf.writeln('# Build & Deploy (Render Mode)');
+    buf.writeln();
+    buf.writeln(
+      'This project is a Jaspr-based template. Build and deploy '
+      'commands vary by render mode — pick the section that matches '
+      'your project.',
+    );
+    buf.writeln();
+    buf.writeln(
+      '> Configured mode: **${config.jasprRenderMode.displayName}** '
+      '(`${config.jasprRenderMode.name}`).',
+    );
+    buf.writeln();
+    buf.writeln('## Render Mode: ${config.jasprRenderMode.displayName}');
+    buf.writeln();
+    _writeJasprRenderModeBlock(buf, config);
+    if (config.template == TemplateType.arcaneJasprFlutterEmbed) {
+      _writeFlutterEmbedBlock(buf, config);
+    }
+    buf.writeln('## Switching modes later');
+    buf.writeln();
+    buf.writeln(
+      'Render mode is persisted as `JASPR_RENDER_MODE` in '
+      '`config/setup_config.env`. Changing it requires:',
+    );
+    buf.writeln();
+    buf.writeln('1. Edit `JASPR_RENDER_MODE` (one of '
+        '`csr`, `ssg`, `ssr`, `hybrid`, `embed`).');
+    buf.writeln(
+      '2. Update `${config.webPackageName}/jaspr.yaml` `mode:` line '
+      '(`client` / `static` / `server`).',
+    );
+    buf.writeln(
+      '3. Re-run `oracular deploy generate-configs` to refresh '
+      '`firebase.json` rewrites.',
+    );
+    buf.writeln(
+      '4. For `hybrid` you can also override SSR prefixes via '
+      '`--hybrid-dynamic-prefix "/api,/auth"`.',
+    );
+    buf.writeln();
+    return buf.toString();
+  }
+
+
+  /// Writes the Jaspr build/deploy block keyed off the configured render
+  /// mode. Added by T9.1 of the 2026-05-10 build/deploy/rendering-modes
+  /// plan so the generated `docs/06-deployment.md` is mode-accurate.
+  /// Also reused by `_buildAndDeploy` (T9.2).
+  static void _writeJasprRenderModeBlock(StringBuffer buf, SetupConfig config) {
+    final JasprRenderMode mode = config.jasprRenderMode;
+    buf.writeln('## Jaspr (${mode.displayName})');
+    buf.writeln();
+    buf.writeln('Render mode: **${mode.displayName}** (`${mode.name}`)');
+    buf.writeln();
+    switch (mode) {
+      case JasprRenderMode.csr:
+        buf.writeln('Client-side rendering. Firebase Hosting alone.');
+        buf.writeln();
+        buf.writeln('```bash');
+        buf.writeln('oracular build jaspr-site');
+        buf.writeln('oracular deploy hosting');
+        buf.writeln('```');
+        break;
+      case JasprRenderMode.ssg:
+        buf.writeln(
+          'Static site generation. Routes from '
+          '`lib/routes/static_routes.dart` are pre-rendered at build time.',
+        );
+        buf.writeln();
+        buf.writeln('```bash');
+        buf.writeln('oracular build jaspr-site');
+        buf.writeln('oracular deploy hosting');
+        buf.writeln('```');
+        break;
+      case JasprRenderMode.ssr:
+        buf.writeln(
+          'Server-side rendering. The Dart server runs on Cloud Run and '
+          'Firebase Hosting rewrites every path to that service.',
+        );
+        buf.writeln();
+        buf.writeln('```bash');
+        buf.writeln('oracular build jaspr-site');
+        buf.writeln('oracular deploy jaspr-server   # Cloud Run');
+        buf.writeln('oracular deploy hosting        # Hosting rewrites');
+        buf.writeln('```');
+        break;
+      case JasprRenderMode.hybrid:
+        final List<String> prefixes = config.hybridDynamicPrefixes.isEmpty
+            ? const <String>['/api', '/auth', '/admin']
+            : config.hybridDynamicPrefixes;
+        buf.writeln(
+          'Hybrid rendering: static islands for marketing routes plus '
+          'SSR for the prefixes below.',
+        );
+        buf.writeln();
+        buf.writeln('SSR prefixes: `${prefixes.join('`, `')}`');
+        buf.writeln();
+        buf.writeln('```bash');
+        buf.writeln('oracular build jaspr-site');
+        buf.writeln('oracular deploy jaspr-server   # Cloud Run');
+        buf.writeln('oracular deploy hosting        # SSG + hybrid rewrites');
+        buf.writeln('```');
+        buf.writeln();
+        buf.writeln('Update the prefixes at any time:');
+        buf.writeln();
+        buf.writeln('```bash');
+        buf.writeln(
+          'oracular deploy generate-configs --hybrid-dynamic-prefix '
+          '"/api,/auth,/admin"',
+        );
+        buf.writeln('```');
+        break;
+      case JasprRenderMode.embed:
+        buf.writeln(
+          'Static Jaspr host with a Flutter web app mounted at '
+          '`${config.embeddedFlutterMount}`. See the dedicated block below.',
+        );
+        break;
+    }
+    buf.writeln();
+  }
+
+  /// Writes the Flutter-embed-in-Jaspr deployment block. The dual-package
+  /// structure means `oracular build flutter-embed` is the canonical
+  /// one-shot build command (T9.1 of the 2026-05-10 plan).
+  static void _writeFlutterEmbedBlock(StringBuffer buf, SetupConfig config) {
+    buf.writeln('## Jaspr + Flutter Embed');
+    buf.writeln();
+    buf.writeln(
+      'This template ships two packages — the Jaspr host '
+      '(`${config.webPackageName}`) and the Flutter guest '
+      '(`${config.embeddedFlutterPackageName}`). The build pipeline:',
+    );
+    buf.writeln();
+    buf.writeln(
+      '1. `flutter build web` is run inside '
+      '`${config.embeddedFlutterPackageName}/`.\n'
+      '2. The output is copied into '
+      '`${config.webPackageName}/web${config.embeddedFlutterMount}`.\n'
+      '3. `jaspr build` produces the unified static site.\n'
+      '4. `firebase deploy --only hosting` ships the combined bundle.',
+    );
+    buf.writeln();
+    buf.writeln('One-shot (recommended):');
+    buf.writeln();
+    buf.writeln('```bash');
+    buf.writeln('oracular build flutter-embed');
+    buf.writeln('oracular deploy hosting');
+    buf.writeln('```');
+    buf.writeln();
+    buf.writeln('Or piece-wise:');
+    buf.writeln();
+    buf.writeln('```bash');
+    buf.writeln('oracular build flutter-app   # Flutter web bundle only');
+    buf.writeln('oracular build jaspr-site    # Jaspr host only (uses staged Flutter)');
+    buf.writeln('```');
+    buf.writeln();
   }
 
   static String _server(SetupConfig config) {

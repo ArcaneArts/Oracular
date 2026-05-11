@@ -13,6 +13,7 @@ import '../../services/server_setup.dart';
 import '../../services/template_copier.dart';
 import '../../services/tool_checker.dart';
 import '../../utils/firebase_setup_prompts.dart';
+import '../../utils/process_runner.dart';
 import '../../utils/string_utils.dart';
 import '../../utils/setup_guidance.dart';
 import '../../utils/user_prompt.dart';
@@ -56,6 +57,7 @@ Future<void> handleCreate(
     firebaseProjectId: args['firebase-project-id'] as String?,
     withCloudRun: flags['with-cloud-run'] == true,
     serviceAccountKey: args['service-account-key'] as String?,
+    renderMode: args['render-mode'] as String?,
     interactive: !yes,
   );
 
@@ -71,7 +73,7 @@ Future<void> handleCreate(
   }
 
   // Execute creation
-  await _executeCreation(config);
+  await _executeCreation(config, nonInteractive: yes);
 }
 
 /// List available templates
@@ -111,6 +113,7 @@ Future<SetupConfig> _gatherConfig({
   String? firebaseProjectId,
   bool withCloudRun = false,
   String? serviceAccountKey,
+  String? renderMode,
   bool interactive = true,
 }) async {
   // App name
@@ -239,19 +242,55 @@ Future<SetupConfig> _gatherConfig({
     );
   }
 
+  // arcane_server templates hard-depend on the shared arcane_models package
+  // via a path: ../<name>_models entry. Without models, `flutter pub get` and
+  // `docker build` both fail (verified in real-deploy smoke). Force models on
+  // whenever server is enabled.
+  if (finalWithServer && !finalWithModels) {
+    if (withModels) {
+      // user explicitly asked for server, no models passed via flag — keep
+      // their intent silent if they're scripting.
+    } else {
+      warn(
+        'arcane_server depends on arcane_models. Enabling models package automatically.',
+      );
+    }
+    finalWithModels = true;
+  }
+
   // Firebase
   bool finalWithFirebase = withFirebase ||
       (firebaseProjectId != null && firebaseProjectId.trim().isNotEmpty);
   String? finalFirebaseProjectId = firebaseProjectId?.trim();
+
+  // Discover an existing service-account.json *before* asking for project
+  // id so we can default to the SA's project_id and offer to reuse the SA
+  // file later. This is what makes the flow truly hands-off when the user
+  // already keeps a key at their workspace root.
+  final DiscoveredServiceAccount? preDiscovered =
+      FirebaseSetupPrompts.findExistingServiceAccountKey(
+    outputDir: finalOutputDir,
+    serverPackageName: finalWithServer ? '${finalAppName}_server' : null,
+  );
+
   if (interactive && !finalWithFirebase) {
     finalWithFirebase = await UserPrompt.askYesNo(
       'Enable Firebase?',
       defaultValue: false,
     );
   }
-  if (finalWithFirebase && finalFirebaseProjectId == null && interactive) {
+  if (finalWithFirebase &&
+      (finalFirebaseProjectId == null || finalFirebaseProjectId.isEmpty) &&
+      interactive) {
+    if (preDiscovered != null && preDiscovered.hasProjectId) {
+      info(
+        'Found service account at ${preDiscovered.path} '
+        '(project: ${preDiscovered.projectId}).',
+      );
+    }
     finalFirebaseProjectId = await UserPrompt.askString(
       'Enter Firebase project ID',
+      defaultValue: preDiscovered?.projectId,
       validator: (s) => validateFirebaseProjectId(s).isValid,
       validationMessage: 'Invalid Firebase project ID',
     );
@@ -271,19 +310,84 @@ Future<SetupConfig> _gatherConfig({
     );
   }
 
-  // Service account key (optional now, needed later for server deployment)
+  // Service account key. Asked whenever Firebase is enabled so even pure
+  // Flutter / Beamer / Jaspr apps without a server can pre-stage the key
+  // for the wizard's IAM gate, FlutterFire/Jaspr configure, and hosting
+  // deploys. When no server is being created, the key lands in
+  // `<outputDir>/config/keys/` (resolved automatically by FirebaseService).
   String? finalServiceAccountKey =
       FirebaseSetupPrompts.normalizeConfiguredKeyPath(serviceAccountKey);
-  if (finalWithServer &&
-      finalWithFirebase &&
+  if (finalWithFirebase &&
       interactive &&
       serviceAccountKey == null &&
       finalFirebaseProjectId != null) {
     finalServiceAccountKey =
         await FirebaseSetupPrompts.askServiceAccountKeyPath(
       outputDir: finalOutputDir,
-      serverPackageName: '${finalAppName}_server',
+      serverPackageName: finalWithServer ? '${finalAppName}_server' : null,
     );
+  }
+
+  // Jaspr render mode. Only meaningful for Jaspr templates; for everything
+  // else the SetupConfig constructor still stores a value (csr) for
+  // serialization simplicity but it is ignored at build/deploy time.
+  JasprRenderMode? finalRenderMode;
+  if (renderMode != null && renderMode.trim().isNotEmpty) {
+    final JasprRenderMode? parsed = JasprRenderModeExtension.parse(renderMode);
+    if (parsed == null) {
+      error(
+        'Invalid --render-mode "$renderMode". '
+        'Valid values: csr, ssg, ssr, hybrid, embed.',
+      );
+      exit(1);
+    }
+    if (!finalTemplate.isJasprApp) {
+      warn(
+        '--render-mode is only meaningful for Jaspr templates; '
+        'ignoring "$renderMode" for ${finalTemplate.displayName}.',
+      );
+    } else if (parsed == JasprRenderMode.embed &&
+        finalTemplate != TemplateType.arcaneJasprFlutterEmbed) {
+      error(
+        'Render mode "embed" requires the '
+        '${TemplateType.arcaneJasprFlutterEmbed.displayName} template.',
+      );
+      exit(1);
+    } else {
+      finalRenderMode = parsed;
+    }
+  } else if (interactive &&
+      finalTemplate.isJasprApp &&
+      finalTemplate != TemplateType.arcaneJasprFlutterEmbed) {
+    // arcaneJasprFlutterEmbed is locked to embed; everything else gets a
+    // prompt so the user can pick CSR vs SSG vs SSR vs Hybrid.
+    print('');
+    info('Jaspr Render Mode');
+    UserPrompt.printList(<String>[
+      'CSR ships a client-only SPA (fastest to build, no server runtime).',
+      'SSG pre-renders every route at build time (SEO-friendly, hosted as static).',
+      'SSR renders at request time on Cloud Run (most flexible, costs more).',
+      'Hybrid mixes SSG for marketing routes with SSR for /api, /auth, etc.',
+    ]);
+    final List<JasprRenderMode> choices = <JasprRenderMode>[
+      JasprRenderMode.csr,
+      JasprRenderMode.ssg,
+      JasprRenderMode.ssr,
+      JasprRenderMode.hybrid,
+    ];
+    final int defaultIndex = choices.indexOf(
+      finalTemplate == TemplateType.arcaneJasprDocs
+          ? JasprRenderMode.ssg
+          : JasprRenderMode.csr,
+    );
+    final int idx = await UserPrompt.showMenu(
+      'Select Jaspr render mode',
+      choices
+          .map((JasprRenderMode m) => '${m.displayName}\n      ${m.description}')
+          .toList(),
+      defaultIndex: defaultIndex < 0 ? 0 : defaultIndex,
+    );
+    finalRenderMode = choices[idx];
   }
 
   return SetupConfig(
@@ -299,15 +403,26 @@ Future<SetupConfig> _gatherConfig({
     setupCloudRun: finalWithCloudRun,
     serviceAccountKeyPath: finalServiceAccountKey,
     platforms: finalPlatforms,
+    jasprRenderMode: finalRenderMode,
   );
 }
 
 /// Execute the project creation
-Future<void> _executeCreation(SetupConfig config) async {
+Future<void> _executeCreation(
+  SetupConfig config, {
+  bool nonInteractive = false,
+}) async {
   info('Starting project creation...');
 
+  // When --yes is set we MUST NOT fall back to interactive
+  // retry/skip/abort prompts inside ProcessRunner.runWithRetry; otherwise
+  // a transient failure (`flutter pub get` rate limit, missing
+  // `build_runner` in a CLI template, etc.) leaves the run waiting for
+  // stdin and hangs CI.
+  final ProcessRunner runner = ProcessRunner(interactive: !nonInteractive);
+
   // 1. Create projects using flutter/dart create
-  final creator = ProjectCreator(config);
+  final creator = ProjectCreator(config, runner: runner);
   if (!await creator.createAllProjects()) {
     error('Failed to create projects');
     exit(1);
@@ -321,7 +436,7 @@ Future<void> _executeCreation(SetupConfig config) async {
   await creator.deleteTestFolders();
 
   // 4. Get dependencies
-  final depManager = DependencyManager(config);
+  final depManager = DependencyManager(config, runner: runner);
 
   // Link models first if created
   if (config.createModels) {

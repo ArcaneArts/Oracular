@@ -1,0 +1,4 @@
+# Jaspr configuration for the embed host (static prerender).
+# Oracular always keeps this site as `mode: static` because the
+# embedded Flutter app needs to be served from a static path.
+mode: static

@@ -74,10 +74,19 @@ Future<void> handleRebuild(
     subtitle: 'Purge + rescaffold without touching Firebase',
   );
 
-  final String? configPathArg = args['config'] as String?;
-  final String? outputDirArg = args['output-dir'] as String?;
-  final bool yes = flags['yes'] == true;
-  final bool dryRunOnly = flags['dry-run'] == true;
+  // darted_cli's input parser strips hyphens from flag names so
+  // `--output-dir` becomes `outputdir` in the args map. Read both the
+  // canonical and stripped form to be robust regardless of how
+  // darted_cli is invoked.
+  final String? configPathArg =
+      (args['config'] as String?) ?? (args['c'] as String?);
+  final String? outputDirArg = (args['output-dir'] as String?) ??
+      (args['outputdir'] as String?) ??
+      (args['d'] as String?);
+  final bool yes = flags['yes'] == true || flags['y'] == true;
+  final bool dryRunOnly = flags['dry-run'] == true ||
+      flags['dryrun'] == true ||
+      flags['n'] == true;
 
   final SetupConfig? config = await _resolveConfig(
     configPath: configPathArg,

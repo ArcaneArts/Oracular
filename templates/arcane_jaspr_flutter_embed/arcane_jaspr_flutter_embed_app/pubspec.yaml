@@ -1,0 +1,60 @@
+name: arcane_jaspr_flutter_embed_app
+description: "Flutter web app embedded at /app inside the Arcane Jaspr host site."
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ARCANE - Core UI Framework
+  arcane: ^6.5.13
+  arcane_user: ^1.1.0
+
+  # Firebase (uncommented automatically when Firebase is enabled at scaffold-time).
+  # The guest deliberately reads the already-initialized FirebaseApp from
+  # `window.__ORACULAR_FIREBASE__` instead of calling Firebase.initializeApp
+  # itself — see lib/firebase_bridge.dart.
+  # firebase_core: ^4.7.0
+  # firebase_auth: ^6.4.0
+
+  # Utilities
+  fast_log: ^1.0.7
+  artifact: ^1.0.34
+  pylon: ^3.2.1
+  toxic_flutter: ^1.1.0
+  package_info_plus: ^9.0.1
+  web: ^1.1.1
+
+  # Optional Arcane transient deps (mirrors arcane_app template).
+  flutter_native_splash: ^2.4.7
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  # No image assets shipped by default — Arcane provides icons via its
+  # built-in icon packs. Add `assets:` entries here as your app grows
+  # (and don't forget to commit the matching files under assets/).
+
+scripts:
+  # Local dev (host /app at http://localhost:5050/app/).
+  # Match the base-href to whatever EMBEDDED_FLUTTER_MOUNT is in setup_config.env.
+  serve: flutter run -d chrome --web-port=5050 --web-renderer=canvaskit --web-hostname=0.0.0.0 --debug --release=false
+  serve_at_app_root: flutter run -d chrome --web-port=5050 --web-renderer=canvaskit --base-href=/app/
+
+  # Standalone production build (without the Jaspr wrapper).
+  build_web: flutter build web --release --base-href=/app/
+
+  # Build into the Jaspr host's web/app/ folder so `jaspr build` picks it up.
+  build_into_host: flutter build web --release --base-href=/app/ --output=../arcane_jaspr_flutter_embed_web/web/app
+
+  # Oracular commands (wraps both packages).
+  deploy: oracular deploy hosting

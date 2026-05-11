@@ -1,0 +1,19 @@
+# Flutter
+.dart_tool/
+.packages
+pubspec.lock
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated
+*.g.dart
+**/generated_plugin_registrant.dart

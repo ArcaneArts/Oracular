@@ -1,17 +1,35 @@
+import 'dart:io';
+
 import 'package:fast_log/fast_log.dart';
 import 'package:path/path.dart' as p;
 
 import '../../models/setup_config.dart';
+import '../../models/template_info.dart';
 import '../../services/artifact_cleanup_service.dart';
 import '../../services/config_generator.dart';
 import '../../services/firebase_initializer.dart';
 import '../../services/firebase_service.dart';
 import '../../services/firebase_setup_orchestrator.dart';
 import '../../services/hosting_site_manager.dart';
+import '../../services/jaspr_server_deployer.dart';
 import '../../services/server_setup.dart';
 import '../../utils/project_config_loader.dart';
 import '../../utils/setup_guidance.dart';
 import '../../utils/user_prompt.dart';
+
+/// Re-walks the upward search path used by [ProjectConfigLoader] and returns
+/// the first existing `setup_config.env` path. Used when a handler needs to
+/// persist mutations back to the same file the loader read from.
+String? _findExistingConfigPath() {
+  final List<String> paths =
+      ProjectConfigLoader.configSearchPaths(Directory.current.path);
+  for (final String path in paths) {
+    if (File(path).existsSync()) {
+      return path;
+    }
+  }
+  return null;
+}
 
 void _printFirebaseDisabledHelp(SetupConfig config) {
   error('Firebase is not enabled for this project.');
@@ -168,16 +186,22 @@ Future<void> handleDeployHostingBeta() async {
 /// Order:
 ///   1. **Firebase**: Firestore rules + Storage rules + (web build +
 ///      hosting release deploy).
-///   2. **Server**: when `config.createServer` is true, build + push + Cloud
-///      Run deploy via [ServerSetup.deployToCloudRun]. This is what makes
-///      `oracular deploy all` cover the "server for hydration" case for
-///      Jaspr SSR or the arcane_server companion service — neither of
-///      which `firebase.deployAll()` knows about.
+///   2. **Jaspr server**: when `config.hasJasprServer` (SSR / hybrid
+///      render modes), build + push + Cloud Run deploy of the Jaspr
+///      Dart binary via [JasprServerDeployer]. Runs **before** the
+///      arcane_server step so the firebase.json rewrites
+///      (`/** → run:<jaspr-service>`) point at a live URL.
+///   3. **Server**: when `config.createServer` is true, build + push +
+///      Cloud Run deploy via [ServerSetup.deployToCloudRun]. This is
+///      what makes `oracular deploy all` cover the "server for
+///      hydration" case for the arcane_server companion service —
+///      which `firebase.deployAll()` knows nothing about.
 ///
 /// We surface step-level success/failure so a partial run still tells
-/// the user which pieces shipped. Server deploy runs even when Firebase
-/// deploys had warnings (deploys are independent), but is skipped when
-/// the server is disabled or missing on disk.
+/// the user which pieces shipped. Deploys run independently — server
+/// deploy fires even when Firebase deploys had warnings — but each is
+/// skipped when its `config.*` toggle is off or the project directory
+/// is missing on disk.
 Future<void> handleDeployAll() async {
   final config = await ProjectConfigLoader.load();
   if (config == null) {
@@ -185,15 +209,19 @@ Future<void> handleDeployAll() async {
     return;
   }
 
-  if (!config.useFirebase && !config.createServer) {
-    error('Neither Firebase nor a server is enabled for this project — '
-        'nothing to deploy.');
+  if (!config.useFirebase &&
+      !config.createServer &&
+      !config.hasJasprServer) {
+    error('Neither Firebase, a Jaspr server, nor an arcane_server is '
+        'enabled for this project — nothing to deploy.');
     return;
   }
 
   bool firebaseOk = true;
+  bool jasprServerOk = true;
   bool serverOk = true;
   String? serverUrl;
+  String? jasprServerUrl;
 
   // ─── Firebase ───────────────────────────────────────────────────────────
   if (config.useFirebase) {
@@ -206,7 +234,26 @@ Future<void> handleDeployAll() async {
     info('Firebase is disabled — skipping Firebase deploys.');
   }
 
-  // ─── Server ─────────────────────────────────────────────────────────────
+  // ─── Jaspr server (SSR / hybrid) ────────────────────────────────────────
+  // Runs before arcane_server so deploys land in dependency order:
+  // Hosting rewrites need the Jaspr service URL to exist, and the
+  // arcane_server is the data-tier backend for the Jaspr site.
+  if (config.hasJasprServer) {
+    print('');
+    UserPrompt.printDivider(title: 'Deploy Jaspr server (Cloud Run)');
+    final JasprServerDeployer deployer = JasprServerDeployer(config);
+    final JasprServerDeployResult result = await deployer.deploy();
+    jasprServerOk = result.success;
+    jasprServerUrl = result.serviceUrl;
+    if (!jasprServerOk) {
+      error('Jaspr server deploy failed: ${result.message}');
+    }
+  } else if (config.template.isJasprApp) {
+    info('Jaspr render mode "${config.jasprRenderMode.displayName}" '
+        'does not require a Cloud Run service — skipping Jaspr server deploy.');
+  }
+
+  // ─── Server (arcane_server companion) ──────────────────────────────────
   // The server hosts the SSR / hydration backend (or the arcane_server
   // companion REST API), so a fresh `oracular deploy all` should leave
   // the user with a fully-redeployed stack — not just the Firebase half.
@@ -221,7 +268,7 @@ Future<void> handleDeployAll() async {
           '(docker auth / build / push / gcloud run deploy).');
     }
   } else {
-    info('Server is disabled — skipping Cloud Run deploy.');
+    info('arcane_server is disabled — skipping its Cloud Run deploy.');
   }
 
   // ─── Summary ────────────────────────────────────────────────────────────
@@ -229,16 +276,23 @@ Future<void> handleDeployAll() async {
   UserPrompt.printDivider(title: 'Deploy summary');
   if (config.useFirebase) {
     if (firebaseOk) {
-      success('Firebase: deployed');
+      success('Firebase:      deployed');
     } else {
-      warn('Firebase: completed with failures (see warnings above)');
+      warn('Firebase:      completed with failures (see warnings above)');
+    }
+  }
+  if (config.hasJasprServer) {
+    if (jasprServerOk) {
+      success('Jaspr server:  deployed → $jasprServerUrl');
+    } else {
+      error('Jaspr server:  failed');
     }
   }
   if (config.createServer) {
     if (serverOk) {
-      success('Server:   deployed → $serverUrl');
+      success('arcane_server: deployed → $serverUrl');
     } else {
-      error('Server:   failed');
+      error('arcane_server: failed');
     }
   }
   if (firebaseOk &&
@@ -248,12 +302,68 @@ Future<void> handleDeployAll() async {
     SetupGuidance.printHostingSuccess(config, beta: false);
   }
 
-  if (firebaseOk && serverOk) {
+  if (firebaseOk && jasprServerOk && serverOk) {
     print('');
     success('All requested deployments succeeded.');
   } else {
     print('');
     error('Some deployments failed. See errors above for details.');
+  }
+}
+
+/// Deploy the Jaspr server (SSR / hybrid render modes) to Cloud Run.
+///
+/// Standalone entry point invoked by `oracular deploy jaspr-server`.
+/// Identical to the Jaspr-server stage of [handleDeployAll] but
+/// re-runnable in isolation when only the Jaspr binary needs to be
+/// shipped (e.g. content-only updates or hot fixes that don't touch
+/// Firebase rules or arcane_server).
+Future<void> handleDeployJasprServer() async {
+  final SetupConfig? config = await ProjectConfigLoader.load();
+  if (config == null) {
+    ProjectConfigLoader.printMissingConfigHelp();
+    return;
+  }
+
+  if (!config.template.isJasprApp) {
+    error('This project is not a Jaspr app — nothing to deploy.');
+    print('');
+    UserPrompt.printList(<String>[
+      'oracular deploy jaspr-server only applies to Jaspr templates '
+      'rendered in SSR / hybrid mode.',
+      'Current template: ${config.template.displayName}',
+    ]);
+    return;
+  }
+
+  if (!config.hasJasprServer) {
+    error('Render mode "${config.jasprRenderMode.displayName}" does not '
+        'produce a Cloud Run image — nothing to deploy.');
+    print('');
+    UserPrompt.printList(<String>[
+      'To enable a Jaspr Cloud Run service, set:',
+      '  JASPR_RENDER_MODE=ssr   # (or hybrid)',
+      'in ${p.join(config.outputDir, 'config', 'setup_config.env')} and re-run.',
+    ]);
+    return;
+  }
+
+  final JasprServerDeployer deployer = JasprServerDeployer(config);
+  final JasprServerDeployResult result = await deployer.deploy();
+
+  print('');
+  UserPrompt.printDivider(title: 'Jaspr server deploy summary');
+  if (result.success) {
+    UserPrompt.printList(<String>[
+      'Service:  ${result.serviceName}',
+      'Region:   ${result.region}',
+      'Image:    ${result.imageTag}',
+      'URL:      ${result.serviceUrl}',
+    ]);
+    print('');
+    success('Jaspr server deployed.');
+  } else {
+    error('Jaspr server deploy failed: ${result.message}');
   }
 }
 
@@ -265,15 +375,122 @@ Future<void> handleDeployAll() async {
 @Deprecated('Use handleFirebaseSetupFull')
 Future<void> handleFirebaseSetup() => handleFirebaseSetupFull();
 
-/// Generate Firebase configuration files
-Future<void> handleGenerateConfigs() async {
+/// Deploy the arcane_server companion package to Cloud Run.
+///
+/// Standalone entry point invoked by `oracular deploy arcane-server`. Identical
+/// to the arcane_server stage of [handleDeployAll] but re-runnable in
+/// isolation when only the server binary needs to be shipped (e.g. when
+/// Firebase hosting and Jaspr deploys are already current).
+///
+/// Exits the process non-zero on failure so CI / shell pipelines treat
+/// it as an error.
+Future<void> handleDeployServer() async {
+  final SetupConfig? config = await ProjectConfigLoader.load();
+  if (config == null) {
+    ProjectConfigLoader.printMissingConfigHelp();
+    exit(1);
+  }
+  if (!config.createServer) {
+    error('arcane_server is not enabled for this project.');
+    print('');
+    UserPrompt.printList(<String>[
+      'oracular deploy arcane-server only applies when the project was '
+          'scaffolded with --with-server.',
+      'Re-scaffold or set CREATE_SERVER=yes in setup_config.env to enable.',
+    ]);
+    exit(2);
+  }
+  if (config.firebaseProjectId == null ||
+      config.firebaseProjectId!.trim().isEmpty) {
+    error('No FIREBASE_PROJECT_ID configured \u2014 cannot deploy to Cloud Run.');
+    print('');
+    UserPrompt.printList(<String>[
+      'Set FIREBASE_PROJECT_ID in '
+          '${p.join(config.outputDir, 'config', 'setup_config.env')}.',
+    ]);
+    exit(2);
+  }
+
+  print('');
+  UserPrompt.printDivider(title: 'Deploy server (Cloud Run)');
+  final ServerSetup server = ServerSetup(config);
+  final String? url = await server.deployToCloudRun();
+
+  print('');
+  UserPrompt.printDivider(title: 'arcane_server deploy summary');
+  if (url == null) {
+    error('arcane_server deploy failed. See errors above.');
+    exit(1);
+  }
+  UserPrompt.printList(<String>[
+    'Service:  ${server.serverServiceName}',
+    'URL:      $url',
+  ]);
+  print('');
+  success('arcane_server deployed.');
+}
+
+/// Generate Firebase configuration files.
+///
+/// When `--hybrid-dynamic-prefix <p1,p2,...>` is supplied the supplied
+/// prefixes overwrite `HYBRID_DYNAMIC_PREFIXES` in `setup_config.env`
+/// before regenerating `firebase.json`. This is the supported workflow
+/// for managing the per-mode rewrites delivered in T5.4 / T7.1 of the
+/// 2026-05-10 build/deploy/rendering-modes plan.
+Future<void> handleGenerateConfigs([Map<String, dynamic>? args]) async {
   final config = await ProjectConfigLoader.load();
   if (config == null) {
     ProjectConfigLoader.printMissingConfigHelp();
     return;
   }
 
-  final configGen = ConfigGenerator(config);
+  // Optionally override the hybrid dynamic prefixes the user wants Firebase
+  // Hosting to rewrite to the Jaspr Cloud Run service. Accepts a single
+  // comma-separated string ("/api,/auth,/admin") which is the most ergonomic
+  // shape for the darted_cli single-value argument model.
+  final String? raw = args == null
+      ? null
+      : args['hybrid-dynamic-prefix']?.toString();
+  if (raw != null && raw.trim().isNotEmpty) {
+    final List<String> requested = raw
+        .split(RegExp('[,\\s]+'))
+        .map((String s) => s.trim())
+        .where((String s) => s.isNotEmpty)
+        .map((String s) => s.startsWith('/') ? s : '/$s')
+        .toList(growable: false);
+    if (requested.isEmpty) {
+      error('No valid prefixes parsed from --hybrid-dynamic-prefix.');
+      return;
+    }
+    if (!config.template.isJasprApp ||
+        config.jasprRenderMode != JasprRenderMode.hybrid) {
+      info(
+        '--hybrid-dynamic-prefix is only effective for Jaspr templates in '
+        'hybrid render mode. The value will still be persisted to '
+        'setup_config.env for future runs.',
+      );
+    }
+
+    final SetupConfig updated = config.copyWith(
+      hybridDynamicPrefixes: requested,
+    );
+    final String? configPath = _findExistingConfigPath();
+    if (configPath == null) {
+      error('Unable to locate setup_config.env on disk to persist update.');
+      return;
+    }
+    await updated.saveToFile(configPath);
+    info(
+      'Updated HYBRID_DYNAMIC_PREFIXES in setup_config.env: '
+      '${requested.join(', ')}',
+    );
+
+    final ConfigGenerator configGen = ConfigGenerator(updated);
+    await configGen.generateAll();
+    return;
+  }
+
+  final ConfigGenerator configGen = ConfigGenerator(config);
   await configGen.generateAll();
 }
 

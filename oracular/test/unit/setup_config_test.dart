@@ -274,4 +274,275 @@ PLATFORMS=
       expect(loaded.platforms, isEmpty);
     });
   });
+
+  group('JasprRenderMode (added 2026-05-10)', () {
+    test('enum exposes display names + descriptions for every value', () {
+      for (final JasprRenderMode mode in JasprRenderMode.values) {
+        expect(mode.displayName, isNotEmpty);
+        expect(mode.description, isNotEmpty);
+      }
+    });
+
+    test('jasprYamlMode maps modes to the right Jaspr CLI mode value', () {
+      expect(JasprRenderMode.csr.jasprYamlMode, equals('client'));
+      expect(JasprRenderMode.ssg.jasprYamlMode, equals('static'));
+      expect(JasprRenderMode.embed.jasprYamlMode, equals('static'));
+      expect(JasprRenderMode.ssr.jasprYamlMode, equals('server'));
+      expect(JasprRenderMode.hybrid.jasprYamlMode, equals('server'));
+    });
+
+    test('requiresCloudRun is true only for ssr + hybrid', () {
+      expect(JasprRenderMode.csr.requiresCloudRun, isFalse);
+      expect(JasprRenderMode.ssg.requiresCloudRun, isFalse);
+      expect(JasprRenderMode.embed.requiresCloudRun, isFalse);
+      expect(JasprRenderMode.ssr.requiresCloudRun, isTrue);
+      expect(JasprRenderMode.hybrid.requiresCloudRun, isTrue);
+    });
+
+    test('needsServerEntrypoint is true for everything except csr', () {
+      expect(JasprRenderMode.csr.needsServerEntrypoint, isFalse);
+      expect(JasprRenderMode.ssg.needsServerEntrypoint, isTrue);
+      expect(JasprRenderMode.ssr.needsServerEntrypoint, isTrue);
+      expect(JasprRenderMode.hybrid.needsServerEntrypoint, isTrue);
+      expect(JasprRenderMode.embed.needsServerEntrypoint, isTrue);
+    });
+
+    test('parse accepts canonical names + common aliases', () {
+      expect(
+        JasprRenderModeExtension.parse('csr'),
+        equals(JasprRenderMode.csr),
+      );
+      expect(
+        JasprRenderModeExtension.parse('client'),
+        equals(JasprRenderMode.csr),
+      );
+      expect(
+        JasprRenderModeExtension.parse('ssg'),
+        equals(JasprRenderMode.ssg),
+      );
+      expect(
+        JasprRenderModeExtension.parse('static'),
+        equals(JasprRenderMode.ssg),
+      );
+      expect(
+        JasprRenderModeExtension.parse('ssr'),
+        equals(JasprRenderMode.ssr),
+      );
+      expect(
+        JasprRenderModeExtension.parse('server'),
+        equals(JasprRenderMode.ssr),
+      );
+      expect(
+        JasprRenderModeExtension.parse('hybrid'),
+        equals(JasprRenderMode.hybrid),
+      );
+      expect(
+        JasprRenderModeExtension.parse('mixed'),
+        equals(JasprRenderMode.hybrid),
+      );
+      expect(
+        JasprRenderModeExtension.parse('embed'),
+        equals(JasprRenderMode.embed),
+      );
+      expect(
+        JasprRenderModeExtension.parse('flutter-embed'),
+        equals(JasprRenderMode.embed),
+      );
+    });
+
+    test('parse handles null / empty / unknown by returning null', () {
+      expect(JasprRenderModeExtension.parse(null), isNull);
+      expect(JasprRenderModeExtension.parse(''), isNull);
+      expect(JasprRenderModeExtension.parse('   '), isNull);
+      expect(JasprRenderModeExtension.parse('nonsense'), isNull);
+    });
+  });
+
+  group('SetupConfig render-mode + embed fields (added 2026-05-10)', () {
+    test('default render mode is csr for arcaneJaspr', () {
+      final config = SetupConfig(
+        appName: 'web_app',
+        orgDomain: 'com.example',
+        baseClassName: 'WebApp',
+        template: TemplateType.arcaneJaspr,
+        outputDir: '/tmp/test',
+      );
+      expect(config.jasprRenderMode, equals(JasprRenderMode.csr));
+      expect(config.hasJasprServer, isFalse);
+      expect(config.hasEmbeddedFlutter, isFalse);
+    });
+
+    test('default render mode is ssg for arcaneJasprDocs', () {
+      final config = SetupConfig(
+        appName: 'docs',
+        orgDomain: 'com.example',
+        baseClassName: 'Docs',
+        template: TemplateType.arcaneJasprDocs,
+        outputDir: '/tmp/test',
+      );
+      expect(config.jasprRenderMode, equals(JasprRenderMode.ssg));
+      expect(config.hasJasprServer, isFalse);
+      expect(config.hasEmbeddedFlutter, isFalse);
+    });
+
+    test('default render mode is embed for arcaneJasprFlutterEmbed', () {
+      final config = SetupConfig(
+        appName: 'demo',
+        orgDomain: 'com.example',
+        baseClassName: 'Demo',
+        template: TemplateType.arcaneJasprFlutterEmbed,
+        outputDir: '/tmp/test',
+      );
+      expect(config.jasprRenderMode, equals(JasprRenderMode.embed));
+      expect(config.hasJasprServer, isFalse);
+      expect(config.hasEmbeddedFlutter, isTrue);
+    });
+
+    test('ssr / hybrid configs report hasJasprServer = true', () {
+      final ssr = SetupConfig(
+        appName: 'demo',
+        orgDomain: 'com.example',
+        baseClassName: 'Demo',
+        template: TemplateType.arcaneJaspr,
+        outputDir: '/tmp/test',
+        jasprRenderMode: JasprRenderMode.ssr,
+      );
+      expect(ssr.hasJasprServer, isTrue);
+
+      final hybrid = ssr.copyWith(jasprRenderMode: JasprRenderMode.hybrid);
+      expect(hybrid.hasJasprServer, isTrue);
+    });
+
+    test('effectiveJasprServerServiceName replaces underscores with dashes', () {
+      final config = SetupConfig(
+        appName: 'my_app',
+        orgDomain: 'com.example',
+        baseClassName: 'MyApp',
+        template: TemplateType.arcaneJaspr,
+        outputDir: '/tmp/test',
+        jasprRenderMode: JasprRenderMode.ssr,
+      );
+      // Default fallback: <appName>_web → my_app_web → my-app-web.
+      expect(config.effectiveJasprServerServiceName, equals('my-app-web'));
+
+      final renamed = config.copyWith(
+        jasprServerServiceName: 'custom_service',
+      );
+      expect(renamed.effectiveJasprServerServiceName, equals('custom-service'));
+    });
+
+    test('embedded package + class names derive from appName + baseClassName', () {
+      final config = SetupConfig(
+        appName: 'my_app',
+        orgDomain: 'com.example',
+        baseClassName: 'MyApp',
+        template: TemplateType.arcaneJasprFlutterEmbed,
+        outputDir: '/tmp/test',
+      );
+      expect(config.embeddedFlutterPackageName, equals('my_app_app'));
+      expect(config.embeddedFlutterClassName, equals('MyAppApp'));
+      expect(config.embeddedFlutterMount, equals('/app'));
+    });
+
+    test('hybridDynamicPrefixes defaults to [/api, /auth]', () {
+      final config = SetupConfig(
+        appName: 'demo',
+        orgDomain: 'com.example',
+        baseClassName: 'Demo',
+        template: TemplateType.arcaneJaspr,
+        outputDir: '/tmp/test',
+        jasprRenderMode: JasprRenderMode.hybrid,
+      );
+      expect(config.hybridDynamicPrefixes, equals(<String>['/api', '/auth']));
+    });
+
+    test('toDisplayMap shows render-mode rows only for Jaspr templates', () {
+      final flutter = SetupConfig(
+        appName: 'demo',
+        orgDomain: 'com.example',
+        baseClassName: 'Demo',
+        template: TemplateType.arcaneTemplate,
+        outputDir: '/tmp/test',
+      );
+      expect(flutter.toDisplayMap().containsKey('Render Mode'), isFalse);
+
+      final ssr = SetupConfig(
+        appName: 'demo',
+        orgDomain: 'com.example',
+        baseClassName: 'Demo',
+        template: TemplateType.arcaneJaspr,
+        outputDir: '/tmp/test',
+        jasprRenderMode: JasprRenderMode.ssr,
+      );
+      final map = ssr.toDisplayMap();
+      expect(map['Render Mode'], equals('SSR'));
+      expect(map['Jaspr Cloud Run Service'], isNotNull);
+    });
+
+    test('saves and loads render-mode + embed + hybrid prefixes', () async {
+      final tempDir = await Directory.systemTemp.createTemp('oracular_rm_');
+      try {
+        final config = SetupConfig(
+          appName: 'demo',
+          orgDomain: 'com.example',
+          baseClassName: 'Demo',
+          template: TemplateType.arcaneJaspr,
+          outputDir: tempDir.path,
+          jasprRenderMode: JasprRenderMode.hybrid,
+          jasprServerServiceName: 'demo_web_service',
+          embeddedFlutterMount: '/embedded',
+          hybridDynamicPrefixes: const <String>['/api', '/admin', '/auth'],
+        );
+
+        final configPath = '${tempDir.path}/config.env';
+        await config.saveToFile(configPath);
+        final loaded = await SetupConfig.loadFromFile(configPath);
+
+        expect(loaded, isNotNull);
+        expect(loaded!.jasprRenderMode, equals(JasprRenderMode.hybrid));
+        expect(loaded.jasprServerServiceName, equals('demo_web_service'));
+        expect(
+          loaded.effectiveJasprServerServiceName,
+          equals('demo-web-service'),
+        );
+        expect(loaded.embeddedFlutterMount, equals('/embedded'));
+        expect(
+          loaded.hybridDynamicPrefixes,
+          equals(<String>['/api', '/admin', '/auth']),
+        );
+      } finally {
+        if (tempDir.existsSync()) {
+          await tempDir.delete(recursive: true);
+        }
+      }
+    });
+
+    test('loadFromFile falls back gracefully when JASPR_RENDER_MODE is missing', () async {
+      final tempDir = await Directory.systemTemp.createTemp('oracular_rm_');
+      try {
+        final configPath = '${tempDir.path}/config.env';
+        await File(configPath).writeAsString('''
+APP_NAME=legacy_app
+ORG_DOMAIN=com.example
+BASE_CLASS_NAME=LegacyApp
+TEMPLATE_NAME=arcaneJaspr
+OUTPUT_DIR=${tempDir.path}
+PLATFORMS=
+''');
+        final loaded = await SetupConfig.loadFromFile(configPath);
+        expect(loaded, isNotNull);
+        // Falls back to the template-derived default (csr for arcaneJaspr).
+        expect(loaded!.jasprRenderMode, equals(JasprRenderMode.csr));
+        expect(loaded.embeddedFlutterMount, equals('/app'));
+        expect(
+          loaded.hybridDynamicPrefixes,
+          equals(<String>['/api', '/auth']),
+        );
+      } finally {
+        if (tempDir.existsSync()) {
+          await tempDir.delete(recursive: true);
+        }
+      }
+    });
+  });
 }

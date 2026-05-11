@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../models/setup_config.dart';
 import '../models/template_info.dart';
 import '../utils/user_prompt.dart';
+import 'intellij_run_config_generator.dart';
 import 'placeholder_replacer.dart';
 import 'template_downloader.dart';
 
@@ -78,6 +79,15 @@ class TemplateCopier {
 
   /// Copy the main app template to the output directory
   Future<void> copyAppTemplate() async {
+    // arcaneJasprFlutterEmbed is a dual-package template: it ships a Jaspr
+    // host (_web) AND a Flutter web guest (_app) under one parent dir.
+    // Route the copy through the dedicated helper so each sub-package
+    // lands in its own scaffolded directory.
+    if (config.template == TemplateType.arcaneJasprFlutterEmbed) {
+      await _copyJasprFlutterEmbedTemplate();
+      return;
+    }
+
     final Directory templateDir = Directory(
       getTemplatePath(config.template.directoryName),
     );
@@ -135,7 +145,250 @@ class TemplateCopier {
       await _prepareJasprDocsDependencies();
     }
 
+    // Patch jaspr.yaml mode for Jaspr templates so the user's selected
+    // render mode (CSR / SSG / SSR / Hybrid) lands in the generated
+    // project. Without this, every project would inherit the template's
+    // default mode (client) regardless of what the user picked.
+    if (config.template.isJasprApp) {
+      await _patchJasprYamlMode(targetDir);
+    }
+
+    // Emit IntelliJ run configurations (Serve / Build / Killall) for
+    // every Jaspr web target so a fresh `oracular` scaffold drops the
+    // user straight into a clickable dev loop in IntelliJ /
+    // Android Studio. No-op for Flutter/Dart-CLI templates — they have
+    // their own (Flutter-native) run configs created by `flutter
+    // create`.
+    if (config.template.isJasprApp) {
+      try {
+        final List<String> written =
+            await IntellijRunConfigGenerator.generate(
+          packageDir: targetDir.path,
+          port: IntellijRunConfigGenerator.defaultPort,
+        );
+        if (written.isNotEmpty) {
+          verbose(
+            '  Generated ${written.length} IntelliJ run config(s) in '
+            '${p.join(targetDir.path, '.idea', 'runConfigurations')}',
+          );
+        }
+      } catch (e) {
+        // Non-fatal — the project is still usable, the user just has
+        // to add run configs manually (or run `oracular update runs`).
+        warn('Failed to generate IntelliJ run configs: $e');
+      }
+    }
+
     success('App template copied to: ${targetDir.path}');
+  }
+
+  /// Copy the arcane_jaspr_flutter_embed template, which is a dual-package
+  /// scaffold (Jaspr host + Flutter web guest).
+  ///
+  /// Lands two sub-packages:
+  ///   * `<outputDir>/<webPackageName>/` — Jaspr static host
+  ///     (from `templates/arcane_jaspr_flutter_embed/arcane_jaspr_flutter_embed_web/`)
+  ///   * `<outputDir>/<embeddedFlutterPackageName>/` — Flutter web app
+  ///     (from `templates/arcane_jaspr_flutter_embed/arcane_jaspr_flutter_embed_app/`)
+  Future<void> _copyJasprFlutterEmbedTemplate() async {
+    final Directory parentTemplate = Directory(
+      getTemplatePath('arcane_jaspr_flutter_embed'),
+    );
+    if (!parentTemplate.existsSync()) {
+      throw Exception('Template not found: ${parentTemplate.path}');
+    }
+
+    info('Copying ${config.template.displayName} template (dual-package)...');
+
+    // ── Host (_web) ────────────────────────────────────────────────────
+    final Directory webSource = Directory(
+      p.join(parentTemplate.path, 'arcane_jaspr_flutter_embed_web'),
+    );
+    if (!webSource.existsSync()) {
+      throw Exception('Embed host template not found: ${webSource.path}');
+    }
+    final Directory webTarget = Directory(
+      p.join(config.outputDir, config.webPackageName),
+    );
+    await _copyDirectory(webSource, webTarget);
+    await _replacer.processDirectory(webTarget);
+    final File webPubspec = File(p.join(webTarget.path, 'pubspec.yaml'));
+    await _replacer.updatePubspec(webPubspec, config.webPackageName);
+
+    if (config.createModels) {
+      await _replacer.addModelsDependency(webPubspec);
+      // Pure-Dart host needs the jpatch + jaspr-builder shims, same as
+      // the regular Jaspr templates do.
+      await _vendorJpatchOverride(webPubspec);
+      await _vendorJasprBuilderShims(webPubspec);
+    }
+
+    await _patchJasprYamlMode(webTarget);
+
+    try {
+      final List<String> written =
+          await IntellijRunConfigGenerator.generate(
+        packageDir: webTarget.path,
+        port: IntellijRunConfigGenerator.defaultPort,
+      );
+      if (written.isNotEmpty) {
+        verbose(
+          '  Generated ${written.length} IntelliJ run config(s) in '
+          '${p.join(webTarget.path, '.idea', 'runConfigurations')}',
+        );
+      }
+    } catch (e) {
+      warn('Failed to generate IntelliJ run configs for host: $e');
+    }
+
+    // ── Guest (_app) ───────────────────────────────────────────────────
+    final Directory appSource = Directory(
+      p.join(parentTemplate.path, 'arcane_jaspr_flutter_embed_app'),
+    );
+    if (!appSource.existsSync()) {
+      throw Exception('Embed guest template not found: ${appSource.path}');
+    }
+    final Directory appTarget = Directory(
+      p.join(config.outputDir, config.embeddedFlutterPackageName),
+    );
+    await _copyDirectory(appSource, appTarget);
+    await _replacer.processDirectory(appTarget);
+    final File appPubspec = File(p.join(appTarget.path, 'pubspec.yaml'));
+    await _replacer.updatePubspec(appPubspec, config.embeddedFlutterPackageName);
+
+    if (config.createModels) {
+      await _replacer.addModelsDependency(appPubspec);
+    }
+
+    success(
+      'Embed scaffold copied: ${webTarget.path} + ${appTarget.path}',
+    );
+  }
+
+  /// Rewrite the Jaspr render mode in the copied project so the user's
+  /// selected `JasprRenderMode` (CSR / SSG / SSR / Hybrid / Embed) lands
+  /// everywhere Jaspr might look for it. Two files are touched:
+  ///
+  ///   1. `pubspec.yaml` — the **authoritative** source-of-truth for
+  ///      `jaspr.mode` ever since `jaspr_cli` 0.20+. The CLI reads
+  ///      `pubspec.yaml.jaspr.mode` (see
+  ///      `jaspr_cli/lib/src/project.dart#requireMode`) and outright
+  ///      ignores `jaspr.yaml`.
+  ///   2. `jaspr.yaml` — kept in sync purely so humans browsing the
+  ///      project see the same mode regardless of which file they open.
+  ///
+  /// Silently no-ops on missing files (defensive) and is idempotent: a
+  /// second call with the same render mode is a no-op.
+  Future<void> _patchJasprYamlMode(Directory targetDir) async {
+    final String desiredMode = config.jasprRenderMode.jasprYamlMode;
+
+    // 1) pubspec.yaml — authoritative.
+    final File pubspec = File(p.join(targetDir.path, 'pubspec.yaml'));
+    if (pubspec.existsSync()) {
+      final String original = await pubspec.readAsString();
+      final String patched = _rewritePubspecJasprMode(original, desiredMode);
+      if (patched != original) {
+        await pubspec.writeAsString(patched);
+        verbose(
+          '  Patched pubspec.yaml jaspr.mode to "$desiredMode" '
+          '(${config.jasprRenderMode.displayName}).',
+        );
+      }
+    } else {
+      verbose('  pubspec.yaml not found in ${targetDir.path}; skipping jaspr.mode patch');
+    }
+
+    // 2) jaspr.yaml — cosmetic / docs-only.
+    final File jasprYaml = File(p.join(targetDir.path, 'jaspr.yaml'));
+    if (!jasprYaml.existsSync()) {
+      return;
+    }
+
+    final String content = await jasprYaml.readAsString();
+    final RegExp modeLine = RegExp(r'^mode:\s*\S+\s*$', multiLine: true);
+    final String patched;
+    if (modeLine.hasMatch(content)) {
+      patched = content.replaceFirst(modeLine, 'mode: $desiredMode');
+    } else {
+      patched = 'mode: $desiredMode\n$content';
+    }
+
+    if (patched != content) {
+      await jasprYaml.writeAsString(patched);
+      verbose('  Patched jaspr.yaml mode to "$desiredMode" (cosmetic).');
+    }
+  }
+
+  /// Rewrites `pubspec.yaml.jaspr.mode` to [desiredMode]. If the
+  /// `jaspr:` block is missing entirely, prepends a minimal one before
+  /// `dependencies:`. The implementation is intentionally line-based
+  /// (rather than full YAML re-emission) so user comments, ordering,
+  /// and whitespace are preserved.
+  String _rewritePubspecJasprMode(String content, String desiredMode) {
+    final List<String> lines = content.split('\n');
+    int jasprBlockStart = -1;
+    int modeLineIndex = -1;
+
+    for (int i = 0; i < lines.length; i++) {
+      final String line = lines[i];
+      if (jasprBlockStart < 0 &&
+          RegExp(r'^jaspr:\s*(#.*)?$').hasMatch(line)) {
+        jasprBlockStart = i;
+        continue;
+      }
+      if (jasprBlockStart >= 0 && i == jasprBlockStart + 1) {
+        // First line after `jaspr:` — could be `  mode: …` or another
+        // nested key. Scan a small window for the mode line.
+      }
+      if (jasprBlockStart >= 0 &&
+          RegExp(r'^\s{2,}mode:\s*\S+').hasMatch(line) &&
+          modeLineIndex < 0) {
+        // Make sure we're still inside the jaspr: block (i.e. the line
+        // is indented).
+        modeLineIndex = i;
+        break;
+      }
+      if (jasprBlockStart >= 0 &&
+          line.isNotEmpty &&
+          !line.startsWith(' ') &&
+          !line.startsWith('#') &&
+          i > jasprBlockStart) {
+        // Left the jaspr: block without finding a mode line.
+        break;
+      }
+    }
+
+    if (modeLineIndex >= 0) {
+      lines[modeLineIndex] = lines[modeLineIndex].replaceFirst(
+        RegExp(r'mode:\s*\S+'),
+        'mode: $desiredMode',
+      );
+      return lines.join('\n');
+    }
+
+    if (jasprBlockStart >= 0) {
+      // Block exists but no mode key — insert one immediately after.
+      lines.insert(jasprBlockStart + 1, '  mode: $desiredMode');
+      return lines.join('\n');
+    }
+
+    // No jaspr: block at all — prepend a minimal one above `dependencies:`.
+    final int depsIndex = lines.indexWhere(
+      (String l) => RegExp(r'^dependencies:\s*$').hasMatch(l),
+    );
+    final List<String> jasprBlock = <String>[
+      '',
+      '# Jaspr CLI configuration — render mode is read from this block.',
+      'jaspr:',
+      '  mode: $desiredMode',
+      '',
+    ];
+    if (depsIndex < 0) {
+      lines.addAll(jasprBlock);
+    } else {
+      lines.insertAll(depsIndex, jasprBlock);
+    }
+    return lines.join('\n');
   }
 
   /// Docs template no longer requires the legacy `.oracular_deps/arcane_*`
@@ -420,6 +673,30 @@ class TemplateCopier {
       templates.length,
       'All templates copied',
     );
+
+    // Emit the project-level "Deploy All" IntelliJ run configuration.
+    //
+    // Lives at the project ROOT (not in any individual sub-package) so
+    // it's discoverable when the user opens the multi-package workspace
+    // in IntelliJ / Android Studio. Template-agnostic — every Oracular
+    // project benefits from a one-click `oracular deploy all` button.
+    //
+    // Non-fatal on failure: the project is still usable, the user just
+    // has to add the run config manually (or run `oracular update runs`).
+    try {
+      final List<String> deployWritten =
+          await IntellijRunConfigGenerator.generateDeploy(
+        projectDir: config.outputDir,
+      );
+      if (deployWritten.isNotEmpty) {
+        verbose(
+          '  Generated project-level "Deploy All" run config in '
+          '${p.join(config.outputDir, '.idea', 'runConfigurations')}',
+        );
+      }
+    } catch (e) {
+      warn('Failed to generate "Deploy All" IntelliJ run config: $e');
+    }
   }
 
   /// Get list of files that would be copied (dry run)

@@ -101,6 +101,14 @@ class SetupGuidance {
       _printJasprDocsDependencyChecklist(config);
     }
 
+    if (config.template.isJasprApp) {
+      _printJasprRenderModeChecklist(config);
+    }
+
+    if (config.template == TemplateType.arcaneJasprFlutterEmbed) {
+      _printFlutterEmbedChecklist(config);
+    }
+
     if (config.createServer) {
       _printServerChecklist(config, report: report);
     }
@@ -356,6 +364,144 @@ class SetupGuidance {
     ]);
   }
 
+  /// Print the per-render-mode build + deploy checklist appended for any
+  /// Jaspr template. Added by T8.2 of the 2026-05-10 build/deploy/
+  /// rendering-modes plan so the user knows exactly which commands
+  /// correspond to the mode they picked in the wizard.
+  static void _printJasprRenderModeChecklist(SetupConfig config) {
+    final JasprRenderMode mode = config.jasprRenderMode;
+    UserPrompt.printDivider(
+      title: 'Jaspr Render Mode — ${mode.displayName}',
+    );
+
+    final List<String> lines = <String>[
+      'Configured mode: ${mode.displayName} (${mode.name})',
+      'jaspr.yaml is pre-wired with mode = ${_jasprYamlModeFor(mode)}.',
+    ];
+
+    switch (mode) {
+      case JasprRenderMode.csr:
+        lines.add(
+          'Build:  oracular build jaspr-site   (output: '
+          '${config.webPackageName}/build/jaspr/)',
+        );
+        lines.add('Deploy: oracular deploy hosting');
+        lines.add(
+          'No Cloud Run required — Firebase Hosting serves the static '
+          'CSR bundle.',
+        );
+        break;
+      case JasprRenderMode.ssg:
+        lines.add(
+          'Build:  oracular build jaspr-site   (prerendered HTML for SEO)',
+        );
+        lines.add('Deploy: oracular deploy hosting');
+        lines.add(
+          'Pre-render routes via lib/routes/static_routes.dart.',
+        );
+        break;
+      case JasprRenderMode.ssr:
+        lines.add(
+          'Build:  oracular build jaspr-site   (Dart server in '
+          '${config.webPackageName}/build/jaspr/app)',
+        );
+        lines.add('Deploy: oracular deploy jaspr-server  (Cloud Run)');
+        lines.add(
+          'Then:   oracular deploy hosting       '
+          '(Hosting rewrites all paths to the Cloud Run service)',
+        );
+        if (config.firebaseProjectId != null) {
+          lines.add(
+            'Cloud Run console: ${cloudRunConsoleUrl(config.firebaseProjectId!)}',
+          );
+        }
+        break;
+      case JasprRenderMode.hybrid:
+        lines.add(
+          'Build:  oracular build jaspr-site   (Dart server + static islands)',
+        );
+        lines.add('Deploy: oracular deploy jaspr-server  (Cloud Run)');
+        lines.add(
+          'Then:   oracular deploy hosting       '
+          '(SSG islands + hybrid rewrites)',
+        );
+        final List<String> prefixes = config.hybridDynamicPrefixes.isEmpty
+            ? const <String>['/api', '/auth', '/admin']
+            : config.hybridDynamicPrefixes;
+        lines.add('SSR prefixes: ${prefixes.join(', ')}');
+        lines.add(
+          'Adjust at any time: '
+          'oracular deploy generate-configs --hybrid-dynamic-prefix '
+          '"/api,/auth,/admin"',
+        );
+        break;
+      case JasprRenderMode.embed:
+        lines.add(
+          'Build:  oracular build flutter-embed   '
+          '(Flutter web → Jaspr host → unified bundle)',
+        );
+        lines.add('Deploy: oracular deploy hosting');
+        lines.add(
+          'See "Jaspr + Flutter Embed" section below for the dual-package '
+          'orientation.',
+        );
+        break;
+    }
+
+    UserPrompt.printList(lines);
+  }
+
+  /// Print the Flutter-embed-in-Jaspr orientation block.
+  ///
+  /// Added by T8.2 to call out that the embed template is two packages
+  /// (the Jaspr host + the Flutter guest) and shows exactly which
+  /// `oracular build` command produces the unified bundle.
+  static void _printFlutterEmbedChecklist(SetupConfig config) {
+    final String hostDir = p.join(config.outputDir, config.webPackageName);
+    final String guestDir = p.join(
+      config.outputDir,
+      config.embeddedFlutterPackageName,
+    );
+
+    UserPrompt.printDivider(title: 'Jaspr + Flutter Embed');
+    UserPrompt.printList(<String>[
+      'Jaspr host package:    $hostDir',
+      'Flutter guest package: $guestDir',
+      'Mount path: ${config.embeddedFlutterMount} '
+          '(Flutter web is copied into '
+          '${config.webPackageName}/web${config.embeddedFlutterMount})',
+      '',
+      'Build (recommended one-shot):',
+      '  oracular build flutter-embed',
+      '',
+      'Build pieces independently:',
+      '  oracular build flutter-app   (Flutter web bundle only)',
+      '  oracular build jaspr-site    (Jaspr static host only — uses the '
+          'staged Flutter copy)',
+      '',
+      'Deploy: oracular deploy hosting   '
+          '(serves the combined bundle from Firebase Hosting)',
+    ]);
+  }
+
+  /// Map the [JasprRenderMode] to the literal string the Jaspr CLI
+  /// expects in `jaspr.yaml`'s `mode` field. Used by both
+  /// `_printJasprRenderModeChecklist` and the project guide markdown
+  /// generator so the documentation stays in lock-step with the
+  /// template_copier post-step.
+  static String _jasprYamlModeFor(JasprRenderMode mode) {
+    switch (mode) {
+      case JasprRenderMode.csr:
+        return 'client';
+      case JasprRenderMode.ssg:
+      case JasprRenderMode.embed:
+        return 'static';
+      case JasprRenderMode.ssr:
+      case JasprRenderMode.hybrid:
+        return 'server';
+    }
+  }
+
   static Future<File> writeProjectGuide(SetupConfig config) async {
     final File guide = File(projectGuidePath(config));
     await guide.parent.create(recursive: true);
@@ -524,10 +670,14 @@ class SetupGuidance {
     buffer.writeln('```');
     buffer.writeln();
     if (isJaspr) {
+      final bool serverMode = config.jasprRenderMode.requiresCloudRun;
+      final String publicDir = serverMode
+          ? '${config.webPackageName}/build/jaspr/web/'
+          : '${config.webPackageName}/build/jaspr/';
       buffer.writeln(
         '> Jaspr hosting builds use `jaspr build` — the orchestrator '
-        'invokes it automatically. For a static export, the public dir '
-        'is `${config.webPackageName}/build/jaspr/web/`.',
+        'invokes it automatically. For mode `${config.jasprRenderMode.name}` '
+        'the public dir is `$publicDir`.',
       );
       buffer.writeln();
     }

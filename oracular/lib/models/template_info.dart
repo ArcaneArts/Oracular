@@ -8,6 +8,7 @@ enum TemplateType {
   // Jaspr web templates
   arcaneJaspr,
   arcaneJasprDocs,
+  arcaneJasprFlutterEmbed,
 }
 
 /// Extension for template metadata
@@ -27,6 +28,8 @@ extension TemplateTypeExtension on TemplateType {
         return 'Arcane Jaspr (Web App)';
       case TemplateType.arcaneJasprDocs:
         return 'Arcane Jaspr Docs (Static Documentation)';
+      case TemplateType.arcaneJasprFlutterEmbed:
+        return 'Arcane Jaspr + Flutter Embed (Web + Flutter App)';
     }
   }
 
@@ -45,6 +48,8 @@ extension TemplateTypeExtension on TemplateType {
         return 'arcane_jaspr_app';
       case TemplateType.arcaneJasprDocs:
         return 'arcane_jaspr_docs';
+      case TemplateType.arcaneJasprFlutterEmbed:
+        return 'arcane_jaspr_flutter_embed';
     }
   }
 
@@ -63,6 +68,12 @@ extension TemplateTypeExtension on TemplateType {
         return 'arcane_jaspr_app';
       case TemplateType.arcaneJasprDocs:
         return 'arcane_jaspr_docs';
+      case TemplateType.arcaneJasprFlutterEmbed:
+        // The embed template ships two sibling packages — the Jaspr host
+        // and the Flutter guest. The "canonical" name is the Jaspr host
+        // (`arcane_jaspr_flutter_embed_web`); the guest is handled by
+        // [SetupConfig.embeddedFlutterPackageName] separately.
+        return 'arcane_jaspr_flutter_embed_web';
     }
   }
 
@@ -81,6 +92,8 @@ extension TemplateTypeExtension on TemplateType {
         return 'Jaspr web application with Arcane design (Web-only, not Flutter).';
       case TemplateType.arcaneJasprDocs:
         return 'Static documentation site with Jaspr and Arcane design (Web-only).';
+      case TemplateType.arcaneJasprFlutterEmbed:
+        return 'Jaspr static site hosting a Flutter web app at /app (Web + Flutter).';
     }
   }
 
@@ -95,6 +108,7 @@ extension TemplateTypeExtension on TemplateType {
       case TemplateType.arcaneCli:
       case TemplateType.arcaneJaspr:
       case TemplateType.arcaneJasprDocs:
+      case TemplateType.arcaneJasprFlutterEmbed:
         return []; // Non-Flutter templates have no Flutter platforms
     }
   }
@@ -109,6 +123,7 @@ extension TemplateTypeExtension on TemplateType {
       case TemplateType.arcaneCli:
       case TemplateType.arcaneJaspr:
       case TemplateType.arcaneJasprDocs:
+      case TemplateType.arcaneJasprFlutterEmbed:
         return false;
     }
   }
@@ -121,12 +136,18 @@ extension TemplateTypeExtension on TemplateType {
   /// Whether this template is a Jaspr web app
   bool get isJasprApp {
     return this == TemplateType.arcaneJaspr ||
-        this == TemplateType.arcaneJasprDocs;
+        this == TemplateType.arcaneJasprDocs ||
+        this == TemplateType.arcaneJasprFlutterEmbed;
   }
 
   /// Whether this template is a static Jaspr docs site
   bool get isJasprDocs {
     return this == TemplateType.arcaneJasprDocs;
+  }
+
+  /// Whether this template is the Jaspr-host + Flutter-guest embed combo.
+  bool get isJasprFlutterEmbed {
+    return this == TemplateType.arcaneJasprFlutterEmbed;
   }
 
   /// Whether models package can be created with this template
@@ -162,6 +183,8 @@ extension TemplateTypeExtension on TemplateType {
         return TemplateType.arcaneJaspr;
       case '6':
         return TemplateType.arcaneJasprDocs;
+      case '7':
+        return TemplateType.arcaneJasprFlutterEmbed;
     }
 
     // Try parsing as name

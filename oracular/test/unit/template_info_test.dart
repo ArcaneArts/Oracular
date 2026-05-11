@@ -206,4 +206,59 @@ void main() {
       expect(all.map((t) => t.type), containsAll(TemplateType.values));
     });
   });
+
+  group('arcaneJasprFlutterEmbed (added 2026-05-10)', () {
+    test('appears in TemplateType.values and parses by number 7', () {
+      expect(
+        TemplateType.values,
+        contains(TemplateType.arcaneJasprFlutterEmbed),
+      );
+      expect(
+        TemplateTypeExtension.parse('7'),
+        equals(TemplateType.arcaneJasprFlutterEmbed),
+      );
+    });
+
+    test('parses by directory name', () {
+      expect(
+        TemplateTypeExtension.parse('arcane_jaspr_flutter_embed'),
+        equals(TemplateType.arcaneJasprFlutterEmbed),
+      );
+      expect(
+        TemplateTypeExtension.parse('arcaneJasprFlutterEmbed'),
+        equals(TemplateType.arcaneJasprFlutterEmbed),
+      );
+    });
+
+    test('has expected metadata', () {
+      const TemplateType t = TemplateType.arcaneJasprFlutterEmbed;
+      expect(t.displayName, contains('Jaspr'));
+      expect(t.displayName, contains('Flutter'));
+      expect(t.directoryName, equals('arcane_jaspr_flutter_embed'));
+      expect(
+        t.canonicalPackageName,
+        equals('arcane_jaspr_flutter_embed_web'),
+      );
+      expect(t.description, contains('Flutter'));
+      expect(t.supportedPlatforms, isEmpty);
+      expect(t.isFlutterApp, isFalse);
+      expect(t.isDartCli, isFalse);
+    });
+
+    test('counts as a Jaspr app and as the embed variant', () {
+      expect(TemplateType.arcaneJasprFlutterEmbed.isJasprApp, isTrue);
+      expect(
+        TemplateType.arcaneJasprFlutterEmbed.isJasprFlutterEmbed,
+        isTrue,
+      );
+      expect(TemplateType.arcaneJasprFlutterEmbed.isJasprDocs, isFalse);
+      // Other Jaspr templates should NOT be classified as the embed variant.
+      expect(TemplateType.arcaneJaspr.isJasprFlutterEmbed, isFalse);
+      expect(TemplateType.arcaneJasprDocs.isJasprFlutterEmbed, isFalse);
+    });
+
+    test('has number index 7 (1-based)', () {
+      expect(TemplateType.arcaneJasprFlutterEmbed.number, equals(7));
+    });
+  });
 }

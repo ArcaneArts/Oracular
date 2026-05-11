@@ -1,0 +1,20 @@
+/* Embed-host site styles.
+ * Jaspr also emits its own generated stylesheet alongside this one;
+ * this file is for site-level chrome that the Jaspr builder doesn't
+ * own.
+ */
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Flutter mount fallback */
+#flutter-app-mount > div:first-child {
+  padding-top: 4rem;
+  padding-bottom: 4rem;
+}

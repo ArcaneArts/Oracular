@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/setup_config.dart';
 import '../utils/process_runner.dart' show ProcessResult, ProcessRunner;
+import 'cloud_run_preflight.dart';
 
 /// Service for server setup and deployment
 class ServerSetup {
@@ -27,11 +28,24 @@ class ServerSetup {
         '''
 # Production Dockerfile for ${config.serverPackageName}
 # Multi-stage build for minimal image size
+#
+# Build context: the server package directory (e.g. ${config.serverPackageName}/).
+# Oracular copies the sibling models package into this directory before
+# `docker build` so `${config.modelsPackageName}/` is available at the
+# root of the context. The pubspec.yaml inside /app references models
+# via `path: ../${config.modelsPackageName}`, which resolves to the
+# /${config.modelsPackageName}/ directory placed alongside /app below.
 
 # Build stage
 FROM ubuntu:22.04 AS build
 
 # Install dependencies
+# `flutter build linux --release` requires the full Flutter Linux desktop
+# toolchain — clang, cmake, ninja-build, pkg-config, libgtk-3-dev,
+# liblzma-dev, libstdc++-12-dev — in addition to the base curl/git/zip
+# utilities. Without these the build fails with `CMake is required for
+# Linux development.` See:
+# https://docs.flutter.dev/get-started/install/linux/desktop#additional-linux-requirements
 RUN apt-get update && apt-get install -y \\
     curl \\
     git \\
@@ -39,22 +53,29 @@ RUN apt-get update && apt-get install -y \\
     xz-utils \\
     zip \\
     libglu1-mesa \\
+    clang \\
+    cmake \\
+    ninja-build \\
+    pkg-config \\
+    libgtk-3-dev \\
+    liblzma-dev \\
+    libstdc++-12-dev \\
     && rm -rf /var/lib/apt/lists/*
 
 # Install Flutter
 RUN git clone https://github.com/flutter/flutter.git /flutter
 ENV PATH="/flutter/bin:\$PATH"
+RUN git config --global --add safe.directory /flutter
 RUN flutter doctor
 RUN flutter config --enable-linux-desktop
 
-# Set up work directory
-WORKDIR /app
-
-# Copy models if it exists
+# Copy the models package alongside /app so the relative path
+# `../${config.modelsPackageName}` in pubspec.yaml resolves correctly.
 COPY ${config.modelsPackageName}/ /${config.modelsPackageName}/
 
-# Copy server source
-COPY ${config.serverPackageName}/ /app/
+# Copy server source (everything in the build context) into /app.
+WORKDIR /app
+COPY . /app/
 
 # Get dependencies and build
 RUN flutter pub get
@@ -63,25 +84,52 @@ RUN flutter build linux --release
 # Runtime stage
 FROM ubuntu:22.04
 
+# `flutter build linux --release` produces a Flutter *desktop* binary that
+# links against GTK and tries to open an X11 display on startup
+# (`Gtk-WARNING **: cannot open display:`). On Cloud Run there is no display,
+# so we start Xvfb manually and point DISPLAY at it before launching the
+# binary.
+#
+# We do this with a small shell wrapper instead of the canonical `xvfb-run`
+# helper because `xvfb-run` on Ubuntu 22.04 hangs forever in `wait` waiting
+# for an Xvfb-sent SIGUSR1 that the modern Xvfb doesn't emit reliably,
+# leaving the container stuck before the binary ever runs (and Cloud Run
+# then fails the deploy with "container failed to start and listen on the
+# port"). The manual `Xvfb :99 & sleep && exec …` pattern is what every
+# headless-Flutter-on-Cloud-Run example actually uses in production.
+#
+# Packages:
+#   - xvfb        - virtual framebuffer X server
+#   - libgtk-3-0  - GTK runtime the Flutter shell links against
+#   - libegl1 / libgles2 - OpenGL drivers Flutter shell needs even headless
+#   - libblkid1 / liblzma5 - misc transitive runtime deps
 RUN apt-get update && apt-get install -y \\
+    xvfb \\
     libgtk-3-0 \\
+    libegl1 \\
+    libgles2 \\
     libblkid1 \\
     liblzma5 \\
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy built binary from build stage
-COPY --from=build /app/build/linux/x64/release/bundle/ ./
+# Copy the Flutter desktop bundle from the build stage. We keep the
+# `bundle/` subdirectory layout (rather than flattening into /app) so that
+# Flutter's relative asset / library lookups (./data, ./lib/*.so) resolve
+# the way they do during local `flutter run`.
+COPY --from=build /app/build/linux/x64/release/bundle/ ./bundle/
 
-# Copy service account key
-COPY ${config.serverPackageName}/*.json ./
+# Copy service account key (lives at the root of the build context).
+COPY *.json ./
 
 # Expose port
 EXPOSE 8080
 
-# Run the server
-CMD ["./\$SERVER_NAME"]
+# Launch the binary with a manually-managed Xvfb backing DISPLAY=:99.
+# `exec` replaces the shell so the binary becomes PID 1 and receives
+# SIGTERM cleanly when Cloud Run scales the instance down.
+CMD ["sh", "-c", "Xvfb :99 -screen 0 800x600x16 & export DISPLAY=:99 && sleep 1 && exec ./bundle/\$SERVER_NAME"]
 '''
             .replaceAll('\$SERVER_NAME', config.serverPackageName);
 
@@ -100,10 +148,19 @@ CMD ["./\$SERVER_NAME"]
         '''
 # Development Dockerfile for ${config.serverPackageName}
 # Includes Flutter SDK for debugging
+#
+# Build context: the server package directory (e.g. ${config.serverPackageName}/).
+# Oracular copies the sibling models package into this directory before
+# `docker build` so `${config.modelsPackageName}/` is available at the
+# root of the context.
 
 FROM ubuntu:22.04
 
 # Install dependencies
+# `flutter build linux --release` requires the full Flutter Linux desktop
+# toolchain (clang, cmake, ninja-build, pkg-config, libgtk-3-dev,
+# liblzma-dev, libstdc++-12-dev). The runtime libraries (libgtk-3-0,
+# libblkid1, liblzma5) come along automatically as transitive deps.
 RUN apt-get update && apt-get install -y \\
     curl \\
     git \\
@@ -114,28 +171,35 @@ RUN apt-get update && apt-get install -y \\
     libgtk-3-0 \\
     libblkid1 \\
     liblzma5 \\
+    clang \\
+    cmake \\
+    ninja-build \\
+    pkg-config \\
+    libgtk-3-dev \\
+    liblzma-dev \\
+    libstdc++-12-dev \\
     && rm -rf /var/lib/apt/lists/*
 
 # Install Flutter
 RUN git clone https://github.com/flutter/flutter.git /flutter
 ENV PATH="/flutter/bin:\$PATH"
+RUN git config --global --add safe.directory /flutter
 RUN flutter doctor
 RUN flutter config --enable-linux-desktop
 
-# Set up work directory
-WORKDIR /app
-
-# Copy models if it exists
+# Copy the models package alongside /app so the relative path
+# `../${config.modelsPackageName}` in pubspec.yaml resolves correctly.
 COPY ${config.modelsPackageName}/ /${config.modelsPackageName}/
 
-# Copy server source
-COPY ${config.serverPackageName}/ /app/
+# Copy server source (everything in the build context) into /app.
+WORKDIR /app
+COPY . /app/
 
 # Get dependencies
 RUN flutter pub get
 
-# Copy service account key
-COPY ${config.serverPackageName}/*.json ./
+# Copy service account key (lives at the root of the build context).
+COPY *.json ./
 
 # Expose port
 EXPOSE 8080
@@ -382,10 +446,21 @@ echo "Service URL: https://\$SERVICE_NAME-\$PROJECT_ID.\$REGION.run.app"
 
     info('Building Docker image...');
 
-    // Copy models to server directory for Docker context
+    // Copy models to server directory for Docker context. Idempotent:
+    // delete the previous copy first so a second run does NOT end up with
+    // `<server>/<models>/<models>/` (cp -r merges-into-existing-dir
+    // semantics on macOS / GNU coreutils).
     if (config.createModels) {
       final String modelsPath = p.join(config.outputDir, config.modelsPackageName);
       final String targetPath = p.join(serverPath, config.modelsPackageName);
+      final Directory target = Directory(targetPath);
+      if (target.existsSync()) {
+        try {
+          await target.delete(recursive: true);
+        } catch (_) {
+          // Best-effort cleanup; cp -r will overwrite.
+        }
+      }
 
       await _runner.run('cp', <String>['-r', modelsPath, targetPath]);
     }
@@ -457,6 +532,7 @@ echo "Service URL: https://\$SERVICE_NAME-\$PROJECT_ID.\$REGION.run.app"
           'and re-run.');
       return null;
     }
+
     final Directory serverDir = Directory(serverPath);
     if (!serverDir.existsSync()) {
       error('Server package not found at $serverPath. Run '
@@ -468,6 +544,21 @@ echo "Service URL: https://\$SERVICE_NAME-\$PROJECT_ID.\$REGION.run.app"
       warn('No Dockerfile found at ${dockerfile.path} — generating one '
           'before deploy.');
       await generateDockerfile();
+    }
+
+    // Preflight: detect the most common dev-environment foot-gun BEFORE
+    // we shell out to gcloud / docker. The user typically has multiple
+    // credentialed gcloud accounts (personal + per-project SAs), and
+    // `gcloud config set account …` from a previous oracular run leaves
+    // a *different* project's service account active. Catching that here
+    // turns a confusing cascade of "PERMISSION_DENIED enabling
+    // artifactregistry.googleapis.com" warnings deep in the deploy into
+    // one clear actionable error up front. Runs AFTER the cheap path
+    // checks above so that "config wrong" errors don't waste a gcloud
+    // round-trip.
+    final CloudRunPreflight preflight = CloudRunPreflight(runner: _runner);
+    if (!await preflight.verifyActiveGcloudAccount(projectId: projectId)) {
+      return null;
     }
 
     final String imageTag = _imageTag(region: region, repository: repository);
@@ -515,6 +606,36 @@ echo "Service URL: https://\$SERVICE_NAME-\$PROJECT_ID.\$REGION.run.app"
     if (auth == null || !auth.success) {
       error('Failed to configure Docker auth for Artifact Registry. '
           'Run `gcloud auth login` and retry.');
+      return null;
+    }
+
+    // 2b. Ensure the GCP services we need (Artifact Registry + Cloud Run)
+    // are enabled. On a fresh project these are off by default and the
+    // docker push will fail with `Artifact Registry API has not been used
+    // in project … before or it is disabled`. Enabling here is idempotent
+    // (gcloud reports success when the API is already enabled) and runs
+    // synchronously enough that propagation typically lands before the
+    // push step a few seconds later.
+    if (!await preflight.ensureCloudRunPrerequisiteApis(projectId: projectId)) {
+      // Non-fatal: we still attempt the push because the API may have
+      // been enabled in a prior run. The push itself will surface a
+      // clear error if it really isn't enabled.
+      warn('Could not confirm Artifact Registry / Cloud Run APIs are '
+          'enabled. Continuing — push will fail with a clear error if '
+          'they really are off.');
+    }
+
+    // 2c. Ensure the Artifact Registry repository (`<region>/<repository>`)
+    // exists. Without this, `docker push` fails with NOT_FOUND because
+    // the registry path doesn't resolve to an existing repo. Idempotent:
+    // we treat 409 / "already exists" as success.
+    if (!await preflight.ensureArtifactRegistryRepository(
+      projectId: projectId,
+      repository: repository,
+      region: region,
+    )) {
+      error('Could not ensure Artifact Registry repository '
+          '`$repository` in $region exists. Push will fail without it.');
       return null;
     }
 

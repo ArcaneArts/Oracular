@@ -138,6 +138,62 @@ class ProjectCreator {
     }
 
     success('Jaspr app created at: $projectPath');
+
+    // arcane_jaspr_flutter_embed ships a companion Flutter web app as the
+    // embed payload. Scaffold it now so the template copier has a place to
+    // drop the Flutter sources.
+    if (config.template == TemplateType.arcaneJasprFlutterEmbed) {
+      if (!await _createEmbeddedFlutterApp()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Create the Flutter web app that gets embedded inside the Jaspr host
+  /// (arcaneJasprFlutterEmbed template only).
+  ///
+  /// Uses `flutter create --platforms web` so the resulting package is a
+  /// real Flutter app — `flutter build web` produces the bundle that the
+  /// Jaspr host serves from [SetupConfig.embeddedFlutterMount].
+  Future<bool> _createEmbeddedFlutterApp() async {
+    final String projectPath = p.join(
+      config.outputDir,
+      config.embeddedFlutterPackageName,
+    );
+
+    info('Creating embedded Flutter app: ${config.embeddedFlutterPackageName}');
+
+    final List<String> args = <String>[
+      'create',
+      '--org',
+      config.orgDomain,
+      '--project-name',
+      config.embeddedFlutterPackageName,
+      '--platforms',
+      'web',
+      projectPath,
+    ];
+
+    final ProcessResult? result = await _runner.runWithRetry(
+      'flutter',
+      args,
+      operationName: 'Flutter create (embedded app)',
+    );
+
+    if (result == null || !result.success) {
+      error('Failed to create embedded Flutter app');
+      return false;
+    }
+
+    // Drop the scaffolded lib so the template can replace it cleanly.
+    final Directory libDir = Directory(p.join(projectPath, 'lib'));
+    if (libDir.existsSync()) {
+      await libDir.delete(recursive: true);
+    }
+
+    success('Embedded Flutter app created at: $projectPath');
     return true;
   }
 
@@ -234,6 +290,14 @@ class ProjectCreator {
   Future<bool> createAllProjects() async {
     info('Creating projects...');
 
+    // Ensure the output directory exists before any flutter/dart create runs.
+    // Without this `dart/flutter create <outputDir>/<appName>` fails with
+    // `PathNotFoundException` when the user passes `-d` to a brand-new path.
+    final Directory outDir = Directory(config.outputDir);
+    if (!outDir.existsSync()) {
+      await outDir.create(recursive: true);
+    }
+
     // Create main app based on template type
     if (config.template.isFlutterApp) {
       if (!await createFlutterApp()) {
@@ -278,6 +342,10 @@ class ProjectCreator {
 
     final projectPaths = [
       mainAppPath,
+      // Companion Flutter web app for the embed template — it ships its
+      // own `test/` folder created by `flutter create`.
+      if (config.template == TemplateType.arcaneJasprFlutterEmbed)
+        p.join(config.outputDir, config.embeddedFlutterPackageName),
       if (config.createModels)
         p.join(config.outputDir, config.modelsPackageName),
       if (config.createServer)

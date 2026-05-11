@@ -2,6 +2,132 @@ import 'dart:io';
 
 import 'template_info.dart';
 
+/// Rendering strategy for Jaspr web sites.
+///
+/// Determines `jaspr.yaml` mode, whether `lib/main.server.dart` is kept,
+/// whether the project ships a Dockerfile for a Cloud Run service, and
+/// what `firebase.json` rewrites look like after [ConfigGenerator] runs.
+enum JasprRenderMode {
+  /// Client-only SPA. `jaspr build` emits `build/jaspr/index.html` plus
+  /// a hydration bundle. No server runtime; hosted as static.
+  csr,
+
+  /// Static pre-render at build time. `jaspr build` runs every page once
+  /// through `main.server.dart` to emit per-route HTML files, then ships
+  /// them as static. SEO-friendly. No Cloud Run.
+  ssg,
+
+  /// Server-rendered at request time. `jaspr build` emits a Dart
+  /// entrypoint; Oracular wraps it in a Docker image and deploys to
+  /// Cloud Run. Firebase Hosting fronts the service via rewrites.
+  ssr,
+
+  /// Mix of [ssg] and [ssr] — some routes are statically pre-rendered
+  /// at build time, others are rendered at request time on Cloud Run.
+  /// Firebase Hosting rewrites only the dynamic prefixes to Cloud Run.
+  hybrid,
+
+  /// Jaspr static host with a Flutter web app embedded at
+  /// [SetupConfig.embeddedFlutterMount]. Reserved for the
+  /// `arcaneJasprFlutterEmbed` template; not applicable to other Jaspr
+  /// templates.
+  embed,
+}
+
+/// Extension helpers for [JasprRenderMode].
+extension JasprRenderModeExtension on JasprRenderMode {
+  /// Short display label (e.g. `CSR`, `SSG`).
+  String get displayName {
+    switch (this) {
+      case JasprRenderMode.csr:
+        return 'CSR';
+      case JasprRenderMode.ssg:
+        return 'SSG';
+      case JasprRenderMode.ssr:
+        return 'SSR';
+      case JasprRenderMode.hybrid:
+        return 'Hybrid';
+      case JasprRenderMode.embed:
+        return 'Embed';
+    }
+  }
+
+  /// One-line description shown in wizard menus and generated docs.
+  String get description {
+    switch (this) {
+      case JasprRenderMode.csr:
+        return 'Client-only SPA, hosted as static; fastest to build.';
+      case JasprRenderMode.ssg:
+        return 'Static pre-render at build time, SEO-friendly, hosted as static.';
+      case JasprRenderMode.ssr:
+        return 'Server-rendered at request time, deploys to Cloud Run.';
+      case JasprRenderMode.hybrid:
+        return 'Mix of static + SSR routes, deploys to Cloud Run + Hosting.';
+      case JasprRenderMode.embed:
+        return 'Jaspr static site with a Flutter web app embedded at /app.';
+    }
+  }
+
+  /// Value used in the `jaspr.yaml` `mode:` field.
+  ///
+  /// Both [ssg] and the host side of [embed] use `static` because the
+  /// Jaspr CLI itself does the prerender pass via `main.server.dart`.
+  /// [ssr] and [hybrid] use `server` because the binary serves requests
+  /// at runtime.
+  String get jasprYamlMode {
+    switch (this) {
+      case JasprRenderMode.csr:
+        return 'client';
+      case JasprRenderMode.ssg:
+      case JasprRenderMode.embed:
+        return 'static';
+      case JasprRenderMode.ssr:
+      case JasprRenderMode.hybrid:
+        return 'server';
+    }
+  }
+
+  /// True for modes that produce a Cloud Run service (Dart binary) in
+  /// addition to whatever ends up on Firebase Hosting.
+  bool get requiresCloudRun {
+    return this == JasprRenderMode.ssr || this == JasprRenderMode.hybrid;
+  }
+
+  /// True for modes that emit a `main.server.dart` entrypoint that runs
+  /// at build time (SSG / Embed prerender) or at runtime (SSR / Hybrid).
+  bool get needsServerEntrypoint {
+    return this != JasprRenderMode.csr;
+  }
+
+  /// Parse a render mode from CLI string. Accepts both enum names
+  /// (`csr`, `ssr`, ...) and a couple of common aliases (`static`,
+  /// `client`, `server`).
+  static JasprRenderMode? parse(String? value) {
+    if (value == null) return null;
+    final String lower = value.trim().toLowerCase();
+    if (lower.isEmpty) return null;
+    switch (lower) {
+      case 'csr':
+      case 'client':
+        return JasprRenderMode.csr;
+      case 'ssg':
+      case 'static':
+        return JasprRenderMode.ssg;
+      case 'ssr':
+      case 'server':
+        return JasprRenderMode.ssr;
+      case 'hybrid':
+      case 'mixed':
+        return JasprRenderMode.hybrid;
+      case 'embed':
+      case 'flutter-embed':
+      case 'flutter_embed':
+        return JasprRenderMode.embed;
+    }
+    return null;
+  }
+}
+
 /// Configuration for project setup
 class SetupConfig {
   /// App name in snake_case (e.g., my_app)
@@ -94,6 +220,34 @@ class SetupConfig {
   /// are not currently serving traffic are pruned. Defaults to 3.
   final int cloudRunKeepRevisions;
 
+  // ── Jaspr render-mode options (added in 2026-05-10) ─────────────────────
+
+  /// How the Jaspr site renders. Only meaningful when
+  /// [TemplateTypeExtension.isJasprApp] is true.
+  ///
+  /// Defaults are template-driven (see [SetupConfig.new]):
+  ///   * `arcaneJasprDocs` → [JasprRenderMode.ssg]
+  ///   * `arcaneJasprFlutterEmbed` → [JasprRenderMode.embed]
+  ///   * `arcaneJaspr` (and everything else) → [JasprRenderMode.csr]
+  final JasprRenderMode jasprRenderMode;
+
+  /// Cloud Run service name for the Jaspr server binary (SSR / hybrid).
+  /// Defaults to `<appName>-web` so it never collides with the
+  /// arcane_server service (`<appName>-server`).
+  final String? jasprServerServiceName;
+
+  /// Mount path for the embedded Flutter web app inside the Jaspr host
+  /// site. Only meaningful when [template] is
+  /// [TemplateType.arcaneJasprFlutterEmbed]. Defaults to `/app`.
+  final String embeddedFlutterMount;
+
+  /// URL prefixes that route to the Jaspr Cloud Run service instead of
+  /// to static hosting. Only meaningful in hybrid mode. Defaults to
+  /// `['/api', '/auth']` so the user has a sensible non-empty starting
+  /// point; the firebase.json generator emits a `run:<service>` rewrite
+  /// for every prefix listed here.
+  final List<String> hybridDynamicPrefixes;
+
   SetupConfig({
     required this.appName,
     required this.orgDomain,
@@ -126,12 +280,20 @@ class SetupConfig {
     this.artifactKeepRecent = 5,
     this.artifactDeleteOlderDays = 30,
     this.cloudRunKeepRevisions = 3,
+    JasprRenderMode? jasprRenderMode,
+    this.jasprServerServiceName,
+    this.embeddedFlutterMount = '/app',
+    List<String>? hybridDynamicPrefixes,
   }) : deployHostingRelease = deployHostingRelease ??
             _defaultSupportsWebHosting(template, platforms),
        deployHostingBeta = deployHostingBeta ??
             _defaultSupportsWebHosting(template, platforms),
        requireBlaze = requireBlaze ?? (createServer || setupCloudRun),
-       setupArtifactCleanup = setupArtifactCleanup ?? setupCloudRun;
+       setupArtifactCleanup = setupArtifactCleanup ?? setupCloudRun,
+       jasprRenderMode =
+           jasprRenderMode ?? _defaultJasprRenderMode(template),
+       hybridDynamicPrefixes =
+           hybridDynamicPrefixes ?? const <String>['/api', '/auth'];
 
   /// Create config with defaults
   factory SetupConfig.defaults() {
@@ -170,6 +332,10 @@ class SetupConfig {
     int? artifactKeepRecent,
     int? artifactDeleteOlderDays,
     int? cloudRunKeepRevisions,
+    JasprRenderMode? jasprRenderMode,
+    String? jasprServerServiceName,
+    String? embeddedFlutterMount,
+    List<String>? hybridDynamicPrefixes,
   }) {
     return SetupConfig(
       appName: appName ?? this.appName,
@@ -201,6 +367,13 @@ class SetupConfig {
           artifactDeleteOlderDays ?? this.artifactDeleteOlderDays,
       cloudRunKeepRevisions:
           cloudRunKeepRevisions ?? this.cloudRunKeepRevisions,
+      jasprRenderMode: jasprRenderMode ?? this.jasprRenderMode,
+      jasprServerServiceName:
+          jasprServerServiceName ?? this.jasprServerServiceName,
+      embeddedFlutterMount:
+          embeddedFlutterMount ?? this.embeddedFlutterMount,
+      hybridDynamicPrefixes:
+          hybridDynamicPrefixes ?? this.hybridDynamicPrefixes,
     );
   }
 
@@ -221,6 +394,37 @@ class SetupConfig {
 
   /// Get the web class name (PascalCase + Web)
   String get webClassName => '${baseClassName}Web';
+
+  /// Package name for the embedded Flutter web app (only meaningful
+  /// when [template] is [TemplateType.arcaneJasprFlutterEmbed]).
+  String get embeddedFlutterPackageName => '${appName}_app';
+
+  /// Class name for the embedded Flutter web app.
+  String get embeddedFlutterClassName => '${baseClassName}App';
+
+  /// Effective Cloud Run service name for the Jaspr server binary.
+  /// Falls back to `<appName>-web` when [jasprServerServiceName] is null.
+  /// Dashes-not-underscores because Cloud Run rejects underscores in
+  /// service names.
+  String get effectiveJasprServerServiceName {
+    final String raw = jasprServerServiceName ?? '${appName}_web';
+    return raw.replaceAll('_', '-');
+  }
+
+  /// True when this configuration produces a Cloud Run service for the
+  /// Jaspr binary (SSR / hybrid). Independent of the arcane_server
+  /// template; both can be true at once.
+  bool get hasJasprServer {
+    return template.isJasprApp && jasprRenderMode.requiresCloudRun;
+  }
+
+  /// True when this configuration produces a Flutter web app that ships
+  /// inside the Jaspr build output (the `embed` mode of the
+  /// arcaneJasprFlutterEmbed template).
+  bool get hasEmbeddedFlutter {
+    return template == TemplateType.arcaneJasprFlutterEmbed ||
+        jasprRenderMode == JasprRenderMode.embed;
+  }
 
   /// Whether this configuration produces a deployable web build for either
   /// Flutter web or any Jaspr template (static or client). Used by the
@@ -261,6 +465,10 @@ SETUP_ARTIFACT_CLEANUP=${setupArtifactCleanup ? 'yes' : 'no'}
 ARTIFACT_KEEP_RECENT=$artifactKeepRecent
 ARTIFACT_DELETE_OLDER_DAYS=$artifactDeleteOlderDays
 CLOUD_RUN_KEEP_REVISIONS=$cloudRunKeepRevisions
+JASPR_RENDER_MODE=${jasprRenderMode.name}
+${jasprServerServiceName != null ? 'JASPR_SERVER_SERVICE_NAME=$jasprServerServiceName' : '# JASPR_SERVER_SERVICE_NAME='}
+EMBEDDED_FLUTTER_MOUNT=$embeddedFlutterMount
+HYBRID_DYNAMIC_PREFIXES=${hybridDynamicPrefixes.join(',')}
 ''';
 
     await File(path).writeAsString(content);
@@ -317,6 +525,14 @@ CLOUD_RUN_KEEP_REVISIONS=$cloudRunKeepRevisions
       artifactKeepRecent: _parseInt(values['ARTIFACT_KEEP_RECENT'], defaultValue: 5),
       artifactDeleteOlderDays: _parseInt(values['ARTIFACT_DELETE_OLDER_DAYS'], defaultValue: 30),
       cloudRunKeepRevisions: _parseInt(values['CLOUD_RUN_KEEP_REVISIONS'], defaultValue: 3),
+      jasprRenderMode: JasprRenderModeExtension.parse(
+        values['JASPR_RENDER_MODE'],
+      ),
+      jasprServerServiceName: values['JASPR_SERVER_SERVICE_NAME'],
+      embeddedFlutterMount: values['EMBEDDED_FLUTTER_MOUNT'] ?? '/app',
+      hybridDynamicPrefixes: _parseHybridPrefixes(
+        values['HYBRID_DYNAMIC_PREFIXES'],
+      ),
     );
   }
 
@@ -346,6 +562,22 @@ CLOUD_RUN_KEEP_REVISIONS=$cloudRunKeepRevisions
     buffer.writeln('artifact_keep_recent: $artifactKeepRecent');
     buffer.writeln('artifact_delete_older_days: $artifactDeleteOlderDays');
     buffer.writeln('cloud_run_keep_revisions: $cloudRunKeepRevisions');
+    if (template.isJasprApp) {
+      buffer.writeln('jaspr_render_mode: ${jasprRenderMode.name}');
+      if (hasJasprServer) {
+        buffer.writeln(
+          'jaspr_server_service: $effectiveJasprServerServiceName',
+        );
+      }
+      if (hasEmbeddedFlutter) {
+        buffer.writeln('embedded_flutter_mount: $embeddedFlutterMount');
+      }
+      if (jasprRenderMode == JasprRenderMode.hybrid) {
+        buffer.writeln(
+          'hybrid_dynamic_prefixes: ${hybridDynamicPrefixes.join(', ')}',
+        );
+      }
+    }
     return buffer.toString();
   }
 
@@ -382,6 +614,14 @@ CLOUD_RUN_KEEP_REVISIONS=$cloudRunKeepRevisions
             : 'No',
       if (setupCloudRun)
         'Cloud Run Revisions': 'keep $cloudRunKeepRevisions',
+      if (template.isJasprApp)
+        'Render Mode': jasprRenderMode.displayName,
+      if (hasJasprServer)
+        'Jaspr Cloud Run Service': effectiveJasprServerServiceName,
+      if (hasEmbeddedFlutter)
+        'Embedded Flutter Mount': embeddedFlutterMount,
+      if (jasprRenderMode == JasprRenderMode.hybrid)
+        'Hybrid Dynamic Paths': hybridDynamicPrefixes.join(', '),
     };
   }
 
@@ -450,5 +690,37 @@ CLOUD_RUN_KEEP_REVISIONS=$cloudRunKeepRevisions
       return true;
     }
     return false;
+  }
+
+  /// Default [jasprRenderMode] derived from [template]. Non-Jaspr
+  /// templates still get a value (`csr`) for serialization simplicity,
+  /// but it's ignored everywhere thanks to `template.isJasprApp` gates.
+  static JasprRenderMode _defaultJasprRenderMode(TemplateType template) {
+    switch (template) {
+      case TemplateType.arcaneJasprDocs:
+        return JasprRenderMode.ssg;
+      case TemplateType.arcaneJasprFlutterEmbed:
+        return JasprRenderMode.embed;
+      case TemplateType.arcaneJaspr:
+      case TemplateType.arcaneTemplate:
+      case TemplateType.arcaneBeamer:
+      case TemplateType.arcaneDock:
+      case TemplateType.arcaneCli:
+        return JasprRenderMode.csr;
+    }
+  }
+
+  /// Parse the comma-separated `HYBRID_DYNAMIC_PREFIXES` env value.
+  /// Empty / missing falls back to the constructor default (handled by
+  /// the null-coalesce in [SetupConfig.new]).
+  static List<String>? _parseHybridPrefixes(String? value) {
+    if (value == null) return null;
+    final String trimmed = value.trim();
+    if (trimmed.isEmpty) return const <String>[];
+    return trimmed
+        .split(',')
+        .map((String s) => s.trim())
+        .where((String s) => s.isNotEmpty)
+        .toList(growable: false);
   }
 }

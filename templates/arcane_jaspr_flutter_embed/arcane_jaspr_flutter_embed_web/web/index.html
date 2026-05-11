@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArcaneJasprFlutterEmbedWeb</title>
+  <meta name="description" content="Jaspr static marketing site that hosts a Flutter web app at /app.">
+  <meta name="generator" content="Jaspr + Arcane">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#10b981">
+  <meta name="color-scheme" content="dark light">
+
+  <link rel="canonical" href="https://example.com/">
+
+  <!-- OpenGraph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ArcaneJasprFlutterEmbedWeb">
+  <meta property="og:title" content="ArcaneJasprFlutterEmbedWeb">
+  <meta property="og:description" content="Jaspr static marketing site that hosts a Flutter web app at /app.">
+  <meta property="og:url" content="https://example.com/">
+  <meta property="og:image" content="https://example.com/assets/og-image.png">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ArcaneJasprFlutterEmbedWeb">
+  <meta name="twitter:description" content="Jaspr static marketing site that hosts a Flutter web app at /app.">
+  <meta name="twitter:image" content="https://example.com/assets/og-image.png">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+
+  <!-- WebSite JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "ArcaneJasprFlutterEmbedWeb",
+    "url": "https://example.com/"
+  }
+  </script>
+
+  <!-- Theme boot (prevents FOUC) -->
+  <script>
+    (function() {
+      var savedTheme = localStorage.getItem('arcane-theme-preset') || 'green';
+      var savedMode = localStorage.getItem('arcane-theme-mode') || 'dark';
+      document.documentElement.className = 'theme-' + savedTheme + '-' + savedMode;
+    })();
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      overflow-x: hidden;
+      background-color: var(--arcane-background, #09090b);
+      color: var(--arcane-on-background, #fafafa);
+      font-family: 'GeistSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .loading-screen {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--arcane-background, #09090b);
+      z-index: 9999;
+      transition: opacity 0.3s ease;
+    }
+    .loading-screen.hidden { opacity: 0; pointer-events: none; }
+    .loader {
+      width: 48px; height: 48px;
+      border: 3px solid var(--arcane-border, #27272a);
+      border-top-color: var(--arcane-accent, #10b981);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+
+  <!--
+    ============================================================
+    Firebase JS SDK
+    ============================================================
+    The Jaspr host owns the Firebase initialization. The embedded
+    Flutter app reads `window.__ORACULAR_FIREBASE__` instead of
+    calling Firebase.initializeApp() itself; this avoids the
+    "duplicate-app" failure mode when both packages bootstrap
+    Firebase independently.
+
+    Uncomment the block below + fill in the config when you wire
+    Firebase to this project.
+  -->
+  <!--
+  <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-auth-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+    const __ORACULAR_FIREBASE__ = firebase.initializeApp(firebaseConfig);
+    window.__ORACULAR_FIREBASE__ = __ORACULAR_FIREBASE__;
+  </script>
+  -->
+
+  <!-- Jaspr generated styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="loading-screen" id="loading"><div class="loader"></div></div>
+
+  <!-- Jaspr root (server-prerendered HTML is injected here at build time). -->
+  <div id="app"></div>
+
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        document.getElementById('loading').classList.add('hidden');
+      }, 100);
+    });
+  </script>
+
+  <!--
+    ============================================================
+    Flutter bootstrap (auto-injected by `oracular build flutter-embed`)
+    ============================================================
+    Oracular's BuildOrchestrator copies `flutter_bootstrap.js` into
+    `/app/` and uncomments this script tag. When the user navigates
+    to /app/**, the Jaspr-rendered AppShellScreen contains the
+    `<div id="flutter-app-mount">` target; the bootstrap reads it
+    and renders the Flutter app into that node.
+
+    The block below intentionally lives between explicit BEGIN/END
+    markers so the orchestrator can find + edit it with a regex
+    (see BuildOrchestrator.buildEmbeddedFlutter).
+  -->
+  <!-- ORACULAR_FLUTTER_BOOTSTRAP_BEGIN -->
+  <!-- <script src="/app/flutter_bootstrap.js" async></script> -->
+  <!-- ORACULAR_FLUTTER_BOOTSTRAP_END -->
+
+  <!-- Jaspr compiled Dart -->
+  <script defer src="main.client.dart.js"></script>
+</body>
+</html>

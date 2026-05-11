@@ -1,0 +1,58 @@
+name: arcane_jaspr_flutter_embed_web
+description: "Arcane Jaspr static host site that embeds a Flutter web app at /app/."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  web: ^1.1.1
+  jaspr: ^0.23.0
+  arcane_jaspr: ^3.3.0
+  # Renderer package - lives inside the arcane_jaspr monorepo and is not yet
+  # published to pub.dev, so we reference it via git with a sub-path.
+  arcane_jaspr_shadcn:
+    git:
+      url: https://github.com/ArcaneArts/arcane_jaspr.git
+      path: packages/arcane_jaspr_shadcn
+  fast_log: ^1.0.7
+
+  # Shared models (added automatically when models enabled)
+  # arcane_models:
+  #   path: ../arcane_models
+
+dev_dependencies:
+  build_runner: ^2.14.0
+  build_web_compilers: ^4.4.18
+  jaspr_builder: ^0.23.0
+  lints: ^6.1.0
+
+jaspr:
+  mode: static
+
+scripts:
+  # Development
+  serve: jaspr serve
+  serve_release: jaspr serve --release
+
+  # Build (the Jaspr host only — see flutter_build for the guest)
+  build: jaspr build
+
+  # Build pipeline: Flutter guest first, then Jaspr host.
+  # Run this from the host package directory.
+  flutter_build: cd ../arcane_jaspr_flutter_embed_app && flutter build web --release --base-href=/app/ --output=../arcane_jaspr_flutter_embed_web/web/app
+  build_all: dart pub run scripts/build_embed.dart || (cd ../arcane_jaspr_flutter_embed_app && flutter build web --release --base-href=/app/ --output=../arcane_jaspr_flutter_embed_web/web/app) && jaspr build
+
+  # Clean (host + guest)
+  clean: jaspr clean && rm -rf web/app
+
+  # Kill running servers
+  killall: pkill -f "jaspr serve" || true
+
+  # Code Generation
+  build_runner: dart run build_runner build --delete-conflicting-outputs
+  watch: dart run build_runner watch --delete-conflicting-outputs
+
+  # Firebase Deployment (run from parent directory)
+  firebase_deploy: jaspr build && cd .. && firebase deploy --only hosting --project FIREBASE_PROJECT_ID

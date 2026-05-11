@@ -18,6 +18,14 @@ dependencies:
       path: packages/arcane_jaspr_shadcn
   fast_log: ^1.0.7
 
+  # ─── Server-only dependencies (auto-uncommented for SSR / hybrid) ───────
+  # Oracular's TemplateCopier uncomments the block below when the render
+  # mode is `ssr` or `hybrid`. Leave commented for CSR / SSG.
+  #
+  # shelf: ^1.4.2
+  # shelf_static: ^1.1.3
+  # mime: ^2.0.0
+
   # Shared models (added automatically when models enabled)
   # arcane_models:
   #   path: ../arcane_models
@@ -36,8 +44,12 @@ scripts:
   serve: jaspr serve
   serve_release: jaspr serve --release
 
-  # Build
+  # Build (mode-aware via jaspr.yaml; Oracular rewrites it per render mode)
   build: jaspr build
+
+  # Build the SSR/Hybrid Cloud Run image. Uses Dockerfile.jaspr which
+  # Oracular drops into the project for ssr/hybrid render modes.
+  build_image: docker build -f Dockerfile.jaspr -t arcane-jaspr-app:latest .
 
   # Clean
   clean: jaspr clean
@@ -51,3 +63,7 @@ scripts:
 
   # Firebase Deployment (run from parent directory)
   firebase_deploy: jaspr build && cd .. && firebase deploy --only hosting --project FIREBASE_PROJECT_ID
+
+  # Oracular Deployment (works for every render mode)
+  oracular_deploy: oracular deploy hosting
+  oracular_deploy_jaspr_server: oracular deploy jaspr-server

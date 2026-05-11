@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /about
+# The Flutter app at /app/ is a client-rendered SPA. Allow it but the
+# canonical experience for crawlers is the Jaspr-rendered landing.
+Allow: /app/
+
+Sitemap: https://example.com/sitemap.xml

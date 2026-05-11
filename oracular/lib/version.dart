@@ -4,4 +4,4 @@
 /// here as well so the wizard's welcome banner reflects the active build.
 library;
 
-const String oracularVersion = '3.3.9';
+const String oracularVersion = '3.5.0';

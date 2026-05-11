@@ -1,3 +1,362 @@
+## 3.5.0
+
+### Added — Jaspr render modes (CSR / SSG / SSR / Hybrid / Embed)
+
+Jaspr templates can now be scaffolded in five distinct render modes,
+each producing a different build pipeline, hosting layout, and deploy
+target. Mode is picked in the wizard or via `oracular create
+--render-mode <mode>`, persisted to `config/setup_config.env`, and
+threaded through every downstream service so `jaspr.yaml`, the
+generated `firebase.json` rewrites, the docs page, and the Cloud Run
+deploy all stay in sync.
+
+| Mode | Build output | Hosting | Cloud Run | Use case |
+|---|---|---|---|---|
+| `csr` | `build/jaspr/` (client SPA) | Static | — | Fastest dev loop, no SEO. |
+| `ssg` | `build/jaspr/` (prerendered HTML) | Static | — | SEO-friendly, no runtime cost. |
+| `ssr` | `build/jaspr/` (Dart binary + client) | `/** -> run:<svc>` | yes | Server-rendered at request time. |
+| `hybrid` | `build/jaspr/web/` (static + Dart binary) | per-prefix `run:<svc>` rewrites | yes | Mix of static + SSR routes. |
+| `embed` | Jaspr host + Flutter web guest at `/app/` | Static | — | Jaspr docs/marketing site that hosts a Flutter app. |
+
+New `JasprRenderMode` enum (`oracular/lib/models/setup_config.dart`)
+with `displayName`, `description`, `jasprYamlMode`, `requiresCloudRun`,
+`needsServerEntrypoint`, and a permissive `parse()` that accepts CLI
+aliases (`client` → CSR, `static` → SSG, `server` → SSR, …).
+
+### Added — `arcane_jaspr_flutter_embed` template
+
+Brand-new dual-package template
+(`templates/arcane_jaspr_flutter_embed/`) that scaffolds two sibling
+packages in a single `oracular create` run:
+
+- `<appName>_web/` — Jaspr static host (the public-facing site,
+  marketing pages, docs, etc.)
+- `<appName>_app/` — Flutter web guest, mounted at
+  `/app/` inside the Jaspr host's `web/` output.
+
+Wired by `TemplateCopier._copyJasprFlutterEmbedTemplate`
+(`oracular/lib/services/template_copier.dart:159-260`) which copies
+both sub-packages, processes placeholders independently, and emits the
+IntelliJ run configs for the host. Defaults to
+`JasprRenderMode.embed`.
+
+The embed build (`oracular build flutter-embed` or `oracular build
+jaspr-site` in embed mode) runs `flutter build web --release
+--base-href=/app/` in the guest, copies the bundle into the host's
+`web/app/`, and uncomments the `ORACULAR_FLUTTER_BOOTSTRAP_BEGIN/END`
+script block in `web/index.html` so the bundle loads at runtime.
+
+### Added — `oracular build` command tree
+
+New top-level command for producing artifacts without touching deploy
+state. Distinct from `oracular deploy`: `build` never runs
+`firebase deploy`, never pushes images, and never talks to gcloud.
+Always safe to run from CI.
+
+```bash
+oracular build everything                    # every artifact for this project
+oracular build flutter-app                   # every Flutter platform
+oracular build flutter-app --platform web    # one platform only
+oracular build jaspr-site                    # render-mode aware jaspr build
+oracular build jaspr-image                   # docker build (SSR/hybrid)
+oracular build flutter-embed                 # Flutter web guest + Jaspr host
+oracular build cli-binary                    # dart compile exe (arcane_cli_app)
+```
+
+Backed by a new `BuildOrchestrator` service
+(`oracular/lib/services/build_orchestrator.dart`) that is the single
+source of truth for "what does building this project mean?". Every
+build entry point (`oracular build …`, `oracular deploy jaspr-server`,
+`oracular deploy arcane-server`, integration tests) routes through
+this service, so `flutter build`/`jaspr build`/`docker build`
+invocations are identical regardless of which command triggered them.
+
+`BuildOrchestrator.buildJasprServerImage()` auto-tags the image with
+both `:latest` and (when git is available) `:<short-sha>` so AR
+cleanup policies have a traceable revision history.
+
+### Added — `oracular deploy jaspr-server` (SSR / hybrid Jaspr binary)
+
+Ships the Jaspr `main.server.dart` entrypoint to Cloud Run as a
+sibling Dart binary to `arcane_server`. The two can coexist in the
+same project: `arcane_server` lives at `<appName>-server`, Jaspr's
+binary at `<appName>-web` (configurable via
+`SetupConfig.effectiveJasprServerServiceName`).
+
+```bash
+oracular deploy jaspr-server     # build + push + Cloud Run deploy
+```
+
+Implemented by the new `JasprServerDeployer`
+(`oracular/lib/services/jaspr_server_deployer.dart`). End-to-end
+flow: `CloudRunPreflight` (active gcloud account / APIs / AR repo)
+→ `BuildOrchestrator.buildJasprServerImage()` → `docker push :latest`
++ optional `:<sha>` → `gcloud run deploy` → `gcloud run services
+describe` for the live URL.
+
+`oracular deploy all` now runs the Jaspr server deploy **before** the
+`arcane_server` step so the firebase.json rewrites
+(`/** → run:<jaspr-service>` in SSR; per-prefix rewrites in hybrid)
+point at a live URL by the time hosting publishes. Both steps are
+independent — a partial run still tells the user which half shipped.
+
+### Added — `CloudRunPreflight` shared preflight service
+
+Pulled the three Cloud Run prerequisites that were previously private
+to `ServerSetup` into a standalone service
+(`oracular/lib/services/cloud_run_preflight.dart`) so the Jaspr
+deployer can reuse them without copy-paste:
+
+1. **Active gcloud account sanity** — detects the "wrong service
+   account active" foot-gun (active SA belongs to a different project
+   than `firebaseProjectId`) and prints the exact
+   `gcloud config set account …` command to copy, picking the best
+   candidate from `gcloud auth list`.
+2. **Required GCP APIs enabled** — `artifactregistry.googleapis.com`
+   and `run.googleapis.com`.
+3. **Artifact Registry repository exists** — describes first, creates
+   on `NOT_FOUND`, treats 409 / `already exists` as success.
+
+### Added — render-mode-aware `firebase.json` rewrites
+
+`ConfigGenerator.generateFirebaseJson`
+(`oracular/lib/services/config_generator.dart`) now emits rewrites
+matched to the chosen render mode:
+
+- **CSR** — `{ source: "**", destination: "/index.html" }` (classic SPA).
+- **SSG** — `{ source: "**", destination: "/index.html" }`, with
+  prerendered HTML files served before the SPA fallback fires.
+- **SSR** — `{ source: "**", run: { serviceId: "<svc>", region:
+  "us-central1" } }`. Every request goes through Cloud Run.
+- **Hybrid** — one rewrite per dynamic prefix
+  (`--hybrid-dynamic-prefix /api,/blog/**`), plus SPA fallback for the
+  static routes. Configurable via `oracular deploy generate-configs
+  --hybrid-dynamic-prefix …`.
+- **Embed** — SPA fallback like CSR, with the Flutter bundle served
+  from `/app/` as static assets.
+
+Hosting `public:` directory also auto-flips between
+`build/jaspr/` (CSR/SSG/Embed) and `build/jaspr/web/` (SSR/Hybrid) to
+match the Jaspr CLI's per-mode output layout.
+
+### Added — service-account auto-discovery in the wizard
+
+`FirebaseSetupPrompts.findExistingServiceAccountKey`
+(`oracular/lib/utils/firebase_setup_prompts.dart`) walks the user's
+workspace looking for any pre-existing `*service-account*.json`,
+parses its `project_id` and `client_email`, and surfaces the result as
+a `DiscoveredServiceAccount`.
+
+The interactive wizard (and `oracular create`) consume this to:
+
+- Pre-fill the "Firebase project ID" prompt with the discovered
+  `project_id` (one keystroke to accept).
+- Offer to reuse the discovered key file instead of asking the user to
+  drag a fresh one into `config/keys/`.
+- Surface the discovered identity (`Found service account at <path>
+  (project: <id>)`) up front so the user knows which credentials the
+  wizard is about to use.
+
+Service-account key is now requested whenever Firebase is enabled —
+not only when a server package is created. The key file drops into
+`<outputDir>/config/keys/` when no server package exists, where
+`FirebaseService.authEnvironment` finds it automatically.
+
+### Added — `Deploy All` project-level IntelliJ run config
+
+The 3.4.0 IntelliJ run-config generator only emitted Serve / Build /
+Killall in each Jaspr package. 3.5.0 adds a project-level
+**Deploy All** run config (`oracular deploy all`) at the project root
+(where `config/setup_config.env` lives), wired by
+`IntellijRunConfigGenerator.generateDeploy`
+(`oracular/lib/services/intellij_run_config_generator.dart:157-191`).
+
+Both the scaffold path (`TemplateCopier`) and `oracular update runs`
+now emit it unconditionally — it's template-agnostic, so even
+Flutter-only or server-only projects benefit. The `update runs`
+handler renders the count as `(<N> project-level Deploy + <M> Jaspr
+across <P> packages)` so the user can tell what was added.
+
+### Added — render-mode build/deploy docs page (`docs/07b-build-and-deploy.md`)
+
+`DocsGenerator` (`oracular/lib/services/docs_generator.dart`) emits a
+dedicated build-and-deploy page for every Jaspr project that documents:
+
+- The mode in use (CSR/SSG/SSR/Hybrid/Embed) and what it means.
+- Exact `oracular build …` and `oracular deploy …` commands for that
+  mode.
+- Cloud Run service name(s), region, and how to override.
+- Flutter-embed mount point (when applicable).
+
+Standalone page (not buried inside `06-deployment.md`) so render-mode
+operators have a single bookmarkable URL.
+
+### Fixed — `arcane_server` Dockerfile missing Linux desktop toolchain
+
+`ServerSetup.generateDockerfile`
+(`oracular/lib/services/server_setup.dart`) now installs `clang`,
+`cmake`, `ninja-build`, `pkg-config`, `libgtk-3-dev`, `liblzma-dev`,
+and `libstdc++-12-dev` in the build stage. Without these,
+`flutter build linux --release` fails with `CMake is required for
+Linux development.` deep inside the docker build with no actionable
+log. The generated Dockerfile also documents the runtime stage's
+display-less invocation, adds `git config --global --add safe.directory
+/flutter` so Flutter's bootstrap doesn't error inside the container,
+and lays out the build context so `path: ../<models>` resolves cleanly
+inside `/app`.
+
+### Fixed — `build_runner` runs only in packages that depend on it
+
+`DependencyManager.runAllBuildRunners`
+(`oracular/lib/services/dependency_manager.dart:163-215`) now probes
+each candidate package's `pubspec.yaml` for a `build_runner:` entry
+before invoking `dart run build_runner build`. Previously the CLI
+template (which ships without `build_runner`) would error with
+`Could not find package 'build_runner' or file 'build_runner'` and
+stall the non-interactive wizard waiting for retry/skip/abort input.
+
+### Changed — `arcane_server` forces `arcane_models` on
+
+`arcane_server`'s pubspec has a hard `path: ../<name>_models`
+dependency, so picking server without models always failed
+`flutter pub get`. Both the CLI (`handleCreate`) and the wizard now
+auto-enable `createModels = true` whenever `createServer` is true,
+with a one-line `warn(…)` so the user sees what changed.
+
+### Implementation
+
+| File | Change |
+|---|---|
+| `oracular/lib/models/setup_config.dart` | New `JasprRenderMode` enum + extension; `SetupConfig.jasprRenderMode`, `hasJasprServer`, `effectiveJasprServerServiceName`, `embeddedFlutterPackageName`, `embeddedFlutterMount` fields with env-file round-trip. |
+| `oracular/lib/models/template_info.dart` | New `arcaneJasprFlutterEmbed` template value; `isJasprFlutterEmbed` predicate; canonical name routes to `<appName>_web`. |
+| `oracular/lib/services/build_orchestrator.dart` | New service. Per-mode `jaspr build` dispatch, embed flow (`flutter build web` → host copy → bootstrap uncomment), docker build with git-SHA tagging, dart-CLI compile. |
+| `oracular/lib/services/jaspr_server_deployer.dart` | New service. End-to-end build/push/deploy for Jaspr SSR/hybrid binary. |
+| `oracular/lib/services/cloud_run_preflight.dart` | New service. Shared preflight extracted from `ServerSetup`. |
+| `oracular/lib/services/config_generator.dart` | Render-mode-aware hosting rewrites and `public:` path; `--hybrid-dynamic-prefix` CLI hook. |
+| `oracular/lib/services/template_copier.dart` | Dual-package embed copier; per-mode `jaspr.yaml` patching; deploy-all run-config emission. |
+| `oracular/lib/services/docs_generator.dart` | New `07b-build-and-deploy.md` page; per-mode sections inside `06-deployment.md`. |
+| `oracular/lib/services/server_setup.dart` | Dockerfile linux-desktop toolchain; build-context fix; routes Cloud Run deploys through `CloudRunPreflight`. |
+| `oracular/lib/services/interactive_wizard.dart` | Render-mode prompt (`_chooseJasprRenderMode`); SA discovery → project-ID default; server→models auto-enable. |
+| `oracular/lib/services/intellij_run_config_generator.dart` | Project-level `Deploy_All.run.xml` generator. |
+| `oracular/lib/services/dependency_manager.dart` | `_pubspecDependsOnBuildRunner` gate before running build_runner. |
+| `oracular/lib/cli/commands.dart` | New `build` command tree (everything / flutter-app / jaspr-site / jaspr-image / flutter-embed / cli-binary); `deploy jaspr-server` subcommand; `--render-mode` on `create`. |
+| `oracular/lib/cli/handlers/build_handlers.dart` | New. Per-subcommand wrappers around `BuildOrchestrator`. |
+| `oracular/lib/cli/handlers/update_handlers.dart` | Emit project-level Deploy All; auto-discovery of Jaspr packages by `pubspec.yaml`. |
+| `oracular/lib/cli/handlers/deploy_handlers.dart` | `handleDeployJasprServer`; updated `handleDeployAll` to chain Jaspr+arcane server deploys. |
+| `oracular/lib/cli/handlers/create_handlers.dart` | `--render-mode` flag; server→models auto-enable; pre-discovery of SA. |
+| `oracular/lib/utils/firebase_setup_prompts.dart` | New `DiscoveredServiceAccount` + `findExistingServiceAccountKey` walker. |
+| `templates/arcane_jaspr_flutter_embed/` | New template (host `_web` + guest `_app`). |
+| `templates/arcane_jaspr_app/` | Added `Dockerfile.jaspr`, `main.server.dart`, `routes/dynamic_routes.dart`, `routes/static_routes.dart`, `.dockerignore`. |
+
+### Tests
+
+- New `oracular/test/unit/jaspr_server_deployer_test.dart` covering
+  the full deploy success path, every short-circuit (no project ID,
+  preflight failure, build failure, push failure, deploy failure), and
+  URL fallback when `gcloud run services describe` fails.
+- New `oracular/test/integration/per_mode_smoke_test.dart` asserting
+  that `BuildOrchestrator` runs the **exact** set of `BuildStepKind`s
+  expected for each render mode — CSR / SSG run jaspr-site only, SSR /
+  hybrid add the Cloud Run image step, embed runs the Flutter guest
+  build first.
+- Expanded `config_generator_test.dart`, `setup_config_test.dart`,
+  `setup_guidance_test.dart`, `template_info_test.dart`, and
+  `server_setup_test.dart` to cover the new render-mode permutations
+  and the env-file round-trip.
+
+### Migration
+
+For projects scaffolded by Oracular < 3.5.0:
+
+- **Render mode defaults to CSR** for existing Jaspr projects (matches
+  the previous behavior). To opt into another mode, edit
+  `JASPR_RENDER_MODE=` in `config/setup_config.env` and re-run
+  `oracular rebuild` or just `oracular deploy generate-configs` to
+  regenerate `firebase.json` + `jaspr.yaml`.
+- **`oracular update runs`** picks up the new project-level
+  `Deploy_All.run.xml` automatically — no flag required.
+- **`arcane_server` projects:** if you scaffolded a server without
+  models on an older version, `flutter pub get` was likely failing.
+  Add `arcane_models` to the project (or re-run the wizard) and the
+  hard dependency resolves.
+
+---
+
+## 3.4.0
+
+### Added — IntelliJ run configurations for Jaspr packages (Serve, Build, Killall)
+
+Every newly-scaffolded Jaspr package
+(`arcane_jaspr_app`, `arcane_jaspr_docs`, and the per-app `*_web/`
+target) now ships with three IntelliJ / Android Studio run
+configurations under `.idea/runConfigurations/`:
+
+| File | What it runs | Notes |
+|---|---|---|
+| `Serve.run.xml` | `jaspr serve --port <port>` | Default `8080`. Editing the run config's "Script Text" is the easiest way to change the dev port — no env-var dance. |
+| `Build.run.xml` | `jaspr build` | Port-agnostic. Builds the release web bundle into `build/jaspr/`. |
+| `Killall_<port>.run.xml` | `lsof -ti:$PORT \| xargs kill -9` | Kills anything listening on the chosen port. Filename encodes the port so the IDE dropdown reads "Killall :8080". A power-user can pass an override port in the run config's "Script Options" without regenerating. |
+
+All three are emitted as **Shell Script** configurations
+(`ShConfigurationType`), which is a built-in plugin in every modern
+JetBrains IDE — no extra plugin installs required. The XML matches the
+on-disk format IntelliJ writes itself when you create a shell run
+config via the UI, so a round-trip through the IDE doesn't produce a
+phantom git diff.
+
+### Added — `oracular update runs` for retroactive install
+
+Existing projects scaffolded by older Oracular versions can pull the
+run configs in without any other changes via the new top-level
+command:
+
+```bash
+oracular update runs                # default port 8080, all Jaspr packages
+oracular update runs --port 3000    # custom port baked into Killall + Serve
+oracular update runs --no-overwrite # keep user-edited run configs
+oracular update runs --dir ./my_jaspr_app   # operate on a specific dir
+```
+
+`oracular update runs --port` also auto-prunes stale `Killall_NNNN.run.xml`
+files from previous ports so the IDE dropdown stays clean.
+
+> **Note:** The `--dir` flag is intentionally hyphen-free. `darted_cli` (our
+> CLI parser) drops args whose names contain hyphens, so the canonical
+> name for the project-root override is `--dir` (or the `-d` shortcut).
+> The handler also accepts `--output-dir`/`--outputdir` aliases for
+> compatibility, but those rely on `darted_cli` accepting them — which
+> may or may not work depending on the parser version.
+
+### Implementation
+
+| File | Change |
+|---|---|
+| `oracular/lib/services/intellij_run_config_generator.dart:1-215` | New service with `generate({packageDir, port, overwrite})` and `pruneStaleKillallConfigs({packageDir, currentPort})`. Pure-string XML (no extra deps), proper attribute escaping (`&`/`<`/`>`/`"`/`'`), `&#10;` for embedded newlines so multi-line shell scripts survive IntelliJ's attribute-value handling. |
+| `oracular/lib/services/template_copier.dart:128-135` | Wires `IntellijRunConfigGenerator.generate()` into the scaffolding pipeline whenever the template's `isJasprApp` is true. Idempotent — re-running the wizard always emits fresh configs. |
+| `oracular/lib/cli/handlers/update_handlers.dart:1-160` | New `handleUpdateRuns` handler. Auto-discovers Jaspr packages by walking the project root for `pubspec.yaml` files that depend on `jaspr` or have a sibling `web/` directory. |
+| `oracular/lib/cli/commands.dart:11,67-104,160-195` | Registers `oracular update` as a top-level command with `runs` subcommand, `--port`, `--target`, `--no-overwrite` flags, and full `--help` integration. |
+| `oracular/test/unit/intellij_run_config_generator_test.dart:1-385` | **13 new tests** covering: filename + content of all three configs, port baking in Serve/Killall, port-agnostic Build, XML well-formedness via state-machine parser (handles attribute quotes + self-closing `<envs />`), `overwrite=false` preserves user edits, `pruneStaleKillallConfigs` removes only matching stale files. |
+
+### Validation
+
+- `dart analyze lib/` — clean (no new issues)
+- `dart test test/unit/intellij_run_config_generator_test.dart` — **13/13 passed**
+- `dart test test/unit/` — **326/326 passed** (313 → 326, zero regressions)
+
+### Migration
+
+For existing Oracular-scaffolded projects (e.g. `rhe-budget`):
+
+```bash
+cd /path/to/your/project
+oracular update runs
+```
+
+For new projects scaffolded with `oracular` v3.4.0+, the run configs
+are emitted automatically — no extra step.
+
+---
+
 ## 3.3.9
 
 ### Added — `oracular deploy all` now ships the SSR / hydration server too

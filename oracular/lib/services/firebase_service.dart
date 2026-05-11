@@ -8,6 +8,7 @@ import '../models/setup_config.dart';
 import '../models/template_info.dart';
 import '../utils/process_runner.dart' show ProcessResult, ProcessRunner;
 import '../utils/user_prompt.dart';
+import 'build_orchestrator.dart';
 import 'firebase_initializer.dart';
 
 /// Service for Firebase operations
@@ -1730,7 +1731,13 @@ class FirebaseService {
     );
   }
 
-  /// Build web app
+  /// Build web app.
+  ///
+  /// Delegates to [BuildOrchestrator] so the same code path runs whether
+  /// the build is kicked off by `oracular build`, by `oracular deploy
+  /// hosting`, or by the wizard. Keeping a single source of truth here
+  /// is what guarantees parity between "manual build" and "deploy that
+  /// implicitly builds first".
   Future<bool> buildWeb() async {
     if (!supportsWebHosting()) {
       error(
@@ -1739,14 +1746,10 @@ class FirebaseService {
       return false;
     }
 
-    // Determine project path based on template type
-    final String projectPath = config.template.isJasprApp
-        ? p.join(config.outputDir, config.webPackageName)
-        : p.join(config.outputDir, config.appName);
+    final BuildOrchestrator orchestrator =
+        BuildOrchestrator(config, runner: _runner);
 
-    info('Building web app...');
-
-    // Jaspr templates: use jaspr build
+    // Jaspr templates: defer to the render-mode-aware buildJaspr().
     if (config.template.isJasprApp) {
       // Self-heal builder shims for projects scaffolded before
       // Oracular started vendoring artifact_gen / fire_crud_gen. The web
@@ -1755,18 +1758,18 @@ class FirebaseService {
       // pulled in — even just to satisfy `auto_apply: dependents` in the
       // upstream artifact / fire_crud build.yaml. See
       // [_ensureJasprBuilderShims] for the full rationale.
+      final String projectPath =
+          p.join(config.outputDir, config.webPackageName);
       await _ensureJasprBuilderShims(projectPath);
 
-      final ProcessResult? result = await _runner.runWithRetry(
-        'jaspr',
-        <String>['build'],
-        workingDirectory: projectPath,
-        operationName: 'Jaspr build',
-      );
-      return result != null && result.success;
+      final BuildStepResult result = await orchestrator.buildJaspr();
+      return result.status == BuildStepStatus.success;
     }
 
-    final Directory webDir = Directory(p.join(projectPath, 'web'));
+    // Flutter templates: defer to BuildOrchestrator.buildFlutter('web').
+    final Directory webDir = Directory(
+      p.join(config.outputDir, config.appName, 'web'),
+    );
     if (!webDir.existsSync()) {
       error('Web platform files were not found in: ${webDir.path}');
       info('Enable web support in the app directory with:');
@@ -1774,15 +1777,9 @@ class FirebaseService {
       return false;
     }
 
-    // Flutter templates: use flutter build web
-    final ProcessResult? result = await _runner.runWithRetry(
-      'flutter',
-      <String>['build', 'web', '--release'],
-      workingDirectory: projectPath,
-      operationName: 'Flutter build web',
-    );
-
-    return result != null && result.success;
+    final BuildStepResult result =
+        await orchestrator.buildFlutter(platform: 'web');
+    return result.status == BuildStepStatus.success;
   }
 
   /// Deploy to Firebase Hosting (release target)

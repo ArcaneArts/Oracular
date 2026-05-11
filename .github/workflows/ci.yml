@@ -1,0 +1,138 @@
+name: oracular CI
+
+# Runs the Oracular CLI's unit + integration tests and the per-render-mode
+# scaffold-and-build smoke required by T10.2 of the 2026-05-10
+# build/deploy/rendering-modes plan. Runs on every push + PR to the
+# default branch so a refactor in BuildOrchestrator / ConfigGenerator /
+# JasprServerDeployer cannot silently break the per-mode contract.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────
+  # 1. Static analysis + the full unit/integration test matrix.
+  #    Hermetic (no external binaries) so it can run on a stock runner.
+  # ──────────────────────────────────────────────────────────────────────
+  unit_and_integration:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    defaults:
+      run:
+        working-directory: oracular
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: dart pub get
+        run: dart pub get
+
+      - name: dart analyze
+        run: dart analyze
+
+      - name: dart test (unit)
+        run: dart test test/unit/
+
+      - name: dart test (integration)
+        # per_mode_smoke_test.dart asserts the BuildOrchestrator command
+        # shape per render mode using a capturing ProcessRunner, so no
+        # flutter/jaspr/docker toolchain is needed on the runner.
+        run: dart test test/integration/
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 2. Per-render-mode scaffold smoke. Activates the CLI from the
+  #    workspace path, then for each render mode runs
+  #    `oracular create -y -t arcane_jaspr_app --render-mode <mode>` and
+  #    asserts the scaffolded tree contains the contractual artifacts.
+  # ──────────────────────────────────────────────────────────────────────
+  scaffold_per_mode:
+    name: Scaffold ${{ matrix.mode }}
+    runs-on: ubuntu-latest
+    needs: unit_and_integration
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [csr, ssg, ssr, hybrid]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Activate oracular from workspace
+        working-directory: oracular
+        run: dart pub global activate . --source=path
+
+      - name: Ensure pub cache bin is on PATH
+        run: echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
+      - name: oracular create (--render-mode ${{ matrix.mode }})
+        run: |
+          mkdir -p smoke
+          oracular create -y \
+            -t arcane_jaspr_app \
+            --render-mode ${{ matrix.mode }} \
+            -n smoke_${{ matrix.mode }} \
+            -d smoke
+
+      - name: Assert scaffolded artifacts
+        run: |
+          ROOT="smoke/smoke_${{ matrix.mode }}_web"
+          test -f "$ROOT/jaspr.yaml" || { echo "jaspr.yaml missing"; exit 1; }
+          test -f "$ROOT/lib/main.client.dart" || { echo "main.client.dart missing"; exit 1; }
+          case "${{ matrix.mode }}" in
+            ssr|hybrid)
+              test -f "$ROOT/lib/main.server.dart" || { echo "main.server.dart missing for ${{ matrix.mode }}"; exit 1; }
+              test -f "$ROOT/Dockerfile.jaspr" || { echo "Dockerfile.jaspr missing for ${{ matrix.mode }}"; exit 1; }
+              ;;
+          esac
+          grep -q "JASPR_RENDER_MODE=${{ matrix.mode }}" "smoke/smoke_${{ matrix.mode }}_web/../config/setup_config.env" \
+            || grep -q "JASPR_RENDER_MODE=${{ matrix.mode }}" "smoke/config/setup_config.env" \
+            || { echo "JASPR_RENDER_MODE not persisted"; exit 1; }
+
+  # ──────────────────────────────────────────────────────────────────────
+  # 3. Embed-template scaffold smoke. Separate job because the template
+  #    name differs (arcane_jaspr_flutter_embed) and the expected tree
+  #    contains both <name>_web and <name>_app packages.
+  # ──────────────────────────────────────────────────────────────────────
+  scaffold_embed:
+    name: Scaffold flutter_embed
+    runs-on: ubuntu-latest
+    needs: unit_and_integration
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Activate oracular from workspace
+        working-directory: oracular
+        run: dart pub global activate . --source=path
+
+      - name: Ensure pub cache bin is on PATH
+        run: echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+
+      - name: oracular create (arcane_jaspr_flutter_embed)
+        run: |
+          mkdir -p smoke
+          oracular create -y \
+            -t arcane_jaspr_flutter_embed \
+            -n smoke_embed \
+            -d smoke
+
+      - name: Assert dual-package tree
+        run: |
+          test -f smoke/smoke_embed_web/jaspr.yaml          || { echo "host jaspr.yaml missing"; exit 1; }
+          test -f smoke/smoke_embed_web/web/index.html      || { echo "host index.html missing"; exit 1; }
+          test -f smoke/smoke_embed_app/pubspec.yaml        || { echo "guest pubspec.yaml missing"; exit 1; }
+          test -f smoke/smoke_embed_app/lib/main.dart       || { echo "guest main.dart missing"; exit 1; }

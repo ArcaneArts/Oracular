@@ -434,6 +434,15 @@ class InteractiveWizard {
     );
     final template = TemplateType.values[templateIndex];
 
+    // ── Section 2.5: Jaspr Render Mode ──
+    // Only prompts the user when the chosen template can render in
+    // multiple modes. arcaneJasprDocs is fixed to SSG and
+    // arcaneJasprFlutterEmbed is fixed to embed.
+    JasprRenderMode? renderMode;
+    if (template.isJasprApp) {
+      renderMode = await _chooseJasprRenderMode(template);
+    }
+
     // Output directory was selected during the intro; reuse it here so the
     // user isn't prompted twice.
     final String outputDir = _targetLocation;
@@ -525,6 +534,15 @@ class InteractiveWizard {
       createServer = additionalFeatures.contains('Server Application');
     }
 
+    // arcane_server hard-depends on arcane_models. Force models on whenever
+    // server is selected (same as in `oracular create` non-interactive path).
+    if (createServer && !createModels) {
+      warn(
+        'arcane_server requires arcane_models — auto-enabling models package.',
+      );
+      createModels = true;
+    }
+
     // ── Section 5: Firebase Integration ──
     final List<String> cloudContext = <String>[
       'Template: ${template.displayName}',
@@ -549,8 +567,26 @@ class InteractiveWizard {
     String? serviceAccountKeyPath;
 
     if (useFirebase) {
+      // Probe for an existing service-account.json *before* asking for the
+      // project id so we can pre-fill the project_id from the discovered
+      // SA. Hands-off path: user keeps a shared SA at their workspace root,
+      // the wizard finds it, defaults the project_id, the SA later
+      // satisfies the IAM gate — zero manual typing.
+      final DiscoveredServiceAccount? preDiscovered =
+          FirebaseSetupPrompts.findExistingServiceAccountKey(
+        outputDir: outputDir,
+        serverPackageName: createServer ? '${appName}_server' : null,
+      );
+      if (preDiscovered != null && preDiscovered.hasProjectId) {
+        info(
+          'Found service account at ${preDiscovered.path} '
+          '(project: ${preDiscovered.projectId}).',
+        );
+      }
+
       firebaseProjectId = await UserPrompt.askString(
         'Firebase project ID',
+        defaultValue: preDiscovered?.projectId,
         validator: (s) => validateFirebaseProjectId(s).isValid,
         validationMessage: 'Invalid Firebase project ID',
       );
@@ -564,12 +600,17 @@ class InteractiveWizard {
       }
     }
 
-    // Service account key (optional now, needed later for server deployment)
-    if (createServer && useFirebase && firebaseProjectId != null) {
+    // Service account key. Asked whenever Firebase is enabled — not just
+    // when a server package is created. The key unlocks the wizard's IAM
+    // gate, FlutterFire/Jaspr configure, Firestore/Storage init, and
+    // hosting deploys, so even pure Flutter / Beamer apps benefit. When
+    // there's no server package, the key drops into `<outputDir>/config/
+    // keys/` (resolved automatically by FirebaseService).
+    if (useFirebase && firebaseProjectId != null) {
       serviceAccountKeyPath =
           await FirebaseSetupPrompts.askServiceAccountKeyPath(
         outputDir: outputDir,
-        serverPackageName: '${appName}_server',
+        serverPackageName: createServer ? '${appName}_server' : null,
       );
     }
 
@@ -586,7 +627,57 @@ class InteractiveWizard {
       setupCloudRun: setupCloudRun,
       serviceAccountKeyPath: serviceAccountKeyPath,
       platforms: selectedPlatforms,
+      jasprRenderMode: renderMode,
     );
+  }
+
+  /// Prompts for the Jaspr render mode (`CSR`/`SSG`/`SSR`/`Hybrid`).
+  ///
+  /// Returns:
+  ///   * `null` for non-Jaspr templates (caller never reaches here).
+  ///   * [JasprRenderMode.ssg] for `arcaneJasprDocs` (no prompt; static is
+  ///     the only sensible answer).
+  ///   * [JasprRenderMode.embed] for `arcaneJasprFlutterEmbed` (no
+  ///     prompt; embed is the whole point of that template).
+  ///   * The user's choice for `arcaneJaspr`.
+  ///
+  /// Cloud Run / Blaze gates downstream auto-fire when the user picks
+  /// [JasprRenderMode.ssr] or [JasprRenderMode.hybrid].
+  Future<JasprRenderMode> _chooseJasprRenderMode(TemplateType template) async {
+    if (template == TemplateType.arcaneJasprDocs) {
+      info('Render mode: SSG (fixed for arcane_jaspr_docs).');
+      return JasprRenderMode.ssg;
+    }
+    if (template == TemplateType.arcaneJasprFlutterEmbed) {
+      info('Render mode: Embed (Jaspr static host + Flutter web guest).');
+      return JasprRenderMode.embed;
+    }
+
+    _resetViewport(<String>[
+      'Template: ${template.displayName}',
+      'CSR = client-only · SSG = prerendered static · SSR = Cloud Run · Hybrid = mix',
+    ], section: 'Jaspr Render Mode');
+
+    // The user picks between the four "selectable" modes. Embed is
+    // intentionally excluded — it's tied to a specific template and
+    // would otherwise be a footgun.
+    const List<JasprRenderMode> options = <JasprRenderMode>[
+      JasprRenderMode.csr,
+      JasprRenderMode.ssg,
+      JasprRenderMode.ssr,
+      JasprRenderMode.hybrid,
+    ];
+
+    final int modeIndex = await UserPrompt.askTheme(
+      'How should your Jaspr site render?',
+      options.map((JasprRenderMode m) => m.displayName).toList(),
+      options.map((JasprRenderMode m) => m.description).toList(),
+      initialIndex: 0,
+    );
+
+    final JasprRenderMode chosen = options[modeIndex];
+    info('Render mode: ${chosen.displayName}.');
+    return chosen;
   }
 
   Future<bool> _confirmConfiguration(SetupConfig config) async {
@@ -1158,6 +1249,42 @@ class InteractiveWizard {
       lines.add(
         'Artifact Registry cleanup: keep ${config.artifactKeepRecent} recent + '
         'delete >${config.artifactDeleteOlderDays}d',
+      );
+    }
+
+    // ── Jaspr render-mode + Flutter-embed context ────────────────────────
+    //
+    // Surfaces the configured rendering strategy so the operator knows what
+    // additional commands (if any) are needed beyond Firebase Hosting:
+    //   - CSR  / SSG → hosting alone is sufficient.
+    //   - SSR        → also run `oracular deploy jaspr-server` (Cloud Run).
+    //   - hybrid     → Cloud Run + Hosting rewrites already wired by
+    //                  ConfigGenerator (HYBRID_DYNAMIC_PREFIXES).
+    //   - embed      → Flutter app bundled under EMBEDDED_FLUTTER_MOUNT.
+    if (config.template.isJasprApp) {
+      lines.add('Jaspr render mode: ${config.jasprRenderMode.displayName}');
+      if (config.jasprRenderMode.requiresCloudRun) {
+        final String service = config.jasprServerServiceName ??
+            '${config.appName.replaceAll('_', '-')}-jaspr';
+        lines.add(
+          'Jaspr SSR service: $service  '
+          '(${SetupGuidance.cloudRunConsoleUrl(projectId)})',
+        );
+        lines.add(
+          'Deploy with: oracular deploy jaspr-server',
+        );
+        if (config.jasprRenderMode == JasprRenderMode.hybrid &&
+            config.hybridDynamicPrefixes.isNotEmpty) {
+          lines.add(
+            'Hybrid SSR prefixes: ${config.hybridDynamicPrefixes.join(', ')}',
+          );
+        }
+      }
+    }
+    if (config.template == TemplateType.arcaneJasprFlutterEmbed) {
+      lines.add(
+        'Flutter embed mounted at: ${config.embeddedFlutterMount}  '
+        '(open <site>${config.embeddedFlutterMount} after deploy)',
       );
     }
 

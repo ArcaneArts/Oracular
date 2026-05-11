@@ -57,6 +57,19 @@ class PlaceholderReplacer {
     String result = content;
 
     // 1. Replace class names first (PascalCase patterns) to avoid double replacement
+    // The embed-template class names are handled BEFORE the generic ones so
+    // `ArcaneJasprFlutterEmbedApp` is not mis-touched by a later
+    // `ArcaneJasprApp` rewrite. (`ArcaneJasprApp` is not actually a
+    // substring of `ArcaneJasprFlutterEmbedApp`, but listing them first
+    // keeps the intent obvious.)
+    // ArcaneJasprFlutterEmbedWeb -> MyAppWeb
+    result = result.replaceAll('ArcaneJasprFlutterEmbedWeb', config.webClassName);
+    // ArcaneJasprFlutterEmbedApp -> MyAppApp
+    result = result.replaceAll(
+      'ArcaneJasprFlutterEmbedApp',
+      config.embeddedFlutterClassName,
+    );
+
     // ArcaneServer -> MyAppServer
     result = result.replaceAll('ArcaneServer', config.serverClassName);
 
@@ -67,6 +80,18 @@ class PlaceholderReplacer {
     result = result.replaceAll('ArcaneJasprApp', config.webClassName);
 
     // 2. Replace package imports - order matters, longer names first
+    // Embed-template host (most specific, must precede arcane_jaspr_app)
+    // package:arcane_jaspr_flutter_embed_web/ -> package:my_app_web/
+    result = result.replaceAll(
+      'package:arcane_jaspr_flutter_embed_web/',
+      'package:${config.webPackageName}/',
+    );
+    // Embed-template guest (Flutter web app)
+    // package:arcane_jaspr_flutter_embed_app/ -> package:my_app_app/
+    result = result.replaceAll(
+      'package:arcane_jaspr_flutter_embed_app/',
+      'package:${config.embeddedFlutterPackageName}/',
+    );
     // Jaspr docs template (must be before arcane_jaspr_app)
     // package:arcane_jaspr_docs/ -> package:my_app_web/
     result = result.replaceAll(
@@ -112,6 +137,16 @@ class PlaceholderReplacer {
     result = result.replaceAll('arcane_server', config.serverPackageName);
 
     // 5. Replace app names in various contexts (order matters - longer names first)
+    // Embed-template host (must precede arcane_jaspr_app)
+    result = result.replaceAll(
+      'arcane_jaspr_flutter_embed_web',
+      config.webPackageName,
+    );
+    // Embed-template guest (must precede arcane_jaspr_app)
+    result = result.replaceAll(
+      'arcane_jaspr_flutter_embed_app',
+      config.embeddedFlutterPackageName,
+    );
     // Jaspr docs template - must be before arcane_jaspr_app
     result = result.replaceAll('arcane_jaspr_docs', config.webPackageName);
     // Jaspr web template - must be before other arcane_ patterns
@@ -141,6 +176,8 @@ class PlaceholderReplacer {
 
     // 8. Replace display names in platform configs (e.g., Windows, Linux titles)
     // These show up in window titles, app manifests, etc.
+    // Embed-template display name must precede the generic Arcane Jaspr.
+    result = result.replaceAll('Arcane Jaspr Flutter Embed', config.baseClassName);
     result = result.replaceAll('Arcane Template', config.baseClassName);
     result = result.replaceAll('Arcane Beamer', config.baseClassName);
     result = result.replaceAll('Arcane Dock', config.baseClassName);
@@ -157,6 +194,19 @@ class PlaceholderReplacer {
 
     // arcane_models.dart -> my_app_models.dart
     result = result.replaceAll('arcane_models', config.modelsPackageName);
+
+    // Embed-template host (must precede arcane_jaspr_app)
+    // arcane_jaspr_flutter_embed_web.dart -> my_app_web.dart
+    result = result.replaceAll(
+      'arcane_jaspr_flutter_embed_web',
+      config.webPackageName,
+    );
+    // Embed-template guest (must precede arcane_jaspr_app)
+    // arcane_jaspr_flutter_embed_app.dart -> my_app_app.dart
+    result = result.replaceAll(
+      'arcane_jaspr_flutter_embed_app',
+      config.embeddedFlutterPackageName,
+    );
 
     // Jaspr docs template (must be before arcane_jaspr_app)
     // arcane_jaspr_docs.dart -> my_app_web.dart

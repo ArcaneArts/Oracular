@@ -49,3 +49,20 @@ scripts:
 
   # Firebase Deployment (run from parent directory)
   firebase_deploy: jaspr build && cd .. && firebase deploy --only hosting --project FIREBASE_PROJECT_ID
+
+  # Oracular Deployment (works for static docs sites)
+  oracular_deploy: oracular deploy hosting
+
+# ─────────────────────────────────────────────────────────────────────────
+# Render mode
+#
+# This template is **always** rendered in `mode: static` (SSG). The
+# documentation site uses `arcane_lexicon` which prerenders every page
+# at build time from the markdown sources in `content/`. There is no
+# Cloud Run service for arcane_jaspr_docs.
+#
+# If you need a paywalled / auth-gated docs experience (a future v2
+# feature), switch to the `arcane_jaspr_app` template with
+# `JASPR_RENDER_MODE=ssr`. The render-mode wizard prompt is skipped for
+# this template — see `interactive_wizard.dart` for the gating logic.
+# ─────────────────────────────────────────────────────────────────────────

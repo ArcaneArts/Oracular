@@ -1,0 +1,6 @@
+include: package:lints/recommended.yaml
+analyzer:
+  exclude:
+    - build/**
+    - web/app/**            # Flutter build output; not our code.
+    - "**/*.options.dart"   # Jaspr generated.
