@@ -135,12 +135,7 @@ class HostingSiteManager {
     }
     final ProcessResult result = await _runner.run(
       'firebase',
-      <String>[
-        'hosting:sites:list',
-        '--project',
-        projectId,
-        '--json',
-      ],
+      <String>['hosting:sites:list', '--project', projectId, '--json'],
       workingDirectory: workingDirectory,
       environment: environment,
     );
@@ -187,23 +182,33 @@ class HostingSiteManager {
       );
     }
 
-    final ProcessResult release = await _runner.run('firebase', <String>[
-      'target:apply',
-      'hosting',
-      releaseTarget,
-      projectId,
-      '--project',
-      projectId,
-    ], workingDirectory: workingDirectory, environment: environment);
+    final ProcessResult release = await _runner.run(
+      'firebase',
+      <String>[
+        'target:apply',
+        'hosting',
+        releaseTarget,
+        projectId,
+        '--project',
+        projectId,
+      ],
+      workingDirectory: workingDirectory,
+      environment: environment,
+    );
 
-    final ProcessResult beta = await _runner.run('firebase', <String>[
-      'target:apply',
-      'hosting',
-      betaTarget,
-      betaSiteId,
-      '--project',
-      projectId,
-    ], workingDirectory: workingDirectory, environment: environment);
+    final ProcessResult beta = await _runner.run(
+      'firebase',
+      <String>[
+        'target:apply',
+        'hosting',
+        betaTarget,
+        betaSiteId,
+        '--project',
+        projectId,
+      ],
+      workingDirectory: workingDirectory,
+      environment: environment,
+    );
 
     final bool releaseOk = release.success;
     final bool betaOk = beta.success;
@@ -217,8 +222,10 @@ class HostingSiteManager {
     }
 
     if (releaseOk && betaOk) {
-      info('Hosting targets applied: $releaseTarget=$projectId, '
-          '$betaTarget=$betaSiteId');
+      info(
+        'Hosting targets applied: $releaseTarget=$projectId, '
+        '$betaTarget=$betaSiteId',
+      );
     } else {
       warn('Failed to apply hosting targets: ${errors.join('; ')}');
     }
@@ -255,52 +262,25 @@ class HostingSiteManager {
       );
     }
 
-    ProcessResult create = await _runner.run(
+    final ProcessResult create = await _runner.run(
       'firebase',
-      <String>[
-        'hosting:sites:create',
-        siteId,
-        '--project',
-        projectId,
-      ],
+      <String>['hosting:sites:create', siteId, '--project', projectId],
       workingDirectory: workingDirectory,
       environment: environment,
     );
 
-    // Self-heal: when firebase-tools has neither a stored login nor
-    // GOOGLE_APPLICATION_CREDENTIALS that resolves to a valid SA, it
-    // exits with "Failed to authenticate, have you run firebase login?".
-    // If we *do* have an `environment` map (i.e. a SA file is configured)
-    // this almost always means firebase-tools is finding stale state
-    // from a previous `firebase login` that has since been logged out.
-    // Try a force-logout-everything + retry; this drops firebase-tools
-    // back to GOOGLE_APPLICATION_CREDENTIALS / ADC.
-    if (!create.success && _isAuthenticationError(create) && environment != null) {
-      warn('firebase $label site create hit an auth error '
-          '("Failed to authenticate"). Most common cause: stale firebase '
-          'login state lingering after `firebase logout`. Force-clearing '
-          'firebase-tools auth and retrying as the configured service '
-          'account...');
-      final ProcessResult logoutAll = await _runner.run(
-        'firebase',
-        <String>['logout', '--force'],
-        workingDirectory: workingDirectory,
+    final bool authErrorWithServiceAccount =
+        !create.success &&
+        _isAuthenticationError(create) &&
+        environment != null;
+    if (authErrorWithServiceAccount) {
+      warn(
+        'firebase $label site create hit an auth error while Oracular passed '
+        'a configured service-account environment. Oracular will not run '
+        '`firebase logout --force`, switch accounts, or clear CLI auth '
+        'state automatically.',
       );
-      if (!logoutAll.success) {
-        warn('  firebase logout --force failed: '
-            '${logoutAll.stderr.trim()}. Continuing the retry anyway.');
-      }
-      create = await _runner.run(
-        'firebase',
-        <String>[
-          'hosting:sites:create',
-          siteId,
-          '--project',
-          projectId,
-        ],
-        workingDirectory: workingDirectory,
-        environment: environment,
-      );
+      warn(_authenticationRecoveryHint());
     }
 
     if (create.success) {
@@ -323,7 +303,9 @@ class HostingSiteManager {
     return SiteEnsureResult(
       siteId: siteId,
       outcome: SiteEnsureOutcome.failed,
-      message: _extractError(create),
+      message: authErrorWithServiceAccount
+          ? '${_extractError(create)}\n${_authenticationRecoveryHint()}'
+          : _extractError(create),
     );
   }
 
@@ -336,6 +318,14 @@ class HostingSiteManager {
         combined.contains('have you run firebase login') ||
         combined.contains('not authenticated') ||
         combined.contains('command requires authentication');
+  }
+
+  static String _authenticationRecoveryHint() {
+    return 'Choose the credential fix explicitly, then retry: run '
+        '`firebase login` for the intended user, repair the configured '
+        '`GOOGLE_APPLICATION_CREDENTIALS` key, or run '
+        '`firebase logout --force` yourself if you want Firebase CLI to '
+        'discard stored logins.';
   }
 
   /// Returns true when stdout/stderr indicates `409 ALREADY_EXISTS`.

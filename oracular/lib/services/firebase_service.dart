@@ -14,6 +14,11 @@ import 'firebase_initializer.dart';
 /// Service for Firebase operations
 class FirebaseService {
   static const String _firebaseJsSdkVersion = '12.12.1';
+  static const Set<String> _firebaseClientPlatforms = <String>{
+    'android',
+    'ios',
+    'web',
+  };
 
   final SetupConfig config;
   final ProcessRunner _runner;
@@ -131,10 +136,11 @@ class FirebaseService {
   /// `GOOGLE_APPLICATION_CREDENTIALS`. The wizard uses it as a fallback
   /// detector so the IAM gate fires correctly in that case.
   Future<String?> getActiveGcloudAccount() async {
-    final ProcessResult r = await _runner.run(
-      'gcloud',
-      <String>['config', 'get-value', 'account'],
-    );
+    final ProcessResult r = await _runner.run('gcloud', <String>[
+      'config',
+      'get-value',
+      'account',
+    ]);
     if (!r.success) return null;
     final String trimmed = _stripAnsi(r.stdout).trim();
     if (trimmed.isEmpty || trimmed == '(unset)') return null;
@@ -156,10 +162,10 @@ class FirebaseService {
   /// as `<user>`, but the SA is `<other>` — these don't match" so the user
   /// can `firebase logout` and let Oracular's SA auth take over.
   Future<String?> getActiveFirebaseAccount() async {
-    final ProcessResult r = await _runner.run(
-      'firebase',
-      <String>['login:list', '--json'],
-    );
+    final ProcessResult r = await _runner.run('firebase', <String>[
+      'login:list',
+      '--json',
+    ]);
     if (!r.success) return null;
     try {
       final dynamic decoded = jsonDecode(_stripAnsi(r.stdout));
@@ -214,20 +220,12 @@ class FirebaseService {
     final List<String> lines = <String>[];
     final String? saPath = _resolvedServiceAccountPath;
     final String? saEmail = serviceAccountEmail;
-    lines.add(
-      'Service-account file:    ${saPath ?? '(none configured)'}',
-    );
-    lines.add(
-      'Service-account email:   ${saEmail ?? '(unable to read)'}',
-    );
+    lines.add('Service-account file:    ${saPath ?? '(none configured)'}');
+    lines.add('Service-account email:   ${saEmail ?? '(unable to read)'}');
     final String? gcloudAccount = await getActiveGcloudAccount();
-    lines.add(
-      'Active gcloud account:   ${gcloudAccount ?? '(none)'}',
-    );
+    lines.add('Active gcloud account:   ${gcloudAccount ?? '(none)'}');
     final String? firebaseAccount = await getActiveFirebaseAccount();
-    lines.add(
-      'Firebase CLI logged in:  ${firebaseAccount ?? '(none)'}',
-    );
+    lines.add('Firebase CLI logged in:  ${firebaseAccount ?? '(none)'}');
 
     // The killer mismatch: Oracular sets GOOGLE_APPLICATION_CREDENTIALS
     // to point at the SA, but firebase-tools prefers a stored login
@@ -242,9 +240,7 @@ class FirebaseService {
       lines.add(
         'Mismatch: Firebase CLI is authenticating as $firebaseAccount,',
       );
-      lines.add(
-        'but Oracular is using service-account $saEmail.',
-      );
+      lines.add('but Oracular is using service-account $saEmail.');
       lines.add(
         'firebase-tools prefers its stored login over '
         'GOOGLE_APPLICATION_CREDENTIALS, so commands like apps:list run',
@@ -253,6 +249,8 @@ class FirebaseService {
         'as $firebaseAccount — which probably does NOT have firebase.admin',
       );
       lines.add('on this project. Fix:');
+      lines.add('  firebase logout $firebaseAccount');
+      lines.add('  # or, if you choose to clear every Firebase CLI login:');
       lines.add('  firebase logout --force');
       lines.add('  # then re-run oracular');
     }
@@ -271,8 +269,10 @@ class FirebaseService {
       print('  --- end firebase-debug.log ---');
     } else {
       print('');
-      print('  (firebase-debug.log not found in cwd or '
-          '${config.outputDir} — firebase CLI did not write a debug log)');
+      print(
+        '  (firebase-debug.log not found in cwd or '
+        '${config.outputDir} — firebase CLI did not write a debug log)',
+      );
     }
     print('');
   }
@@ -315,25 +315,6 @@ class FirebaseService {
         .toList(growable: false);
   }
 
-  /// Set the active gcloud account (`gcloud config set account <email>`).
-  /// Returns true on success.
-  ///
-  /// The wizard uses this to temporarily switch to a user-account that
-  /// has Owner privileges on the project so it can grant IAM roles to
-  /// the SA, then leaves the user-account active for the rest of the run
-  /// (subsequent steps either pass `_authEnvironment` explicitly when a
-  /// SA file is configured, or benefit from the user-account's broader
-  /// permissions).
-  Future<bool> setActiveGcloudAccount(String email) async {
-    final ProcessResult r = await _runner.run('gcloud', <String>[
-      'config',
-      'set',
-      'account',
-      email,
-    ]);
-    return r.success;
-  }
-
   /// Probe whether a gcloud principal has the `serviceusage.services.enable`
   /// permission on [projectId] by trying to enable a single API. Defaults to
   /// `serviceusage.googleapis.com` because that API is auto-enabled on every
@@ -344,8 +325,8 @@ class FirebaseService {
   /// probe tests that specific credentialed principal regardless of which
   /// one is currently active. This is how the IAM gate verifies that the
   /// service account actually received the freshly-granted role bindings,
-  /// instead of accidentally testing the user-account we temporarily
-  /// switched to in order to run `add-iam-policy-binding`.
+  /// instead of accidentally testing whichever user account was selected
+  /// to run `add-iam-policy-binding`.
   ///
   /// Returns:
   ///   - `true`  → enable succeeded (principal can enable services)
@@ -453,11 +434,9 @@ class FirebaseService {
   /// [member] must be a fully qualified principal such as
   /// `serviceAccount:foo@bar.iam.gserviceaccount.com` or
   /// `user:alice@example.com`. The call runs **without** [_authEnvironment]
-  /// so that the currently active gcloud account (typically the user's
-  /// personal Owner account) is used — a service account that doesn't have
-  /// `resourcemanager.projects.setIamPolicy` cannot grant itself extra
-  /// privileges, so we always run this as whichever principal gcloud
-  /// considers "active".
+  /// so that a credentialed human account can grant roles. When [account] is
+  /// provided, the command passes `--account=<email>` rather than switching
+  /// the user's global active gcloud account.
   ///
   /// Returns `(success, errorMessage)`. The error message is a stripped
   /// stderr useful for direct display in the wizard's prompt.
@@ -465,6 +444,7 @@ class FirebaseService {
     required String projectId,
     required String member,
     required String role,
+    String? account,
   }) async {
     final ProcessResult r = await _runner.run('gcloud', <String>[
       'projects',
@@ -474,6 +454,8 @@ class FirebaseService {
       '--role=$role',
       '--condition=None',
       '--quiet',
+      if (account != null && account.trim().isNotEmpty)
+        '--account=${account.trim()}',
     ]);
     if (r.success) {
       return (success: true, error: '');
@@ -485,8 +467,8 @@ class FirebaseService {
       error: stderr.isNotEmpty
           ? stderr
           : (stdout.isNotEmpty
-              ? stdout
-              : 'gcloud add-iam-policy-binding exited ${r.exitCode}')
+                ? stdout
+                : 'gcloud add-iam-policy-binding exited ${r.exitCode}'),
     );
   }
 
@@ -584,8 +566,9 @@ class FirebaseService {
       }
     }
     if (candidates.isEmpty) return null;
-    candidates.sort((File a, File b) =>
-        b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    candidates.sort(
+      (File a, File b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+    );
     return candidates.first;
   }
 
@@ -748,7 +731,7 @@ class FirebaseService {
   }) async {
     int attempt = 0;
     bool triedEnableApi = false;
-    bool didTryFirebaseLogout = false;
+    bool didSurfaceFirebaseLoginMismatch = false;
     int permissionDeniedRetries = 0;
     while (true) {
       attempt++;
@@ -761,8 +744,7 @@ class FirebaseService {
       );
 
       final Map<String, dynamic>? body = _parseFirebaseJson(result.stdout);
-      final bool jsonOk =
-          body != null && body['status'] == 'success';
+      final bool jsonOk = body != null && body['status'] == 'success';
       if (jsonOk || (result.success && body == null)) {
         return result;
       }
@@ -789,10 +771,10 @@ class FirebaseService {
           enableApiOnServiceDisabled &&
           !triedEnableApi) {
         triedEnableApi = true;
-        warn('Firebase Management API is not enabled — enabling now and retrying...');
-        final bool enabled = await _enableSingleApi(
-          'firebase.googleapis.com',
+        warn(
+          'Firebase Management API is not enabled — enabling now and retrying...',
         );
+        final bool enabled = await _enableSingleApi('firebase.googleapis.com');
         if (!enabled) {
           // Couldn't enable — fall through to the IAM-style failure.
           return result;
@@ -806,9 +788,9 @@ class FirebaseService {
       // PERMISSION_DENIED can come from THREE sources:
       //   1. firebase-tools is using a stale `firebase login` token from
       //      an account that doesn't have firebase.admin on this project,
-      //      EVEN THOUGH GOOGLE_APPLICATION_CREDENTIALS is set. fix:
-      //      `firebase logout` so the CLI falls back to ADC. Try this
-      //      automatically on the first PERMISSION_DENIED and retry once.
+      //      EVEN THOUGH GOOGLE_APPLICATION_CREDENTIALS is set. We surface
+      //      the exact logout command, but never mutate the user's CLI auth
+      //      state automatically.
       //   2. The SA genuinely lacks the role → retrying never works.
       //      Surface the failure with full credential diagnostics so the
       //      user can see the SA email vs firebase login email mismatch.
@@ -818,13 +800,13 @@ class FirebaseService {
       //      we get here propagation is done — a single 10s retry covers
       //      the edge case where step 5.4 finished granting <10s ago.
       if (kind == FirebaseFailureKind.permissionDenied) {
-        // First defense: if firebase-tools has a stored login, try
-        // logging out and retrying. firebase-tools prefers the stored
-        // login over GOOGLE_APPLICATION_CREDENTIALS, which routinely
-        // makes this whole step fail when the SA itself has the role
-        // but a user account did `firebase login` once and forgot.
-        if (!didTryFirebaseLogout) {
-          didTryFirebaseLogout = true;
+        // First defense: if firebase-tools has a stored login that does
+        // not match the configured service account, show a targeted fix.
+        // firebase-tools prefers the stored login over
+        // GOOGLE_APPLICATION_CREDENTIALS, but logging the user out here
+        // would be surprising and can affect unrelated work.
+        if (!didSurfaceFirebaseLoginMismatch) {
+          didSurfaceFirebaseLoginMismatch = true;
           final String? firebaseAccount = await getActiveFirebaseAccount();
           final String? saEmail = serviceAccountEmail;
           if (firebaseAccount != null &&
@@ -832,21 +814,16 @@ class FirebaseService {
               firebaseAccount.toLowerCase() != saEmail.toLowerCase()) {
             warn(
               '$operationLabel hit PERMISSION_DENIED. Firebase CLI is '
-              'logged in as $firebaseAccount which overrides the '
-              'service-account auth Oracular configured. Logging out '
-              'firebase-tools and retrying as service-account $saEmail...',
+              'logged in as $firebaseAccount, which can override the '
+              'configured service-account auth for $saEmail. Oracular will '
+              'not log out, switch, or clear accounts automatically.',
             );
-            final ProcessResult logoutResult = await _runner.run(
-              'firebase',
-              <String>['logout', firebaseAccount],
-            );
-            if (!logoutResult.success) {
-              warn('  firebase logout failed: '
-                  '${_stripAnsi(logoutResult.stderr).trim()}. '
-                  'Run `firebase logout --force` manually and re-run.');
-            } else {
-              continue; // Retry with no stored login → ADC takes over.
-            }
+            warn('To retry with the configured service account, run:');
+            warn('  firebase logout $firebaseAccount');
+            warn('or explicitly clear all Firebase CLI logins with:');
+            warn('  firebase logout --force');
+            await _logCredentialDiagnostics();
+            return result;
           }
         }
 
@@ -894,11 +871,13 @@ class FirebaseService {
     final String? projectId = config.firebaseProjectId;
     if (projectId == null) return false;
     verbose('  Enabling $api...');
-    final ProcessResult r = await _runner.run(
-      'gcloud',
-      <String>['services', 'enable', api, '--project', projectId],
-      environment: _authEnvironment,
-    );
+    final ProcessResult r = await _runner.run('gcloud', <String>[
+      'services',
+      'enable',
+      api,
+      '--project',
+      projectId,
+    ], environment: _authEnvironment);
     if (!r.success) {
       warn('Could not enable $api: ${_stripAnsi(r.stderr).trim()}');
       return false;
@@ -919,9 +898,7 @@ class FirebaseService {
   ///
   /// Returns `true` once the API is queryable, `false` after [maxAttempts]
   /// exhausted retries OR on the first PERMISSION_DENIED.
-  Future<bool> _waitForFirebaseManagementApi({
-    int maxAttempts = 8,
-  }) async {
+  Future<bool> _waitForFirebaseManagementApi({int maxAttempts = 8}) async {
     final String? projectId = config.firebaseProjectId;
     if (projectId == null) return false;
 
@@ -1011,6 +988,23 @@ class FirebaseService {
     final int result = await _runner.runStreaming('gcloud', <String>[
       'auth',
       'login',
+    ]);
+    return result == 0;
+  }
+
+  /// Login to gcloud with a user account, even when Oracular is configured
+  /// with a service-account key for application credentials.
+  ///
+  /// This is used only for IAM grant escalation, where a human project Owner
+  /// may need to grant roles to the generated service account. The normal
+  /// [gcloudLogin] path intentionally activates the configured service account
+  /// when one exists.
+  Future<bool> gcloudUserLogin() async {
+    info('Signing in to Google Cloud with a user account...');
+    final int result = await _runner.runStreaming('gcloud', <String>[
+      'auth',
+      'login',
+      '--update-adc',
     ]);
     return result == 0;
   }
@@ -1109,9 +1103,7 @@ class FirebaseService {
       return <Map<String, dynamic>>[];
     }
 
-    return resultData
-        .whereType<Map<String, dynamic>>()
-        .toList(growable: false);
+    return resultData.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
   /// Create a Firebase app using --json so we get structured success/error
@@ -1186,6 +1178,10 @@ class FirebaseService {
   }) async {
     final String? projectId = _requireFirebaseProjectId();
     if (projectId == null) return;
+    final List<String> firebasePlatforms = _firebaseConfigurePlatforms(
+      platforms,
+    );
+    if (firebasePlatforms.isEmpty) return;
 
     // Use provided display name or default to config.appName
     final String displayName = appDisplayName ?? config.appName;
@@ -1220,15 +1216,14 @@ class FirebaseService {
       return value is String ? value : null;
     }
 
-    for (final String platform in platforms) {
+    for (final String platform in firebasePlatforms) {
       final String upper = platform.toUpperCase();
       bool appExists = false;
 
       if (upper == 'ANDROID') {
         appExists = existing.any(
           (Map<String, dynamic> app) =>
-              platformOf(app) == 'ANDROID' &&
-              packageOf(app) == androidPackage,
+              platformOf(app) == 'ANDROID' && packageOf(app) == androidPackage,
         );
       } else if (upper == 'IOS') {
         appExists = existing.any(
@@ -1273,6 +1268,26 @@ class FirebaseService {
     verbose('  Project path: $projectPath');
     verbose('  Firebase project: ${config.firebaseProjectId}');
     verbose('  Platforms: ${platforms.join(", ")}');
+    final List<String> firebasePlatforms = _firebaseConfigurePlatforms(
+      platforms,
+    );
+    final List<String> skippedPlatforms = _nonFirebaseClientPlatforms(
+      platforms,
+    );
+    if (skippedPlatforms.isNotEmpty) {
+      warn(
+        'Skipping Firebase client wiring for ${skippedPlatforms.join(', ')}. '
+        'Firebase app registration only supports Android, iOS, and Web.',
+      );
+    }
+    if (firebasePlatforms.isEmpty) {
+      warn(
+        'No Firebase client platforms to configure. Selected platforms: '
+        '${platforms.join(', ')}.',
+      );
+      return true;
+    }
+    verbose('  Firebase client platforms: ${firebasePlatforms.join(", ")}');
 
     // Check if the directory exists
     if (!Directory(projectPath).existsSync()) {
@@ -1322,7 +1337,7 @@ class FirebaseService {
     // Ensure Firebase apps exist before running flutterfire configure
     // FlutterFire CLI crashes with RangeError if no apps exist for the platforms
     await _ensureFirebaseAppsExist(
-      platforms,
+      firebasePlatforms,
       effectiveAndroidPackage,
       effectiveIosBundleId,
       appDisplayName: projectName,
@@ -1339,18 +1354,18 @@ class FirebaseService {
     ];
 
     // Add platforms
-    for (final String platform in platforms) {
+    for (final String platform in firebasePlatforms) {
       args.add('--platforms');
       args.add(platform);
     }
 
     // Always provide package name/bundle ID to avoid FlutterFire interactive prompts
-    if (platforms.contains('android')) {
+    if (firebasePlatforms.contains('android')) {
       args.addAll(<String>['--android-package-name', effectiveAndroidPackage]);
       verbose('  Android package: $effectiveAndroidPackage');
     }
 
-    if (platforms.contains('ios')) {
+    if (firebasePlatforms.contains('ios')) {
       args.addAll(<String>['--ios-bundle-id', effectiveIosBundleId]);
       verbose('  iOS bundle ID: $effectiveIosBundleId');
     }
@@ -1382,6 +1397,33 @@ class FirebaseService {
     }
 
     return result.success;
+  }
+
+  List<String> _firebaseConfigurePlatforms(Iterable<String> platforms) {
+    final Set<String> seen = <String>{};
+    final List<String> result = <String>[];
+    for (final String raw in platforms) {
+      final String platform = raw.trim().toLowerCase();
+      if (_firebaseClientPlatforms.contains(platform) && seen.add(platform)) {
+        result.add(platform);
+      }
+    }
+    return result;
+  }
+
+  List<String> _nonFirebaseClientPlatforms(Iterable<String> platforms) {
+    final Set<String> seen = <String>{};
+    final List<String> result = <String>[];
+    for (final String raw in platforms) {
+      final String platform = raw.trim().toLowerCase();
+      if (platform.isEmpty || _firebaseClientPlatforms.contains(platform)) {
+        continue;
+      }
+      if (seen.add(platform)) {
+        result.add(platform);
+      }
+    }
+    return result;
   }
 
   /// Deploy Firestore rules
@@ -1608,11 +1650,10 @@ class FirebaseService {
       'Self-healed missing Jaspr builder shims '
       '(artifact_gen / fire_crud_gen). Refreshing dependencies...',
     );
-    final ProcessResult pubGetResult = await _runner.run(
-      'dart',
-      <String>['pub', 'get'],
-      workingDirectory: projectPath,
-    );
+    final ProcessResult pubGetResult = await _runner.run('dart', <String>[
+      'pub',
+      'get',
+    ], workingDirectory: projectPath);
     if (!pubGetResult.success) {
       warn(
         'pub get after shim self-heal failed; jaspr build may still error. '
@@ -1691,9 +1732,7 @@ class FirebaseService {
     String content = await pubspecFile.readAsString();
     final List<String> lines = content.split('\n');
     bool inOverrides = false;
-    final RegExp packageEntry = RegExp(
-      '^\\s+${RegExp.escape(packageName)}:',
-    );
+    final RegExp packageEntry = RegExp('^\\s+${RegExp.escape(packageName)}:');
     for (final String line in lines) {
       if (line.trimLeft().startsWith('#')) continue;
       if (RegExp(r'^dependency_overrides:\s*$').hasMatch(line)) {
@@ -1746,8 +1785,10 @@ class FirebaseService {
       return false;
     }
 
-    final BuildOrchestrator orchestrator =
-        BuildOrchestrator(config, runner: _runner);
+    final BuildOrchestrator orchestrator = BuildOrchestrator(
+      config,
+      runner: _runner,
+    );
 
     // Jaspr templates: defer to the render-mode-aware buildJaspr().
     if (config.template.isJasprApp) {
@@ -1758,8 +1799,10 @@ class FirebaseService {
       // pulled in — even just to satisfy `auto_apply: dependents` in the
       // upstream artifact / fire_crud build.yaml. See
       // [_ensureJasprBuilderShims] for the full rationale.
-      final String projectPath =
-          p.join(config.outputDir, config.webPackageName);
+      final String projectPath = p.join(
+        config.outputDir,
+        config.webPackageName,
+      );
       await _ensureJasprBuilderShims(projectPath);
 
       final BuildStepResult result = await orchestrator.buildJaspr();
@@ -1777,8 +1820,9 @@ class FirebaseService {
       return false;
     }
 
-    final BuildStepResult result =
-        await orchestrator.buildFlutter(platform: 'web');
+    final BuildStepResult result = await orchestrator.buildFlutter(
+      platform: 'web',
+    );
     return result.status == BuildStepStatus.success;
   }
 
@@ -1964,21 +2008,19 @@ class FirebaseService {
     final List<String> failed = <String>[];
     for (final String api in apis) {
       verbose('  Enabling $api...');
-      final ProcessResult result = await _runner.run(
-        'gcloud',
-        <String>[
-          'services',
-          'enable',
-          api,
-          '--project',
-          config.firebaseProjectId!,
-        ],
-        environment: _authEnvironment,
-      );
+      final ProcessResult result = await _runner.run('gcloud', <String>[
+        'services',
+        'enable',
+        api,
+        '--project',
+        config.firebaseProjectId!,
+      ], environment: _authEnvironment);
 
       if (!result.success) {
         final String detail = _stripAnsi(result.stderr).trim();
-        warn('Failed to enable $api: ${detail.isEmpty ? 'unknown error' : detail}');
+        warn(
+          'Failed to enable $api: ${detail.isEmpty ? 'unknown error' : detail}',
+        );
         failed.add(api);
       }
     }
@@ -2371,7 +2413,9 @@ class FirebaseService {
       sdkValues = sdkConfig;
     } else if (resultData['fileContents'] is String) {
       try {
-        final dynamic decoded = jsonDecode(resultData['fileContents'] as String);
+        final dynamic decoded = jsonDecode(
+          resultData['fileContents'] as String,
+        );
         if (decoded is Map<String, dynamic>) {
           sdkValues = decoded;
         }

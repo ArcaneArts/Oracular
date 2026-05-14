@@ -180,6 +180,170 @@ void main() {
     );
 
     test(
+      'gcloudUserLogin always opens an interactive user-account login',
+      () async {
+        final _CapturingRunner runner = _CapturingRunner();
+        final FirebaseService service = FirebaseService(
+          baseConfig(),
+          runner: runner,
+        );
+
+        final bool success = await service.gcloudUserLogin();
+        expect(success, isTrue);
+        expect(runner.runCalls, isEmpty);
+        expect(runner.streamingCalls, hasLength(1));
+
+        final _CapturedCall call = runner.streamingCalls.single;
+        expect(call.executable, equals('gcloud'));
+        expect(
+          call.arguments,
+          equals(<String>['auth', 'login', '--update-adc']),
+        );
+      },
+    );
+
+    test(
+      'permission recovery never logs out Firebase CLI accounts automatically',
+      () async {
+        await serviceAccountFile.writeAsString(
+          '{"client_email":"firebase-adminsdk@test-project.iam.gserviceaccount.com"}',
+        );
+        final Directory webDir = Directory(
+          p.join(tempDir.path, 'my_app_web', 'web'),
+        );
+        await webDir.create(recursive: true);
+        await File(
+          p.join(webDir.path, 'index.html'),
+        ).writeAsString('<html><head></head><body></body></html>');
+
+        final _CapturingRunner runner = _CapturingRunner();
+        runner.runResults.addAll(<ProcessResult>[
+          ProcessResult(
+            exitCode: 1,
+            stdout:
+                '{"status":"error","error":"PERMISSION_DENIED: caller missing firebase.apps.list"}',
+            stderr: '',
+          ),
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"status":"success","result":[{"user":{"email":"brian@example.com"}}]}',
+            stderr: '',
+          ),
+          ProcessResult(exitCode: 0, stdout: '(unset)\n', stderr: ''),
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"status":"success","result":[{"user":{"email":"brian@example.com"}}]}',
+            stderr: '',
+          ),
+        ]);
+
+        final FirebaseService service = FirebaseService(
+          SetupConfig(
+            appName: 'my_app',
+            orgDomain: 'com.test',
+            baseClassName: 'MyApp',
+            template: TemplateType.arcaneJaspr,
+            outputDir: tempDir.path,
+            useFirebase: true,
+            firebaseProjectId: 'test-project',
+            serviceAccountKeyPath: serviceAccountFile.path,
+          ),
+          runner: runner,
+        );
+
+        final bool success = await service.configureFlutterFire();
+
+        expect(success, isFalse);
+        expect(
+          runner.runCalls.any(
+            (_CapturedCall call) => call.arguments.contains('logout'),
+          ),
+          isFalse,
+        );
+        expect(
+          runner.runCalls.where(
+            (_CapturedCall call) => call.executable == 'firebase',
+          ),
+          hasLength(3),
+        );
+      },
+    );
+
+    test(
+      'configureFlutterFire filters desktop platforms before Firebase app creation',
+      () async {
+        final Directory projectDir = Directory(p.join(tempDir.path, 'my_app'));
+        await projectDir.create(recursive: true);
+        await File(p.join(projectDir.path, 'pubspec.yaml')).writeAsString('''
+name: my_app
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+
+        final _CapturingRunner runner = _CapturingRunner();
+        runner.runResults.addAll(<ProcessResult>[
+          ProcessResult(
+            exitCode: 0,
+            stdout: '{"status":"success","result":[]}',
+            stderr: '',
+          ),
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"status":"success","result":{"appId":"android-app","platform":"ANDROID"}}',
+            stderr: '',
+          ),
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"status":"success","result":{"appId":"ios-app","platform":"IOS"}}',
+            stderr: '',
+          ),
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"status":"success","result":{"appId":"web-app","platform":"WEB"}}',
+            stderr: '',
+          ),
+        ]);
+
+        final FirebaseService service = FirebaseService(
+          baseConfig(),
+          runner: runner,
+        );
+
+        final bool success = await service.configureFlutterFire();
+
+        expect(success, isTrue);
+
+        final List<String> createdPlatforms = runner.runCalls
+            .where(
+              (_CapturedCall call) =>
+                  call.executable == 'firebase' &&
+                  call.arguments.contains('apps:create'),
+            )
+            .map((_CapturedCall call) => call.arguments[1])
+            .toList(growable: false);
+        expect(createdPlatforms, equals(<String>['ANDROID', 'IOS', 'WEB']));
+
+        final List<String> configuredPlatforms = <String>[];
+        final List<String> args = runner.retryCalls.single.arguments;
+        for (int i = 0; i < args.length - 1; i++) {
+          if (args[i] == '--platforms') {
+            configuredPlatforms.add(args[i + 1]);
+          }
+        }
+        expect(configuredPlatforms, equals(<String>['android', 'ios', 'web']));
+        expect(args, isNot(contains('linux')));
+        expect(args, isNot(contains('macos')));
+        expect(args, isNot(contains('windows')));
+      },
+    );
+
+    test(
       'login uses service account auth check instead of interactive login',
       () async {
         final _CapturingRunner runner = _CapturingRunner();
@@ -437,15 +601,12 @@ void main() {
       );
     });
 
-    test(
-      'serviceAccountEmail returns null when JSON is malformed',
-      () async {
-        // Overwrite the SA file with garbage to confirm we don't crash.
-        await serviceAccountFile.writeAsString('not-valid-json{');
-        final FirebaseService service = FirebaseService(baseConfig());
-        expect(service.serviceAccountEmail, isNull);
-      },
-    );
+    test('serviceAccountEmail returns null when JSON is malformed', () async {
+      // Overwrite the SA file with garbage to confirm we don't crash.
+      await serviceAccountFile.writeAsString('not-valid-json{');
+      final FirebaseService service = FirebaseService(baseConfig());
+      expect(service.serviceAccountEmail, isNull);
+    });
 
     test('serviceAccountKeyPath returns the resolved path', () {
       final FirebaseService service = FirebaseService(baseConfig());
@@ -511,11 +672,7 @@ void main() {
       () async {
         final _CapturingRunner runner = _CapturingRunner();
         runner.runResults.add(
-          ProcessResult(
-            exitCode: 1,
-            stdout: '',
-            stderr: 'PERMISSION_DENIED',
-          ),
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'PERMISSION_DENIED'),
         );
         final FirebaseService service = FirebaseService(
           baseConfig(),
@@ -527,42 +684,36 @@ void main() {
       },
     );
 
-    test('getActiveGcloudAccount parses gcloud config get-value output',
-        () async {
-      final _CapturingRunner runner = _CapturingRunner();
-      runner.runResults.add(
-        ProcessResult(
-          exitCode: 0,
-          stdout: 'brian@example.com\n',
-          stderr: '',
-        ),
-      );
-      final FirebaseService service = FirebaseService(
-        baseConfig(),
-        runner: runner,
-      );
+    test(
+      'getActiveGcloudAccount parses gcloud config get-value output',
+      () async {
+        final _CapturingRunner runner = _CapturingRunner();
+        runner.runResults.add(
+          ProcessResult(exitCode: 0, stdout: 'brian@example.com\n', stderr: ''),
+        );
+        final FirebaseService service = FirebaseService(
+          baseConfig(),
+          runner: runner,
+        );
 
-      final String? active = await service.getActiveGcloudAccount();
-      expect(active, equals('brian@example.com'));
+        final String? active = await service.getActiveGcloudAccount();
+        expect(active, equals('brian@example.com'));
 
-      final _CapturedCall call = runner.runCalls.single;
-      expect(call.executable, equals('gcloud'));
-      expect(
-        call.arguments,
-        equals(<String>['config', 'get-value', 'account']),
-      );
-    });
+        final _CapturedCall call = runner.runCalls.single;
+        expect(call.executable, equals('gcloud'));
+        expect(
+          call.arguments,
+          equals(<String>['config', 'get-value', 'account']),
+        );
+      },
+    );
 
     test(
       'getActiveGcloudAccount returns null when value is "(unset)"',
       () async {
         final _CapturingRunner runner = _CapturingRunner();
         runner.runResults.add(
-          ProcessResult(
-            exitCode: 0,
-            stdout: '(unset)\n',
-            stderr: '',
-          ),
+          ProcessResult(exitCode: 0, stdout: '(unset)\n', stderr: ''),
         );
         final FirebaseService service = FirebaseService(
           baseConfig(),
@@ -574,50 +725,35 @@ void main() {
       },
     );
 
-    test('getCredentialedAccounts parses one-account-per-line output',
-        () async {
-      final _CapturingRunner runner = _CapturingRunner();
-      runner.runResults.add(
-        ProcessResult(
-          exitCode: 0,
-          stdout: 'brian@example.com\n'
-              'firebase-adminsdk@test-project.iam.gserviceaccount.com\n'
-              'alice@example.com\n',
-          stderr: '',
-        ),
-      );
-      final FirebaseService service = FirebaseService(
-        baseConfig(),
-        runner: runner,
-      );
+    test(
+      'getCredentialedAccounts parses one-account-per-line output',
+      () async {
+        final _CapturingRunner runner = _CapturingRunner();
+        runner.runResults.add(
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                'brian@example.com\n'
+                'firebase-adminsdk@test-project.iam.gserviceaccount.com\n'
+                'alice@example.com\n',
+            stderr: '',
+          ),
+        );
+        final FirebaseService service = FirebaseService(
+          baseConfig(),
+          runner: runner,
+        );
 
-      final List<String> accounts = await service.getCredentialedAccounts();
-      expect(accounts, hasLength(3));
-      expect(accounts, contains('brian@example.com'));
-      expect(
-        accounts,
-        contains('firebase-adminsdk@test-project.iam.gserviceaccount.com'),
-      );
-      expect(accounts, contains('alice@example.com'));
-    });
-
-    test('setActiveGcloudAccount runs gcloud config set account', () async {
-      final _CapturingRunner runner = _CapturingRunner();
-      final FirebaseService service = FirebaseService(
-        baseConfig(),
-        runner: runner,
-      );
-
-      final bool ok = await service.setActiveGcloudAccount('brian@example.com');
-      expect(ok, isTrue);
-
-      final _CapturedCall call = runner.runCalls.single;
-      expect(call.executable, equals('gcloud'));
-      expect(
-        call.arguments,
-        equals(<String>['config', 'set', 'account', 'brian@example.com']),
-      );
-    });
+        final List<String> accounts = await service.getCredentialedAccounts();
+        expect(accounts, hasLength(3));
+        expect(accounts, contains('brian@example.com'));
+        expect(
+          accounts,
+          contains('firebase-adminsdk@test-project.iam.gserviceaccount.com'),
+        );
+        expect(accounts, contains('alice@example.com'));
+      },
+    );
 
     test(
       'addProjectIamBinding builds the canonical add-iam-policy-binding command',
@@ -628,8 +764,8 @@ void main() {
           runner: runner,
         );
 
-        final ({bool success, String error}) result =
-            await service.addProjectIamBinding(
+        final ({bool success, String error})
+        result = await service.addProjectIamBinding(
           projectId: 'test-project',
           member:
               'serviceAccount:firebase-adminsdk@test-project.iam.gserviceaccount.com',
@@ -657,32 +793,55 @@ void main() {
     );
 
     test(
-      'addProjectIamBinding surfaces stderr when gcloud fails',
+      'addProjectIamBinding can target a selected account without switching gcloud config',
       () async {
         final _CapturingRunner runner = _CapturingRunner();
-        runner.runResults.add(
-          ProcessResult(
-            exitCode: 1,
-            stdout: '',
-            stderr: 'PERMISSION_DENIED: caller cannot setIamPolicy',
-          ),
-        );
         final FirebaseService service = FirebaseService(
           baseConfig(),
           runner: runner,
         );
 
-        final ({bool success, String error}) result =
-            await service.addProjectIamBinding(
-          projectId: 'test-project',
-          member: 'serviceAccount:foo@bar.iam.gserviceaccount.com',
-          role: 'roles/owner',
-        );
+        final ({bool success, String error}) result = await service
+            .addProjectIamBinding(
+              projectId: 'test-project',
+              member: 'serviceAccount:foo@bar.iam.gserviceaccount.com',
+              role: 'roles/firebase.admin',
+              account: 'owner@example.com',
+            );
 
-        expect(result.success, isFalse);
-        expect(result.error, contains('PERMISSION_DENIED'));
+        expect(result.success, isTrue);
+        final _CapturedCall call = runner.runCalls.single;
+        expect(call.executable, equals('gcloud'));
+        expect(call.arguments, contains('--account=owner@example.com'));
+        expect(call.arguments, isNot(contains('config')));
+        expect(call.arguments, isNot(contains('set')));
       },
     );
+
+    test('addProjectIamBinding surfaces stderr when gcloud fails', () async {
+      final _CapturingRunner runner = _CapturingRunner();
+      runner.runResults.add(
+        ProcessResult(
+          exitCode: 1,
+          stdout: '',
+          stderr: 'PERMISSION_DENIED: caller cannot setIamPolicy',
+        ),
+      );
+      final FirebaseService service = FirebaseService(
+        baseConfig(),
+        runner: runner,
+      );
+
+      final ({bool success, String error}) result = await service
+          .addProjectIamBinding(
+            projectId: 'test-project',
+            member: 'serviceAccount:foo@bar.iam.gserviceaccount.com',
+            role: 'roles/owner',
+          );
+
+      expect(result.success, isFalse);
+      expect(result.error, contains('PERMISSION_DENIED'));
+    });
   });
 
   // ─── auto-recovery: error classification + firebase-debug.log parsing ────
@@ -698,7 +857,8 @@ void main() {
   // caught in CI rather than at user runtime.
   group('FirebaseService.classifyFirebaseErrorForTest', () {
     test('returns serviceDisabled for SERVICE_DISABLED phrasing', () {
-      const String raw = 'PRECONDITION_FAILED: Firebase Management API '
+      const String raw =
+          'PRECONDITION_FAILED: Firebase Management API '
           '(firebase.googleapis.com) has not been used in project test-project '
           'before or it is disabled. Enable it by visiting '
           'https://console.developers.google.com/apis/api/firebase.googleapis.com/overview '
@@ -737,7 +897,8 @@ void main() {
     });
 
     test('returns transient for 5xx / unavailable', () {
-      const String raw = 'HTTP Error: 503, Service Unavailable. '
+      const String raw =
+          'HTTP Error: 503, Service Unavailable. '
           'Please try again later.';
       expect(
         FirebaseService.classifyFirebaseErrorForTest(raw),
@@ -877,15 +1038,15 @@ void main() {
     });
 
     SetupConfig probeConfig() => SetupConfig(
-          appName: 'my_app',
-          orgDomain: 'com.test',
-          baseClassName: 'MyApp',
-          template: TemplateType.arcaneTemplate,
-          outputDir: tempDir.path,
-          useFirebase: true,
-          firebaseProjectId: 'test-project',
-          serviceAccountKeyPath: serviceAccountFile.path,
-        );
+      appName: 'my_app',
+      orgDomain: 'com.test',
+      baseClassName: 'MyApp',
+      template: TemplateType.arcaneTemplate,
+      outputDir: tempDir.path,
+      useFirebase: true,
+      firebaseProjectId: 'test-project',
+      serviceAccountKeyPath: serviceAccountFile.path,
+    );
 
     test('returns true on success', () async {
       final _CapturingRunner runner = _CapturingRunner();
@@ -896,8 +1057,10 @@ void main() {
           stderr: '',
         ),
       );
-      final FirebaseService service =
-          FirebaseService(probeConfig(), runner: runner);
+      final FirebaseService service = FirebaseService(
+        probeConfig(),
+        runner: runner,
+      );
       expect(await service.canListFirebaseApps(), isTrue);
     });
 
@@ -906,13 +1069,16 @@ void main() {
       runner.runResults.add(
         ProcessResult(
           exitCode: 1,
-          stdout: '{"status":"error","error":"PERMISSION_DENIED: '
+          stdout:
+              '{"status":"error","error":"PERMISSION_DENIED: '
               'caller does not have permission firebase.apps.list"}',
           stderr: '',
         ),
       );
-      final FirebaseService service =
-          FirebaseService(probeConfig(), runner: runner);
+      final FirebaseService service = FirebaseService(
+        probeConfig(),
+        runner: runner,
+      );
       expect(await service.canListFirebaseApps(), isFalse);
     });
 
@@ -928,36 +1094,39 @@ void main() {
         runner.runResults.add(
           ProcessResult(
             exitCode: 1,
-            stdout: '{"status":"error","error":'
+            stdout:
+                '{"status":"error","error":'
                 '"SERVICE_DISABLED: firebase.googleapis.com has not been used"}',
             stderr: '',
           ),
         );
-        final FirebaseService service =
-            FirebaseService(probeConfig(), runner: runner);
+        final FirebaseService service = FirebaseService(
+          probeConfig(),
+          runner: runner,
+        );
         expect(await service.canListFirebaseApps(), isTrue);
       },
     );
 
-    test(
-      'returns true on transient errors (5xx, deadline-exceeded)',
-      () async {
-        // Don't punish the SA for a propagation lag — let step 5.4 run
-        // and surface the actual problem if it persists.
-        final _CapturingRunner runner = _CapturingRunner();
-        runner.runResults.add(
-          ProcessResult(
-            exitCode: 1,
-            stdout: '{"status":"error","error":'
-                '"DEADLINE_EXCEEDED: backend timeout"}',
-            stderr: '',
-          ),
-        );
-        final FirebaseService service =
-            FirebaseService(probeConfig(), runner: runner);
-        expect(await service.canListFirebaseApps(), isTrue);
-      },
-    );
+    test('returns true on transient errors (5xx, deadline-exceeded)', () async {
+      // Don't punish the SA for a propagation lag — let step 5.4 run
+      // and surface the actual problem if it persists.
+      final _CapturingRunner runner = _CapturingRunner();
+      runner.runResults.add(
+        ProcessResult(
+          exitCode: 1,
+          stdout:
+              '{"status":"error","error":'
+              '"DEADLINE_EXCEEDED: backend timeout"}',
+          stderr: '',
+        ),
+      );
+      final FirebaseService service = FirebaseService(
+        probeConfig(),
+        runner: runner,
+      );
+      expect(await service.canListFirebaseApps(), isTrue);
+    });
 
     test('returns false when projectId is null', () async {
       final _CapturingRunner runner = _CapturingRunner();
@@ -971,8 +1140,10 @@ void main() {
         firebaseProjectId: null,
         serviceAccountKeyPath: serviceAccountFile.path,
       );
-      final FirebaseService service =
-          FirebaseService(noProject, runner: runner);
+      final FirebaseService service = FirebaseService(
+        noProject,
+        runner: runner,
+      );
       expect(await service.canListFirebaseApps(), isFalse);
     });
 
@@ -985,9 +1156,13 @@ void main() {
           stderr: '',
         ),
       );
-      final FirebaseService service =
-          FirebaseService(probeConfig(), runner: runner);
-      await service.canListFirebaseApps(account: 'sa@proj.iam.gserviceaccount.com');
+      final FirebaseService service = FirebaseService(
+        probeConfig(),
+        runner: runner,
+      );
+      await service.canListFirebaseApps(
+        account: 'sa@proj.iam.gserviceaccount.com',
+      );
       expect(runner.runCalls, isNotEmpty);
       final _CapturedCall call = runner.runCalls.last;
       expect(

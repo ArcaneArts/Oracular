@@ -127,8 +127,11 @@ class SetupStepResult {
     );
   }
 
-  factory SetupStepResult.skipped(WizardSubStep step,
-      {String message = '', String fixHint = ''}) {
+  factory SetupStepResult.skipped(
+    WizardSubStep step, {
+    String message = '',
+    String fixHint = '',
+  }) {
     return SetupStepResult(
       step: step,
       status: SetupStepStatus.skipped,
@@ -137,8 +140,11 @@ class SetupStepResult {
     );
   }
 
-  factory SetupStepResult.failed(WizardSubStep step,
-      {String message = '', String fixHint = ''}) {
+  factory SetupStepResult.failed(
+    WizardSubStep step, {
+    String message = '',
+    String fixHint = '',
+  }) {
     return SetupStepResult(
       step: step,
       status: SetupStepStatus.failed,
@@ -237,10 +243,11 @@ enum FailureAction { retry, skip, abort }
 ///
 /// `attempt` starts at 1 for the first failure of a given step and
 /// increments by one per retry.
-typedef StepFailureHandler = Future<FailureAction> Function(
-  SetupStepResult result, {
-  required int attempt,
-});
+typedef StepFailureHandler =
+    Future<FailureAction> Function(
+      SetupStepResult result, {
+      required int attempt,
+    });
 
 /// High-level coordinator that wires every Firebase setup sub-step into a
 /// single, idempotent end-to-end flow.
@@ -286,38 +293,39 @@ class FirebaseSetupOrchestrator {
     HostingSiteManager? hosting,
     ArtifactCleanupService? cleanup,
     ProcessRunner? runner,
-  })  : firebase = firebase ?? FirebaseService(config, runner: runner),
-        billing = billing ??
-            FirebaseBillingService(
-              config.firebaseProjectId ?? '',
-              runner: runner,
-            ),
-        initializer = initializer ??
-            FirebaseInitializer(
-              config.firebaseProjectId ?? '',
-              runner: runner,
-            ),
-        // ─── Hosting wiring ────────────────────────────────────────────────
-        // Pass `firebase.authEnvironment` so HostingSiteManager runs every
-        // `firebase` call with the same `GOOGLE_APPLICATION_CREDENTIALS`
-        // Oracular uses elsewhere. Without this, `firebase
-        // hosting:sites:create` inherits only the parent shell's env and
-        // falls back to firebase-tools' stored login — which routinely
-        // fails with "Failed to authenticate, have you run firebase
-        // login?" the moment the user has logged out (or never logged in).
-        hosting = hosting ??
-            HostingSiteManager(
-              config.firebaseProjectId ?? '',
-              workingDirectory: config.outputDir,
-              environment: (firebase ?? FirebaseService(config, runner: runner))
-                  .authEnvironment,
-              runner: runner,
-            ),
-        cleanup = cleanup ??
-            ArtifactCleanupService(
-              config.firebaseProjectId ?? '',
-              runner: runner,
-            );
+  }) : firebase = firebase ?? FirebaseService(config, runner: runner),
+       billing =
+           billing ??
+           FirebaseBillingService(
+             config.firebaseProjectId ?? '',
+             runner: runner,
+           ),
+       initializer =
+           initializer ??
+           FirebaseInitializer(config.firebaseProjectId ?? '', runner: runner),
+       // ─── Hosting wiring ────────────────────────────────────────────────
+       // Pass `firebase.authEnvironment` so HostingSiteManager runs every
+       // `firebase` call with the same `GOOGLE_APPLICATION_CREDENTIALS`
+       // Oracular uses elsewhere. Without this, `firebase
+       // hosting:sites:create` inherits only the parent shell's env and
+       // falls back to firebase-tools' stored login — which routinely
+       // fails with "Failed to authenticate, have you run firebase
+       // login?" the moment the user has logged out (or never logged in).
+       hosting =
+           hosting ??
+           HostingSiteManager(
+             config.firebaseProjectId ?? '',
+             workingDirectory: config.outputDir,
+             environment: (firebase ?? FirebaseService(config, runner: runner))
+                 .authEnvironment,
+             runner: runner,
+           ),
+       cleanup =
+           cleanup ??
+           ArtifactCleanupService(
+             config.firebaseProjectId ?? '',
+             runner: runner,
+           );
 
   // ─── Service-account IAM gate ────────────────────────────────────────────
 
@@ -340,8 +348,7 @@ class FirebaseSetupOrchestrator {
   /// Each entry is `[displayName, roleId]`. The display name matches what
   /// the user sees in the Cloud Console "Add role" picker, so they can
   /// type the name verbatim.
-  static const List<List<String>> _requiredServiceAccountRoles =
-      <List<String>>[
+  static const List<List<String>> _requiredServiceAccountRoles = <List<String>>[
     <String>['Service Usage Admin', 'roles/serviceusage.serviceUsageAdmin'],
     <String>['Firebase Admin', 'roles/firebase.admin'],
     <String>['Cloud Datastore Owner', 'roles/datastore.owner'],
@@ -381,12 +388,11 @@ class FirebaseSetupOrchestrator {
   ///      `gcloud config get-value account` (catches the case where the
   ///      user previously ran `gcloud auth activate-service-account`
   ///      without ever telling Oracular about the key file).
-  ///   3. **Auto-grant when possible.** If the principal is a service
-  ///      account *and* a non-SA user-account is already credentialed
-  ///      (`gcloud auth list`), offer to switch to that user-account,
-  ///      run `add-iam-policy-binding` for each missing role, and leave
-  ///      it active for the rest of the run. Zero clicks, zero terminal
-  ///      switches.
+  ///   3. **Choose the grant account explicitly.** If the principal is a
+  ///      service account, ask the user whether to sign in with a Google
+  ///      account, use one of gcloud's cached user accounts, or fall back
+  ///      to manual commands. Oracular never silently picks the first
+  ///      cached user account.
   ///   4. **Manual fallback.** Otherwise print the IAM-page URL and the
   ///      copy-pasteable `gcloud …` command, wait for the user, then
   ///      re-probe to verify.
@@ -404,9 +410,7 @@ class FirebaseSetupOrchestrator {
   ///
   /// Returns `true` when the gate is satisfied; `false` when the user
   /// gave up. Callers translate `false` into a step failure.
-  Future<bool> _ensureServiceAccountIamGate({
-    required bool interactive,
-  }) async {
+  Future<bool> _ensureServiceAccountIamGate({required bool interactive}) async {
     if (_serviceAccountIamGateConfirmed) return true;
     if (!interactive) {
       _serviceAccountIamGateConfirmed = true;
@@ -479,44 +483,34 @@ class FirebaseSetupOrchestrator {
         .map((List<String> r) => r[1])
         .toList(growable: false);
 
-    // ─── 3. Auto-grant via a credentialed user-account ────────────────────
+    // ─── 3. Explicitly choose the user account for the grant ───────────────
     final List<String> credAccounts = await firebase.getCredentialedAccounts();
     final List<String> userAccounts = credAccounts
         .where((String e) => !_isServiceAccountEmail(e))
         .toList(growable: false);
 
-    if (userAccounts.isNotEmpty) {
-      final String chosenAccount = userAccounts.first;
-      print('');
-      UserPrompt.printDivider(title: 'IAM grant required');
-      UserPrompt.printList(<String>[
-        'Active service account: $principalEmail',
-        if (saPath != null) 'Key file: $saPath',
-        'This account is missing the IAM roles needed to continue.',
-        'Roles to add: ${requiredRoleIds.join(', ')}',
-        'I can grant them automatically using your already-authenticated',
-        'user-account ($chosenAccount) — no manual console steps needed.',
-      ]);
-      print('');
-      final bool autoGrant = await UserPrompt.askYesNo(
-        'Grant the roles automatically as $chosenAccount?',
-        defaultValue: true,
+    final String? grantAccount = await _chooseIamGrantUserAccount(
+      projectId: projectId,
+      principalEmail: principalEmail,
+      saPath: saPath,
+      requiredRoleIds: requiredRoleIds,
+      userAccounts: userAccounts,
+    );
+
+    if (grantAccount != null) {
+      final bool ok = await _autoGrantUsingUserAccount(
+        projectId: projectId,
+        principalMember: principal,
+        principalEmail: principalEmail,
+        userAccount: grantAccount,
+        roleIds: requiredRoleIds,
       );
-      if (autoGrant) {
-        final bool ok = await _autoGrantUsingUserAccount(
-          projectId: projectId,
-          principalMember: principal,
-          principalEmail: principalEmail,
-          userAccount: chosenAccount,
-          roleIds: requiredRoleIds,
-        );
-        if (ok) {
-          _serviceAccountIamGateConfirmed = true;
-          return true;
-        }
-        // Auto-grant failed → fall through to the manual flow so the user
-        // can still complete the gate by hand.
+      if (ok) {
+        _serviceAccountIamGateConfirmed = true;
+        return true;
       }
+      // Auto-grant failed → fall through to the manual flow so the user
+      // can still complete the gate by hand.
     }
 
     // ─── 4. Manual fallback ───────────────────────────────────────────────
@@ -529,14 +523,112 @@ class FirebaseSetupOrchestrator {
     );
   }
 
-  /// Switch the active gcloud account to [userAccount] (an already
-  /// credentialed Owner-grade principal), grant every role in [roleIds]
-  /// to [principalMember] on [projectId], then re-probe to verify.
+  Future<String?> _chooseIamGrantUserAccount({
+    required String projectId,
+    required String principalEmail,
+    required String? saPath,
+    required List<String> requiredRoleIds,
+    required List<String> userAccounts,
+  }) async {
+    print('');
+    UserPrompt.printDivider(title: 'IAM grant required');
+    UserPrompt.printList(<String>[
+      'Active service account: $principalEmail',
+      if (saPath != null) 'Key file: $saPath',
+      'This account is missing the IAM roles needed to continue.',
+      'Roles to add: ${requiredRoleIds.join(', ')}',
+      'Choose which Google user account should grant these roles.',
+      'Oracular will not use a cached account unless you select it.',
+    ]);
+
+    final List<String> options = <String>[
+      'Sign in with a different Google account',
+      for (final String account in userAccounts)
+        'Use cached gcloud account: $account',
+      'Show manual IAM instructions',
+    ];
+
+    final int selected = await UserPrompt.showMenu(
+      'How should Oracular continue?',
+      options,
+      defaultIndex: 0,
+    );
+
+    if (selected == 0) {
+      return _signInForIamGrant(projectId: projectId);
+    }
+
+    final int manualIndex = options.length - 1;
+    if (selected == manualIndex) {
+      return null;
+    }
+
+    final String account = userAccounts[selected - 1];
+    final bool confirm = await UserPrompt.askYesNo(
+      'Grant the roles automatically as $account?',
+      defaultValue: false,
+    );
+    if (!confirm) {
+      return null;
+    }
+
+    return account;
+  }
+
+  Future<String?> _signInForIamGrant({required String projectId}) async {
+    print('');
+    UserPrompt.printList(<String>[
+      'A browser sign-in will open with: gcloud auth login --update-adc',
+      'Use a Google account that can modify IAM on project $projectId.',
+      'After sign-in, Oracular will show the active account before granting.',
+    ]);
+    print('');
+
+    final bool signIn = await UserPrompt.askYesNo(
+      'Sign in to gcloud now?',
+      defaultValue: true,
+    );
+    if (!signIn) {
+      return null;
+    }
+
+    final bool loginOk = await firebase.gcloudUserLogin();
+    if (!loginOk) {
+      warn('gcloud user sign-in did not complete successfully.');
+      return null;
+    }
+
+    final String? active = await firebase.getActiveGcloudAccount();
+    if (active == null || active.trim().isEmpty) {
+      warn('gcloud did not report an active account after sign-in.');
+      return null;
+    }
+    if (_isServiceAccountEmail(active)) {
+      warn(
+        'The active gcloud account is still a service account ($active). '
+        'Sign in with a Google user account that can modify IAM.',
+      );
+      return null;
+    }
+
+    final bool confirm = await UserPrompt.askYesNo(
+      'Use $active to grant the required IAM roles?',
+      defaultValue: false,
+    );
+    if (!confirm) {
+      return null;
+    }
+
+    return active;
+  }
+
+  /// Use [userAccount] (an already credentialed Owner-grade principal), grant
+  /// every role in [roleIds] to [principalMember] on [projectId], then
+  /// re-probe to verify.
   ///
-  /// Returns `true` only when the post-grant probe succeeds. Leaves
-  /// [userAccount] as the active gcloud account on success — every later
-  /// step that does not pass `_authEnvironment` benefits from its broader
-  /// permissions.
+  /// Returns `true` only when the post-grant probe succeeds. This passes
+  /// `--account=<selected user>` to each IAM command instead of changing the
+  /// user's global active gcloud account.
   Future<bool> _autoGrantUsingUserAccount({
     required String projectId,
     required String principalMember,
@@ -544,22 +636,18 @@ class FirebaseSetupOrchestrator {
     required String userAccount,
     required List<String> roleIds,
   }) async {
-    info('Switching active gcloud account to $userAccount...');
-    final bool switched = await firebase.setActiveGcloudAccount(userAccount);
-    if (!switched) {
-      warn('Could not switch active gcloud account to $userAccount.');
-      return false;
-    }
+    info('Granting IAM roles with selected gcloud account $userAccount...');
 
     bool allGranted = true;
     for (final String roleId in roleIds) {
       info('  Granting $roleId to $principalEmail...');
-      final ({bool success, String error}) r =
-          await firebase.addProjectIamBinding(
-        projectId: projectId,
-        member: principalMember,
-        role: roleId,
-      );
+      final ({bool success, String error}) r = await firebase
+          .addProjectIamBinding(
+            projectId: projectId,
+            member: principalMember,
+            role: roleId,
+            account: userAccount,
+          );
       if (!r.success) {
         warn('  Failed to grant $roleId: ${r.error}');
         allGranted = false;
@@ -576,8 +664,10 @@ class FirebaseSetupOrchestrator {
       return false;
     }
 
-    info('Re-verifying that $principalEmail can now enable Google APIs '
-        'AND list Firebase apps...');
+    info(
+      'Re-verifying that $principalEmail can now enable Google APIs '
+      'AND list Firebase apps...',
+    );
     // Test the SA principal explicitly (--account=<sa-email>) instead of
     // whatever account is now active. This catches the case where bindings
     // applied successfully against $userAccount but didn't actually grant
@@ -626,8 +716,9 @@ class FirebaseSetupOrchestrator {
     int maxAttempts = 8,
   }) async {
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-      final bool canEnable =
-          await firebase.canEnableServices(account: principalEmail);
+      final bool canEnable = await firebase.canEnableServices(
+        account: principalEmail,
+      );
       final bool canList = canEnable
           ? await firebase.canListFirebaseApps(account: principalEmail)
           : false;
@@ -676,7 +767,9 @@ class FirebaseSetupOrchestrator {
       print('  Open this link (signed in as a project Owner):');
       print('    ${_iamPageUrl(projectId)}');
       print('');
-      print('  Or paste this in any terminal authenticated as a project Owner:');
+      print(
+        '  Or paste this in any terminal authenticated as a project Owner:',
+      );
       print('');
       print('    gcloud auth login');
       print('    gcloud config set project $projectId');
@@ -699,8 +792,10 @@ class FirebaseSetupOrchestrator {
         defaultValue: true,
       );
 
-      info('Verifying that $principalEmail can now enable Google APIs '
-          'AND list Firebase apps...');
+      info(
+        'Verifying that $principalEmail can now enable Google APIs '
+        'AND list Firebase apps...',
+      );
       // Test the SA principal explicitly via --account=<email>. The user
       // may have a different gcloud account active right now, so we must
       // not rely on whichever principal is "active" at this moment — only
@@ -762,15 +857,17 @@ class FirebaseSetupOrchestrator {
     bool interactive = true,
     bool failFast = true,
   }) async {
-    if (config.firebaseProjectId == null ||
-        config.firebaseProjectId!.isEmpty) {
-      return OrchestratorReport(results: <SetupStepResult>[
-        SetupStepResult.failed(
-          WizardSubStep.firebaseLogin,
-          message: 'No Firebase project ID configured',
-          fixHint: 'Set FIREBASE_PROJECT_ID in config/setup_config.env',
-        ),
-      ], aborted: true);
+    if (config.firebaseProjectId == null || config.firebaseProjectId!.isEmpty) {
+      return OrchestratorReport(
+        results: <SetupStepResult>[
+          SetupStepResult.failed(
+            WizardSubStep.firebaseLogin,
+            message: 'No Firebase project ID configured',
+            fixHint: 'Set FIREBASE_PROJECT_ID in config/setup_config.env',
+          ),
+        ],
+        aborted: true,
+      );
     }
 
     final List<SetupStepResult> results = <SetupStepResult>[];
@@ -866,14 +963,28 @@ class FirebaseSetupOrchestrator {
     // ── Step 5.1 – 5.3: authentication + billing ───────────────────────────
     await runStep(WizardSubStep.firebaseLogin, runFirebaseLogin);
     if (aborted) {
-      return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-          storageBucketName, firestoreRegion, aborted);
+      return _buildReport(
+        results,
+        releaseUrl,
+        betaUrl,
+        blazeStatus,
+        storageBucketName,
+        firestoreRegion,
+        aborted,
+      );
     }
     if (config.setupCloudRun || config.createServer) {
       await runStep(WizardSubStep.gcloudLogin, runGcloudLogin);
       if (aborted) {
-        return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-            storageBucketName, firestoreRegion, aborted);
+        return _buildReport(
+          results,
+          releaseUrl,
+          betaUrl,
+          blazeStatus,
+          storageBucketName,
+          firestoreRegion,
+          aborted,
+        );
       }
     }
     if (config.requireBlaze || config.setupCloudRun || config.createServer) {
@@ -883,8 +994,15 @@ class FirebaseSetupOrchestrator {
       );
       blazeStatus = r.success ? BlazeStatus.enabled : BlazeStatus.notEnabled;
       if (aborted) {
-        return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-            storageBucketName, firestoreRegion, aborted);
+        return _buildReport(
+          results,
+          releaseUrl,
+          betaUrl,
+          blazeStatus,
+          storageBucketName,
+          firestoreRegion,
+          aborted,
+        );
       }
     }
 
@@ -896,15 +1014,29 @@ class FirebaseSetupOrchestrator {
       () => runEnableFirebaseApis(interactive: interactive),
     );
     if (aborted) {
-      return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-          storageBucketName, firestoreRegion, aborted);
+      return _buildReport(
+        results,
+        releaseUrl,
+        betaUrl,
+        blazeStatus,
+        storageBucketName,
+        firestoreRegion,
+        aborted,
+      );
     }
 
     // ── Step 5.5: client wiring (FlutterFire OR Jaspr JS SDK) ──────────────
     await runStep(WizardSubStep.configureClient, runConfigureClient);
     if (aborted) {
-      return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-          storageBucketName, firestoreRegion, aborted);
+      return _buildReport(
+        results,
+        releaseUrl,
+        betaUrl,
+        blazeStatus,
+        storageBucketName,
+        firestoreRegion,
+        aborted,
+      );
     }
 
     // ── Step 5.6 – 5.7: bootstrap Firestore + Storage ──────────────────────
@@ -917,8 +1049,15 @@ class FirebaseSetupOrchestrator {
         firestoreRegion = config.firestoreRegion;
       }
       if (aborted) {
-        return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-            storageBucketName, firestoreRegion, aborted);
+        return _buildReport(
+          results,
+          releaseUrl,
+          betaUrl,
+          blazeStatus,
+          storageBucketName,
+          firestoreRegion,
+          aborted,
+        );
       }
     }
     if (config.initializeStorage) {
@@ -930,8 +1069,15 @@ class FirebaseSetupOrchestrator {
         storageBucketName = '${config.firebaseProjectId}.appspot.com';
       }
       if (aborted) {
-        return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-            storageBucketName, firestoreRegion, aborted);
+        return _buildReport(
+          results,
+          releaseUrl,
+          betaUrl,
+          blazeStatus,
+          storageBucketName,
+          firestoreRegion,
+          aborted,
+        );
       }
     }
 
@@ -942,24 +1088,42 @@ class FirebaseSetupOrchestrator {
         () => runEnableAuthProviders(interactive: interactive),
       );
       if (aborted) {
-        return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-            storageBucketName, firestoreRegion, aborted);
+        return _buildReport(
+          results,
+          releaseUrl,
+          betaUrl,
+          blazeStatus,
+          storageBucketName,
+          firestoreRegion,
+          aborted,
+        );
       }
     }
 
     // ── Step 5.9: rules deploy (Firestore + Storage) ───────────────────────
-    await runStep(
-      WizardSubStep.deployFirestoreRules,
-      runDeployFirestoreRules,
-    );
+    await runStep(WizardSubStep.deployFirestoreRules, runDeployFirestoreRules);
     if (aborted) {
-      return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-          storageBucketName, firestoreRegion, aborted);
+      return _buildReport(
+        results,
+        releaseUrl,
+        betaUrl,
+        blazeStatus,
+        storageBucketName,
+        firestoreRegion,
+        aborted,
+      );
     }
     await runStep(WizardSubStep.deployStorageRules, runDeployStorageRules);
     if (aborted) {
-      return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-          storageBucketName, firestoreRegion, aborted);
+      return _buildReport(
+        results,
+        releaseUrl,
+        betaUrl,
+        blazeStatus,
+        storageBucketName,
+        firestoreRegion,
+        aborted,
+      );
     }
 
     // ── Step 5.10 – 5.13: web build + hosting deploys (skip when no web) ───
@@ -974,8 +1138,15 @@ class FirebaseSetupOrchestrator {
         if (config.deployHostingRelease || config.deployHostingBeta) {
           await runStep(WizardSubStep.hostingInit, runHostingInit);
           if (aborted) {
-            return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-                storageBucketName, firestoreRegion, aborted);
+            return _buildReport(
+              results,
+              releaseUrl,
+              betaUrl,
+              blazeStatus,
+              storageBucketName,
+              firestoreRegion,
+              aborted,
+            );
           }
         }
 
@@ -990,8 +1161,15 @@ class FirebaseSetupOrchestrator {
             );
           }
           if (aborted) {
-            return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-                storageBucketName, firestoreRegion, aborted);
+            return _buildReport(
+              results,
+              releaseUrl,
+              betaUrl,
+              blazeStatus,
+              storageBucketName,
+              firestoreRegion,
+              aborted,
+            );
           }
         }
         if (config.deployHostingBeta) {
@@ -1003,25 +1181,36 @@ class FirebaseSetupOrchestrator {
             betaUrl = SetupGuidance.betaHostingUrl(config.firebaseProjectId!);
           }
           if (aborted) {
-            return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-                storageBucketName, firestoreRegion, aborted);
+            return _buildReport(
+              results,
+              releaseUrl,
+              betaUrl,
+              blazeStatus,
+              storageBucketName,
+              firestoreRegion,
+              aborted,
+            );
           }
         }
       } else {
         // build failed → record skip results for the dependent hosting steps
         if (config.deployHostingRelease) {
-          results.add(SetupStepResult.skipped(
-            WizardSubStep.deployHostingRelease,
-            message: 'Web build failed — hosting deploy skipped',
-            fixHint: _fixHintFor(WizardSubStep.deployHostingRelease),
-          ));
+          results.add(
+            SetupStepResult.skipped(
+              WizardSubStep.deployHostingRelease,
+              message: 'Web build failed — hosting deploy skipped',
+              fixHint: _fixHintFor(WizardSubStep.deployHostingRelease),
+            ),
+          );
         }
         if (config.deployHostingBeta) {
-          results.add(SetupStepResult.skipped(
-            WizardSubStep.deployHostingBeta,
-            message: 'Web build failed — beta hosting deploy skipped',
-            fixHint: _fixHintFor(WizardSubStep.deployHostingBeta),
-          ));
+          results.add(
+            SetupStepResult.skipped(
+              WizardSubStep.deployHostingBeta,
+              message: 'Web build failed — beta hosting deploy skipped',
+              fixHint: _fixHintFor(WizardSubStep.deployHostingBeta),
+            ),
+          );
         }
       }
     }
@@ -1052,30 +1241,45 @@ class FirebaseSetupOrchestrator {
       }
     } else if (runServerSteps && !blazeOk) {
       // Record explicit skips so the post-run summary can list them.
-      results.add(SetupStepResult.skipped(
-        WizardSubStep.enableServerApis,
-        message: 'Project is on Spark — Cloud Run is unavailable.',
-        fixHint: _fixHintFor(WizardSubStep.enableServerApis),
-      ));
-      results.add(SetupStepResult.skipped(
-        WizardSubStep.ensureArtifactRegistryRepo,
-        message: 'Spark plan — Artifact Registry cleanup unavailable.',
-        fixHint: _fixHintFor(WizardSubStep.ensureArtifactRegistryRepo),
-      ));
-      results.add(SetupStepResult.skipped(
-        WizardSubStep.applyArtifactCleanupPolicy,
-        message: 'Spark plan — cleanup policy not applied.',
-        fixHint: _fixHintFor(WizardSubStep.applyArtifactCleanupPolicy),
-      ));
-      results.add(SetupStepResult.skipped(
-        WizardSubStep.capCloudRunRevisions,
-        message: 'Spark plan — Cloud Run revision cap not applied.',
-        fixHint: _fixHintFor(WizardSubStep.capCloudRunRevisions),
-      ));
+      results.add(
+        SetupStepResult.skipped(
+          WizardSubStep.enableServerApis,
+          message: 'Project is on Spark — Cloud Run is unavailable.',
+          fixHint: _fixHintFor(WizardSubStep.enableServerApis),
+        ),
+      );
+      results.add(
+        SetupStepResult.skipped(
+          WizardSubStep.ensureArtifactRegistryRepo,
+          message: 'Spark plan — Artifact Registry cleanup unavailable.',
+          fixHint: _fixHintFor(WizardSubStep.ensureArtifactRegistryRepo),
+        ),
+      );
+      results.add(
+        SetupStepResult.skipped(
+          WizardSubStep.applyArtifactCleanupPolicy,
+          message: 'Spark plan — cleanup policy not applied.',
+          fixHint: _fixHintFor(WizardSubStep.applyArtifactCleanupPolicy),
+        ),
+      );
+      results.add(
+        SetupStepResult.skipped(
+          WizardSubStep.capCloudRunRevisions,
+          message: 'Spark plan — Cloud Run revision cap not applied.',
+          fixHint: _fixHintFor(WizardSubStep.capCloudRunRevisions),
+        ),
+      );
     }
 
-    return _buildReport(results, releaseUrl, betaUrl, blazeStatus,
-        storageBucketName, firestoreRegion, aborted);
+    return _buildReport(
+      results,
+      releaseUrl,
+      betaUrl,
+      blazeStatus,
+      storageBucketName,
+      firestoreRegion,
+      aborted,
+    );
   }
 
   static OrchestratorReport _buildReport(
@@ -1152,7 +1356,8 @@ class FirebaseSetupOrchestrator {
         }
         return SetupStepResult.skipped(
           WizardSubStep.billingCheck,
-          message: upgraded.message ??
+          message:
+              upgraded.message ??
               'Project remained on Spark; Blaze-only steps will be skipped.',
           fixHint: _fixHintFor(WizardSubStep.billingCheck),
         );
@@ -1186,14 +1391,14 @@ class FirebaseSetupOrchestrator {
           //     org policy block). The verbose logs above show the root
           //     cause from firebase-debug.log.
           ? 'Could not inject Firebase JS SDK into Jaspr index.html. '
-              'See the warning above for the root cause from '
-              'firebase-debug.log. Common fixes:\n'
-              '  • Wait 30-60s and retry — the Firebase Management API may '
-              'still be propagating after enable.\n'
-              '  • Run `oracular deploy firebase-setup-full` to re-run the '
-              'IAM gate (step 5.4) and retry this step.\n'
-              '  • Verify the service account has the firebase-setup-full '
-              'IAM bundle on this project.'
+                'See the warning above for the root cause from '
+                'firebase-debug.log. Common fixes:\n'
+                '  • Wait 30-60s and retry — the Firebase Management API may '
+                'still be propagating after enable.\n'
+                '  • Run `oracular deploy firebase-setup-full` to re-run the '
+                'IAM gate (step 5.4) and retry this step.\n'
+                '  • Verify the service account has the firebase-setup-full '
+                'IAM bundle on this project.'
           : 'flutterfire configure did not complete successfully',
       fixHint: _fixHintFor(WizardSubStep.configureClient),
     );
@@ -1215,8 +1420,9 @@ class FirebaseSetupOrchestrator {
   Future<SetupStepResult> runEnableFirebaseApis({
     bool interactive = true,
   }) async {
-    final bool gateOk =
-        await _ensureServiceAccountIamGate(interactive: interactive);
+    final bool gateOk = await _ensureServiceAccountIamGate(
+      interactive: interactive,
+    );
     if (!gateOk) {
       final String? projectId = config.firebaseProjectId;
       final String url = projectId == null
@@ -1224,7 +1430,8 @@ class FirebaseSetupOrchestrator {
           : ' (open ${_iamPageUrl(projectId)} and grant the missing roles)';
       return SetupStepResult.failed(
         WizardSubStep.enableFirebaseApis,
-        message: 'IAM gate not satisfied — '
+        message:
+            'IAM gate not satisfied — '
             'the active gcloud principal cannot enable Google APIs$url',
         fixHint: _fixHintFor(WizardSubStep.enableFirebaseApis),
       );
@@ -1349,7 +1556,9 @@ class FirebaseSetupOrchestrator {
     info('Opening browser to: $url');
     final bool opened = await LinkOpener.open(url);
     if (!opened) {
-      warn('Could not auto-open browser. Copy the URL above into your browser manually.');
+      warn(
+        'Could not auto-open browser. Copy the URL above into your browser manually.',
+      );
     }
     print('');
 
@@ -1379,7 +1588,8 @@ class FirebaseSetupOrchestrator {
       if (retry.success) {
         return SetupStepResult.success(
           WizardSubStep.initStorage,
-          message: 'Detected bucket gs://${retry.bucketName} (provisioned via console).',
+          message:
+              'Detected bucket gs://${retry.bucketName} (provisioned via console).',
         );
       }
 
@@ -1402,7 +1612,9 @@ class FirebaseSetupOrchestrator {
         );
       }
       // Brief wait before next prompt — gives Firebase backend time to finish.
-      info('Waiting 5s for Firebase to finish provisioning, then re-prompting...');
+      info(
+        'Waiting 5s for Firebase to finish provisioning, then re-prompting...',
+      );
       await Future<void>.delayed(const Duration(seconds: 5));
     }
   }
@@ -1550,8 +1762,9 @@ class FirebaseSetupOrchestrator {
   Future<SetupStepResult> runEnsureArtifactRegistryRepo({
     String repository = 'oracular',
   }) async {
-    final RepositoryEnsureResult r =
-        await cleanup.ensureRepository(repository: repository);
+    final RepositoryEnsureResult r = await cleanup.ensureRepository(
+      repository: repository,
+    );
     if (r.success) {
       return SetupStepResult.success(
         WizardSubStep.ensureArtifactRegistryRepo,
@@ -1578,7 +1791,8 @@ class FirebaseSetupOrchestrator {
     if (r.success) {
       return SetupStepResult.success(
         WizardSubStep.applyArtifactCleanupPolicy,
-        message: 'Keep ${config.artifactKeepRecent} recent + delete '
+        message:
+            'Keep ${config.artifactKeepRecent} recent + delete '
             '>${config.artifactDeleteOlderDays}d',
       );
     }
