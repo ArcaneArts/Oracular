@@ -6,9 +6,10 @@ import 'package:path/path.dart' as p;
 import '../models/setup_config.dart';
 import '../models/template_info.dart';
 import '../utils/user_prompt.dart';
-import 'intellij_run_config_generator.dart';
 import 'placeholder_replacer.dart';
-import 'template_downloader.dart';
+import 'template_copy_filter.dart';
+import 'template_path_resolver.dart';
+import 'template_run_config_writer.dart';
 
 /// Service for copying and customizing templates
 class TemplateCopier {
@@ -34,42 +35,10 @@ class TemplateCopier {
     SetupConfig config, {
     void Function(String message)? onProgress,
   }) async {
-    final String templatesPath = await _findTemplatesPath(
+    final String templatesPath = await TemplatePathResolver.findTemplatesPath(
       onProgress: onProgress,
     );
     return TemplateCopier._(config, templatesPath);
-  }
-
-  /// Find the templates directory
-  /// First checks local development paths, then downloads from GitHub
-  static Future<String> _findTemplatesPath({
-    void Function(String message)? onProgress,
-  }) async {
-    // Try to find templates relative to the script (for local development)
-    final String scriptPath = Platform.script.toFilePath();
-    final String scriptDir = p.dirname(scriptPath);
-
-    // Check various possible locations for local development
-    final List<String> possiblePaths = <String>[
-      // When running locally with dart run from oracular/ directory
-      p.join(scriptDir, '..', '..', 'templates'),
-      // When running from the oracular package directory
-      p.join(Directory.current.path, '..', 'templates'),
-      // When running from the Oracular monorepo root
-      p.join(Directory.current.path, 'templates'),
-    ];
-
-    for (final String path in possiblePaths) {
-      final String normalizedPath = p.normalize(path);
-      if (Directory(normalizedPath).existsSync()) {
-        verbose('Found local templates at: $normalizedPath');
-        return normalizedPath;
-      }
-    }
-
-    // No local templates found - download from GitHub
-    onProgress?.call('Downloading templates from GitHub...');
-    return await TemplateDownloader.ensureTemplates(onProgress: onProgress);
   }
 
   /// Get the path to a specific template
@@ -160,23 +129,9 @@ class TemplateCopier {
     // their own (Flutter-native) run configs created by `flutter
     // create`.
     if (config.template.isJasprApp) {
-      try {
-        final List<String> written =
-            await IntellijRunConfigGenerator.generate(
-          packageDir: targetDir.path,
-          port: IntellijRunConfigGenerator.defaultPort,
-        );
-        if (written.isNotEmpty) {
-          verbose(
-            '  Generated ${written.length} IntelliJ run config(s) in '
-            '${p.join(targetDir.path, '.idea', 'runConfigurations')}',
-          );
-        }
-      } catch (e) {
-        // Non-fatal — the project is still usable, the user just has
-        // to add run configs manually (or run `oracular update runs`).
-        warn('Failed to generate IntelliJ run configs: $e');
-      }
+      await TemplateRunConfigWriter.generateJasprPackage(
+        packageDir: targetDir.path,
+      );
     }
 
     success('App template copied to: ${targetDir.path}');
@@ -225,21 +180,10 @@ class TemplateCopier {
 
     await _patchJasprYamlMode(webTarget);
 
-    try {
-      final List<String> written =
-          await IntellijRunConfigGenerator.generate(
-        packageDir: webTarget.path,
-        port: IntellijRunConfigGenerator.defaultPort,
-      );
-      if (written.isNotEmpty) {
-        verbose(
-          '  Generated ${written.length} IntelliJ run config(s) in '
-          '${p.join(webTarget.path, '.idea', 'runConfigurations')}',
-        );
-      }
-    } catch (e) {
-      warn('Failed to generate IntelliJ run configs for host: $e');
-    }
+    await TemplateRunConfigWriter.generateJasprPackage(
+      packageDir: webTarget.path,
+      failureDescription: 'IntelliJ run configs for host',
+    );
 
     // ── Guest (_app) ───────────────────────────────────────────────────
     final Directory appSource = Directory(
@@ -254,15 +198,16 @@ class TemplateCopier {
     await _copyDirectory(appSource, appTarget);
     await _replacer.processDirectory(appTarget);
     final File appPubspec = File(p.join(appTarget.path, 'pubspec.yaml'));
-    await _replacer.updatePubspec(appPubspec, config.embeddedFlutterPackageName);
+    await _replacer.updatePubspec(
+      appPubspec,
+      config.embeddedFlutterPackageName,
+    );
 
     if (config.createModels) {
       await _replacer.addModelsDependency(appPubspec);
     }
 
-    success(
-      'Embed scaffold copied: ${webTarget.path} + ${appTarget.path}',
-    );
+    success('Embed scaffold copied: ${webTarget.path} + ${appTarget.path}');
   }
 
   /// Rewrite the Jaspr render mode in the copied project so the user's
@@ -295,7 +240,9 @@ class TemplateCopier {
         );
       }
     } else {
-      verbose('  pubspec.yaml not found in ${targetDir.path}; skipping jaspr.mode patch');
+      verbose(
+        '  pubspec.yaml not found in ${targetDir.path}; skipping jaspr.mode patch',
+      );
     }
 
     // 2) jaspr.yaml — cosmetic / docs-only.
@@ -331,8 +278,7 @@ class TemplateCopier {
 
     for (int i = 0; i < lines.length; i++) {
       final String line = lines[i];
-      if (jasprBlockStart < 0 &&
-          RegExp(r'^jaspr:\s*(#.*)?$').hasMatch(line)) {
+      if (jasprBlockStart < 0 && RegExp(r'^jaspr:\s*(#.*)?$').hasMatch(line)) {
         jasprBlockStart = i;
         continue;
       }
@@ -593,7 +539,7 @@ class TemplateCopier {
       if (entity is Directory) {
         // Skip certain directories
         final String dirName = p.basename(entity.path);
-        if (_shouldSkipDirectory(dirName)) {
+        if (TemplateCopyFilter.shouldSkipDirectory(dirName)) {
           continue;
         }
 
@@ -602,44 +548,13 @@ class TemplateCopier {
       } else if (entity is File) {
         // Skip certain files
         final String fileName = p.basename(entity.path);
-        if (_shouldSkipFile(fileName)) {
+        if (TemplateCopyFilter.shouldSkipFile(fileName)) {
           continue;
         }
 
         await entity.copy(targetPath);
       }
     }
-  }
-
-  /// Check if a directory should be skipped during copy
-  bool _shouldSkipDirectory(String dirName) {
-    const List<String> skipDirs = <String>[
-      '.dart_tool',
-      '.idea',
-      '.git',
-      'build',
-      '.gradle',
-      'Pods',
-    ];
-
-    return skipDirs.contains(dirName);
-  }
-
-  /// Check if a file should be skipped during copy
-  bool _shouldSkipFile(String fileName) {
-    const List<String> skipFiles = <String>[
-      '.DS_Store',
-      'pubspec.lock',
-      '.flutter-plugins',
-      '.flutter-plugins-dependencies',
-      '.packages',
-      '.metadata',
-    ];
-
-    // Skip generated dart files
-    if (fileName.endsWith('.g.dart')) return true;
-
-    return skipFiles.contains(fileName);
   }
 
   /// Copy all templates based on config with progress tracking
@@ -683,20 +598,9 @@ class TemplateCopier {
     //
     // Non-fatal on failure: the project is still usable, the user just
     // has to add the run config manually (or run `oracular update runs`).
-    try {
-      final List<String> deployWritten =
-          await IntellijRunConfigGenerator.generateDeploy(
-        projectDir: config.outputDir,
-      );
-      if (deployWritten.isNotEmpty) {
-        verbose(
-          '  Generated project-level "Deploy All" run config in '
-          '${p.join(config.outputDir, '.idea', 'runConfigurations')}',
-        );
-      }
-    } catch (e) {
-      warn('Failed to generate "Deploy All" IntelliJ run config: $e');
-    }
+    await TemplateRunConfigWriter.generateProjectDeploy(
+      projectDir: config.outputDir,
+    );
   }
 
   /// Get list of files that would be copied (dry run)

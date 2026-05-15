@@ -3,3 +3,18 @@
 
 # Default concurrency for tests
 concurrency: 4
+
+tags:
+  serial:
+    # Declared so package:test accepts the tag used by long-running
+    # integration suites that cannot safely share ports.
+  live_deployment:
+    skip: "Live Firebase deployment tests are opt-in. Run ORACULAR_RUN_DEPLOYMENT_TESTS=1 dart test -P live-deployment test/integration/deployment."
+
+presets:
+  live-deployment:
+    include_tags: live_deployment
+    concurrency: 1
+    tags:
+      live_deployment:
+        skip: false

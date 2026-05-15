@@ -1,33 +1,31 @@
 @TestOn('vm')
 @Timeout(Duration(minutes: 10))
+@Tags(<String>['live_deployment'])
+library;
+
 import 'dart:io';
 
 import 'package:oracular/models/setup_config.dart';
 import 'package:oracular/models/template_info.dart';
 import 'package:oracular/services/firebase_service.dart';
-import 'package:oracular/utils/process_runner.dart';
+import 'package:oracular/utils/process_runner.dart' show ProcessResult;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import 'authenticated_runner.dart';
+import 'deployment_test_harness.dart';
 import 'test_config.dart';
 
 void main() {
   group('Firebase App Creation Tests', () {
     late Directory tempDir;
-    late ProcessRunner runner;
+    late AuthenticatedProcessRunner runner;
 
-    setUpAll(() async {
-      if (!DeploymentTestConfig.canRunDeploymentTests) {
-        return;
-      }
-
-      // Initialize gcloud for tests that need it
-      await DeploymentTestConfig.initializeGcloud();
-    });
+    setUpAll(initializeLiveDeploymentSuite);
 
     setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('oracular_firebase_');
-      runner = ProcessRunner(maxAutoRetries: 0, showVerbose: true);
+      tempDir = await createDeploymentTempDir('oracular_firebase_');
+      runner = authenticatedDeploymentRunner();
     });
 
     tearDown(() async {
@@ -36,134 +34,182 @@ void main() {
       }
     });
 
-    test(
-      'can list Firebase apps',
-      () async {
-        if (!DeploymentTestConfig.canRunDeploymentTests) {
-          markTestSkipped(DeploymentTestConfig.skipMessage);
-          return;
-        }
+    test('can list Firebase apps', () async {
+      if (skipUnlessLiveDeploymentEnabled()) {
+        return;
+      }
 
-        final ProcessResult result = await runner.run(
-          'firebase',
-          <String>['apps:list', '--project', DeploymentTestConfig.projectId],
-          environment: DeploymentTestConfig.authEnvironment,
-        );
+      final ProcessResult result = await runner.run('firebase', <String>[
+        'apps:list',
+        '--project',
+        DeploymentTestConfig.projectId,
+      ], environment: DeploymentTestConfig.authEnvironment);
 
-        expect(result.success, isTrue, reason: 'Should be able to list apps');
-      },
-    );
+      expect(result.success, isTrue, reason: 'Should be able to list apps');
+    });
 
-    test(
-      'can create Firebase web app',
-      () async {
-        if (!DeploymentTestConfig.canRunDeploymentTests) {
-          markTestSkipped(DeploymentTestConfig.skipMessage);
-          return;
-        }
+    test('can create Firebase web app', () async {
+      if (skipUnlessLiveDeploymentEnabled()) {
+        return;
+      }
 
-        final String testAppName = 'test_web_${DateTime.now().millisecondsSinceEpoch}';
+      final String testAppName =
+          'test_web_${DateTime.now().millisecondsSinceEpoch}';
 
-        final ProcessResult result = await runner.run(
-          'firebase',
-          <String>[
-            'apps:create',
-            'WEB',
-            testAppName,
-            '--project',
-            DeploymentTestConfig.projectId,
-          ],
-          environment: DeploymentTestConfig.authEnvironment,
-        );
+      final ProcessResult result = await runner.run('firebase', <String>[
+        'apps:create',
+        'WEB',
+        testAppName,
+        '--project',
+        DeploymentTestConfig.projectId,
+        '--json',
+        '--debug',
+      ], workingDirectory: tempDir.path);
 
-        expect(
-          result.success,
-          isTrue,
-          reason: 'Should create web app: ${result.stderr}',
-        );
+      if (skipIfFirebaseAppQuotaExhausted(
+        result,
+        workingDirectory: tempDir.path,
+      )) {
+        return;
+      }
 
+      final String? appResourceName = firebaseAppResourceNameFromCreateResult(
+        result,
+      );
+      expect(
+        result.success,
+        isTrue,
+        reason: 'Should create web app: ${result.stderr}',
+      );
+      expect(
+        appResourceName,
+        isNotNull,
+        reason: 'Should capture created Firebase app resource name',
+      );
+
+      try {
         // Verify the app was created
-        final ProcessResult listResult = await runner.run(
-          'firebase',
-          <String>['apps:list', 'WEB', '--project', DeploymentTestConfig.projectId],
-          environment: DeploymentTestConfig.authEnvironment,
-        );
+        final ProcessResult listResult = await runner.run('firebase', <String>[
+          'apps:list',
+          'WEB',
+          '--project',
+          DeploymentTestConfig.projectId,
+        ], environment: DeploymentTestConfig.authEnvironment);
 
         expect(listResult.stdout.toLowerCase(), contains('web'));
-      },
-    );
-
-    test(
-      'can create Firebase Android app',
-      () async {
-        if (!DeploymentTestConfig.canRunDeploymentTests) {
-          markTestSkipped(DeploymentTestConfig.skipMessage);
-          return;
-        }
-
-        final String testAppName = 'test_android_${DateTime.now().millisecondsSinceEpoch}';
-        final String packageName = 'com.test.app${DateTime.now().millisecondsSinceEpoch}';
-
-        final ProcessResult result = await runner.run(
-          'firebase',
-          <String>[
-            'apps:create',
-            'ANDROID',
-            testAppName,
-            '--package-name',
-            packageName,
-            '--project',
-            DeploymentTestConfig.projectId,
-          ],
-          environment: DeploymentTestConfig.authEnvironment,
+      } finally {
+        await removeFirebaseAppResource(
+          runner,
+          appResourceName!,
+          workingDirectory: tempDir.path,
         );
+      }
+    });
 
-        expect(
-          result.success,
-          isTrue,
-          reason: 'Should create Android app: ${result.stderr}',
-        );
-      },
-    );
+    test('can create Firebase Android app', () async {
+      if (skipUnlessLiveDeploymentEnabled()) {
+        return;
+      }
 
-    test(
-      'can create Firebase iOS app',
-      () async {
-        if (!DeploymentTestConfig.canRunDeploymentTests) {
-          markTestSkipped(DeploymentTestConfig.skipMessage);
-          return;
-        }
+      final String testAppName =
+          'test_android_${DateTime.now().millisecondsSinceEpoch}';
+      final String packageName =
+          'com.test.app${DateTime.now().millisecondsSinceEpoch}';
 
-        final String testAppName = 'test_ios_${DateTime.now().millisecondsSinceEpoch}';
-        final String bundleId = 'com.test.app${DateTime.now().millisecondsSinceEpoch}';
+      final ProcessResult result = await runner.run('firebase', <String>[
+        'apps:create',
+        'ANDROID',
+        testAppName,
+        '--package-name',
+        packageName,
+        '--project',
+        DeploymentTestConfig.projectId,
+        '--json',
+        '--debug',
+      ], workingDirectory: tempDir.path);
 
-        final ProcessResult result = await runner.run(
-          'firebase',
-          <String>[
-            'apps:create',
-            'IOS',
-            testAppName,
-            '--bundle-id',
-            bundleId,
-            '--project',
-            DeploymentTestConfig.projectId,
-          ],
-          environment: DeploymentTestConfig.authEnvironment,
-        );
+      if (skipIfFirebaseAppQuotaExhausted(
+        result,
+        workingDirectory: tempDir.path,
+      )) {
+        return;
+      }
 
-        expect(
-          result.success,
-          isTrue,
-          reason: 'Should create iOS app: ${result.stderr}',
-        );
-      },
-    );
+      final String? appResourceName = firebaseAppResourceNameFromCreateResult(
+        result,
+      );
+      expect(
+        result.success,
+        isTrue,
+        reason: 'Should create Android app: ${result.stderr}',
+      );
+      expect(
+        appResourceName,
+        isNotNull,
+        reason: 'Should capture created Firebase app resource name',
+      );
+
+      await removeFirebaseAppResource(
+        runner,
+        appResourceName!,
+        workingDirectory: tempDir.path,
+      );
+    });
+
+    test('can create Firebase iOS app', () async {
+      if (skipUnlessLiveDeploymentEnabled()) {
+        return;
+      }
+
+      final String testAppName =
+          'test_ios_${DateTime.now().millisecondsSinceEpoch}';
+      final String bundleId =
+          'com.test.app${DateTime.now().millisecondsSinceEpoch}';
+
+      final ProcessResult result = await runner.run('firebase', <String>[
+        'apps:create',
+        'IOS',
+        testAppName,
+        '--bundle-id',
+        bundleId,
+        '--project',
+        DeploymentTestConfig.projectId,
+        '--json',
+        '--debug',
+      ], workingDirectory: tempDir.path);
+
+      if (skipIfFirebaseAppQuotaExhausted(
+        result,
+        workingDirectory: tempDir.path,
+      )) {
+        return;
+      }
+
+      final String? appResourceName = firebaseAppResourceNameFromCreateResult(
+        result,
+      );
+      expect(
+        result.success,
+        isTrue,
+        reason: 'Should create iOS app: ${result.stderr}',
+      );
+      expect(
+        appResourceName,
+        isNotNull,
+        reason: 'Should capture created Firebase app resource name',
+      );
+
+      await removeFirebaseAppResource(
+        runner,
+        appResourceName!,
+        workingDirectory: tempDir.path,
+      );
+    });
 
     test(
       'FirebaseService._ensureFirebaseAppsExist works via configureFlutterFire',
       () async {
-        if (!DeploymentTestConfig.canRunDeploymentTests) {
-          markTestSkipped(DeploymentTestConfig.skipMessage);
+        if (skipUnlessLiveDeploymentEnabled()) {
           return;
         }
 
@@ -172,8 +218,12 @@ void main() {
         final String projectPath = p.join(tempDir.path, appName);
         await Directory(projectPath).create(recursive: true);
         await Directory(p.join(projectPath, 'lib')).create();
-        await Directory(p.join(projectPath, 'android', 'app')).create(recursive: true);
-        await Directory(p.join(projectPath, 'ios', 'Runner.xcodeproj')).create(recursive: true);
+        await Directory(
+          p.join(projectPath, 'android', 'app'),
+        ).create(recursive: true);
+        await Directory(
+          p.join(projectPath, 'ios', 'Runner.xcodeproj'),
+        ).create(recursive: true);
 
         // Create minimal pubspec.yaml
         final File pubspec = File(p.join(projectPath, 'pubspec.yaml'));
@@ -202,163 +252,84 @@ dependencies:
           platforms: <String>['web'],
         );
 
-        // Create a custom ProcessRunner that uses our auth environment
-        final ProcessRunner authRunner = _AuthenticatedProcessRunner(
-          environment: DeploymentTestConfig.authEnvironment,
+        final FirebaseService service = FirebaseService(
+          config,
+          runner: authenticatedDeploymentRunner(),
         );
-
-        final FirebaseService service = FirebaseService(config, runner: authRunner);
 
         // This should trigger _ensureFirebaseAppsExist internally
         // We're testing that it doesn't crash and creates apps if needed
         // Note: configureFlutterFire requires flutterfire CLI which may not be available
         // So we just test that the service can be created and accessed
 
-        expect(service.config.firebaseProjectId, equals(DeploymentTestConfig.projectId));
+        expect(
+          service.config.firebaseProjectId,
+          equals(DeploymentTestConfig.projectId),
+        );
       },
     );
 
-    test(
-      'can get Firebase web SDK config',
-      () async {
-        if (!DeploymentTestConfig.canRunDeploymentTests) {
-          markTestSkipped(DeploymentTestConfig.skipMessage);
-          return;
-        }
+    test('can get Firebase web SDK config', () async {
+      if (skipUnlessLiveDeploymentEnabled()) {
+        return;
+      }
 
-        // First ensure we have at least one web app
-        final ProcessResult listResult = await runner.run(
-          'firebase',
-          <String>['apps:list', 'WEB', '--project', DeploymentTestConfig.projectId],
-          environment: DeploymentTestConfig.authEnvironment,
-        );
+      // First ensure we have at least one web app
+      final ProcessResult listResult = await runner.run('firebase', <String>[
+        'apps:list',
+        'WEB',
+        '--project',
+        DeploymentTestConfig.projectId,
+      ], environment: DeploymentTestConfig.authEnvironment);
 
-        if (!listResult.stdout.toLowerCase().contains('web')) {
-          // Create a web app first
-          await runner.run(
-            'firebase',
-            <String>[
-              'apps:create',
-              'WEB',
-              'sdk_config_test_app',
-              '--project',
-              DeploymentTestConfig.projectId,
-            ],
-            environment: DeploymentTestConfig.authEnvironment,
-          );
+      if (!listResult.stdout.toLowerCase().contains('web')) {
+        // Create a web app first
+        await runner.run('firebase', <String>[
+          'apps:create',
+          'WEB',
+          'sdk_config_test_app',
+          '--project',
+          DeploymentTestConfig.projectId,
+        ], environment: DeploymentTestConfig.authEnvironment);
 
-          // Wait for propagation
-          await Future<void>.delayed(const Duration(seconds: 3));
-        }
+        // Wait for propagation
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
 
-        // Get app list again to find the app ID
-        final ProcessResult appsResult = await runner.run(
-          'firebase',
-          <String>['apps:list', 'WEB', '--project', DeploymentTestConfig.projectId, '--json'],
-          environment: DeploymentTestConfig.authEnvironment,
-        );
+      // Get app list again to find the app ID
+      final ProcessResult appsResult = await runner.run('firebase', <String>[
+        'apps:list',
+        'WEB',
+        '--project',
+        DeploymentTestConfig.projectId,
+        '--json',
+      ], environment: DeploymentTestConfig.authEnvironment);
 
-        expect(appsResult.success, isTrue);
+      expect(appsResult.success, isTrue);
 
-        // Extract app ID from JSON output
-        final String output = appsResult.stdout;
-        final RegExp appIdRegex = RegExp(r'1:\d+:web:[a-f0-9]+');
-        final RegExpMatch? match = appIdRegex.firstMatch(output);
+      // Extract app ID from JSON output
+      final String output = appsResult.stdout;
+      final RegExp appIdRegex = RegExp(r'1:\d+:web:[a-f0-9]+');
+      final RegExpMatch? match = appIdRegex.firstMatch(output);
 
-        if (match == null) {
-          fail('Could not find web app ID in output: $output');
-        }
+      if (match == null) {
+        fail('Could not find web app ID in output: $output');
+      }
 
-        final String appId = match.group(0)!;
+      final String appId = match.group(0)!;
 
-        // Now get the SDK config
-        final ProcessResult configResult = await runner.run(
-          'firebase',
-          <String>[
-            'apps:sdkconfig',
-            'WEB',
-            appId,
-            '--project',
-            DeploymentTestConfig.projectId,
-          ],
-          environment: DeploymentTestConfig.authEnvironment,
-        );
+      // Now get the SDK config
+      final ProcessResult configResult = await runner.run('firebase', <String>[
+        'apps:sdkconfig',
+        'WEB',
+        appId,
+        '--project',
+        DeploymentTestConfig.projectId,
+      ], environment: DeploymentTestConfig.authEnvironment);
 
-        expect(configResult.success, isTrue, reason: 'Should get SDK config');
-        expect(configResult.stdout, contains('apiKey'));
-        expect(configResult.stdout, contains('projectId'));
-      },
-    );
+      expect(configResult.success, isTrue, reason: 'Should get SDK config');
+      expect(configResult.stdout, contains('apiKey'));
+      expect(configResult.stdout, contains('projectId'));
+    });
   });
-}
-
-/// ProcessRunner that adds authentication environment to all calls
-class _AuthenticatedProcessRunner extends ProcessRunner {
-  final Map<String, String> environment;
-
-  _AuthenticatedProcessRunner({required this.environment})
-      : super(maxAutoRetries: 0, showVerbose: true);
-
-  @override
-  Future<ProcessResult> run(
-    String executable,
-    List<String> arguments, {
-    String? workingDirectory,
-    Map<String, String>? environment,
-    bool inheritStdio = false,
-  }) {
-    final Map<String, String> mergedEnv = <String, String>{
-      ...this.environment,
-      ...?environment,
-    };
-    return super.run(
-      executable,
-      arguments,
-      workingDirectory: workingDirectory,
-      environment: mergedEnv,
-      inheritStdio: inheritStdio,
-    );
-  }
-
-  @override
-  Future<ProcessResult?> runWithRetry(
-    String executable,
-    List<String> arguments, {
-    String? workingDirectory,
-    Map<String, String>? environment,
-    String? operationName,
-    bool? interactive,
-  }) {
-    final Map<String, String> mergedEnv = <String, String>{
-      ...this.environment,
-      ...?environment,
-    };
-    return super.runWithRetry(
-      executable,
-      arguments,
-      workingDirectory: workingDirectory,
-      environment: mergedEnv,
-      operationName: operationName,
-      interactive: false, // Never interactive in tests
-    );
-  }
-
-  @override
-  Future<int> runStreaming(
-    String executable,
-    List<String> arguments, {
-    String? workingDirectory,
-    Map<String, String>? environment,
-  }) {
-    final Map<String, String> mergedEnv = <String, String>{
-      ...this.environment,
-      ...?environment,
-    };
-    return super.runStreaming(
-      executable,
-      arguments,
-      workingDirectory: workingDirectory,
-      environment: mergedEnv,
-    );
-  }
 }

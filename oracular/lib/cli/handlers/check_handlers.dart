@@ -2,8 +2,8 @@ import 'package:fast_log/fast_log.dart';
 
 import '../../services/firebase_billing_service.dart';
 import '../../services/tool_checker.dart';
-import '../../utils/project_config_loader.dart';
 import '../../utils/user_prompt.dart';
+import 'setup_config_requirements.dart';
 
 final _checker = ToolChecker();
 
@@ -13,7 +13,9 @@ Future<void> handleCheckTools() async {
   result.printSummary();
 
   if (!result.allRequiredInstalled) {
-    error('Some required tools are missing. Please install them before continuing.');
+    error(
+      'Some required tools are missing. Please install them before continuing.',
+    );
   } else {
     success('All required tools are installed!');
   }
@@ -93,15 +95,8 @@ Future<void> handleCheckServer() async {
 /// Implemented in T3 (FirebaseBillingService); the orchestrator gates
 /// Cloud Run / cleanup steps on the result via [BlazeStatus.enabled].
 Future<void> handleCheckBilling() async {
-  final config = await ProjectConfigLoader.load();
-  if (config == null) {
-    ProjectConfigLoader.printMissingConfigHelp();
-    return;
-  }
-  if (!config.useFirebase || config.firebaseProjectId == null) {
-    error('Firebase is not enabled or project ID not set.');
-    return;
-  }
+  final config = await requireFirebaseProjectConfig();
+  if (config == null) return;
 
   final FirebaseBillingService billing = FirebaseBillingService(
     config.firebaseProjectId!,

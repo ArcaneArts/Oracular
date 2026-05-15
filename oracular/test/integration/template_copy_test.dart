@@ -1,4 +1,6 @@
 @TestOn('vm')
+library;
+
 import 'dart:io';
 
 import 'package:oracular/models/setup_config.dart';
@@ -27,7 +29,9 @@ void main() {
       firebaseProjectId: 'test-project',
     );
     // Find templates path relative to test file
-    templatesPath = p.normalize(p.join(Directory.current.path, '..', 'templates'));
+    templatesPath = p.normalize(
+      p.join(Directory.current.path, '..', 'templates'),
+    );
   });
 
   tearDown(() async {
@@ -213,8 +217,9 @@ class ArcaneServer {
   group('Template content validation', () {
     test('arcane_app pubspec has correct name', () async {
       final copier = TemplateCopier.withPath(config, templatesPath);
-      final pubspec =
-          File(p.join(copier.getTemplatePath('arcane_app'), 'pubspec.yaml'));
+      final pubspec = File(
+        p.join(copier.getTemplatePath('arcane_app'), 'pubspec.yaml'),
+      );
 
       if (pubspec.existsSync()) {
         final content = await pubspec.readAsString();
@@ -225,7 +230,8 @@ class ArcaneServer {
     test('arcane_cli_app pubspec has correct name', () async {
       final copier = TemplateCopier.withPath(config, templatesPath);
       final pubspec = File(
-          p.join(copier.getTemplatePath('arcane_cli_app'), 'pubspec.yaml'));
+        p.join(copier.getTemplatePath('arcane_cli_app'), 'pubspec.yaml'),
+      );
 
       if (pubspec.existsSync()) {
         final content = await pubspec.readAsString();
@@ -235,8 +241,9 @@ class ArcaneServer {
 
     test('arcane_models pubspec has correct name', () async {
       final copier = TemplateCopier.withPath(config, templatesPath);
-      final pubspec =
-          File(p.join(copier.getTemplatePath('arcane_models'), 'pubspec.yaml'));
+      final pubspec = File(
+        p.join(copier.getTemplatePath('arcane_models'), 'pubspec.yaml'),
+      );
 
       if (pubspec.existsSync()) {
         final content = await pubspec.readAsString();
@@ -246,8 +253,9 @@ class ArcaneServer {
 
     test('arcane_server pubspec has correct name', () async {
       final copier = TemplateCopier.withPath(config, templatesPath);
-      final pubspec =
-          File(p.join(copier.getTemplatePath('arcane_server'), 'pubspec.yaml'));
+      final pubspec = File(
+        p.join(copier.getTemplatePath('arcane_server'), 'pubspec.yaml'),
+      );
 
       if (pubspec.existsSync()) {
         final content = await pubspec.readAsString();

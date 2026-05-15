@@ -59,16 +59,12 @@ class HomeRoute extends StatelessComponent {
   const HomeRoute({super.key});
 
   @override
-  Iterable<Component> build(BuildContext context) sync* {
-    yield const HomeScreen();
-  }
+  Component build(BuildContext context) => const HomeScreen();
 }
 
 class AboutRoute extends StatelessComponent {
   const AboutRoute({super.key});
 
   @override
-  Iterable<Component> build(BuildContext context) sync* {
-    yield const AboutScreen();
-  }
+  Component build(BuildContext context) => const AboutScreen();
 }

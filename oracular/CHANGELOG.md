@@ -1,3 +1,17 @@
+## 3.5.1 - 2026-05-15
+
+- Fixed generated Jaspr starter route wrappers for the current Jaspr component
+  API.
+- Fixed the Jaspr Flutter embed template export surface so generated projects
+  no longer reference missing screen files.
+- Replaced placeholder starter TODO actions with harmless starter behavior.
+- Moved live Firebase deployment tests behind the documented
+  `live-deployment` opt-in profile.
+- Added reusable live deployment test helpers and Firebase app cleanup so
+  disposable test apps are removed after creation checks.
+- Split low-risk template-copy and setup-config helper logic into smaller
+  internal services.
+
 ## 3.5.0
 
 ### Added — Jaspr render modes (CSR / SSG / SSR / Hybrid / Embed)

@@ -210,6 +210,16 @@ dart run bin/main.dart scripts list
 ### Local Testing
 
 ```bash
+# Safe default: unit tests, template copy/permutation checks, and
+# non-deploying integration checks. Live Firebase/GCP deployment suites
+# are tagged out by default.
+dart test
+
+# Explicit opt-in for live Firebase/GCP deployment tests. Requires
+# ../service-account.json (or the legacy test service-account file) and
+# mutates the oraculartestdeployments Firebase project.
+ORACULAR_RUN_DEPLOYMENT_TESTS=1 dart test -P live-deployment test/integration/deployment
+
 # Activate from source
 dart pub global activate . --source=path
 

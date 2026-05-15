@@ -1,52 +1,23 @@
 import 'dart:convert';
 
 import 'package:oracular/services/artifact_cleanup_service.dart';
-import 'package:oracular/utils/process_runner.dart';
 import 'package:test/test.dart';
 
-class _CapturedCall {
-  _CapturedCall(this.executable, List<String> arguments, this.workingDirectory)
-      : arguments = List<String>.unmodifiable(arguments);
-
-  final String executable;
-  final List<String> arguments;
-  final String? workingDirectory;
-}
-
-class _ScriptedRunner extends ProcessRunner {
-  _ScriptedRunner({this.results = const <ProcessResult>[]})
-      : super(maxAutoRetries: 0);
-
-  List<ProcessResult> results;
-  final List<_CapturedCall> calls = <_CapturedCall>[];
-  int _cursor = 0;
-
-  @override
-  Future<ProcessResult> run(
-    String executable,
-    List<String> arguments, {
-    String? workingDirectory,
-    Map<String, String>? environment,
-    bool inheritStdio = false,
-  }) async {
-    calls.add(_CapturedCall(executable, arguments, workingDirectory));
-    if (_cursor >= results.length) {
-      return ProcessResult(exitCode: 0, stdout: '', stderr: '');
-    }
-    return results[_cursor++];
-  }
-}
+import '../support/process_runner_fakes.dart';
 
 void main() {
   group('ArtifactCleanupService.ensureRepository', () {
     test('returns existed when describe succeeds', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(
-          exitCode: 0,
-          stdout: '{"name":"projects/demo/locations/us-central1/repositories/oracular"}',
-          stderr: '',
-        ),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"name":"projects/demo/locations/us-central1/repositories/oracular"}',
+            stderr: '',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RepositoryEnsureResult result = await svc.ensureRepository(
@@ -58,19 +29,23 @@ void main() {
       expect(result.repository, equals('oracular'));
       expect(result.region, equals('us-central1'));
       expect(runner.calls, hasLength(1));
-      expect(runner.calls.single.arguments,
-          containsAll(<String>['repositories', 'describe', 'oracular']));
+      expect(
+        runner.calls.single.arguments,
+        containsAll(<String>['repositories', 'describe', 'oracular']),
+      );
     });
 
     test('creates the repository when describe returns NOT_FOUND', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(
-          exitCode: 1,
-          stdout: '',
-          stderr: 'NOT_FOUND: The repository does not exist',
-        ),
-        ProcessResult(exitCode: 0, stdout: 'Created.', stderr: ''),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(
+            exitCode: 1,
+            stdout: '',
+            stderr: 'NOT_FOUND: The repository does not exist',
+          ),
+          ProcessResult(exitCode: 0, stdout: 'Created.', stderr: ''),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RepositoryEnsureResult result = await svc.ensureRepository(
@@ -93,14 +68,16 @@ void main() {
     });
 
     test('treats 409 ALREADY_EXISTS during create as existed', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(exitCode: 1, stdout: '', stderr: 'NOT_FOUND'),
-        ProcessResult(
-          exitCode: 1,
-          stdout: '',
-          stderr: 'ALREADY_EXISTS: Resource already exists in the project',
-        ),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'NOT_FOUND'),
+          ProcessResult(
+            exitCode: 1,
+            stdout: '',
+            stderr: 'ALREADY_EXISTS: Resource already exists in the project',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RepositoryEnsureResult result = await svc.ensureRepository(
@@ -112,14 +89,17 @@ void main() {
     });
 
     test('returns failed when create fails for any other reason', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(exitCode: 1, stdout: '', stderr: 'NOT_FOUND'),
-        ProcessResult(
-          exitCode: 1,
-          stdout: '',
-          stderr: 'PERMISSION_DENIED: caller missing artifactregistry.repositories.create',
-        ),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'NOT_FOUND'),
+          ProcessResult(
+            exitCode: 1,
+            stdout: '',
+            stderr:
+                'PERMISSION_DENIED: caller missing artifactregistry.repositories.create',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RepositoryEnsureResult result = await svc.ensureRepository(
@@ -132,9 +112,11 @@ void main() {
     });
 
     test('honors region override', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(exitCode: 0, stdout: '{}', stderr: ''),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(exitCode: 0, stdout: '{}', stderr: ''),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       await svc.ensureRepository(
@@ -149,7 +131,7 @@ void main() {
     });
 
     test('returns failed when project id is empty', () async {
-      final runner = _ScriptedRunner();
+      final runner = ScriptedProcessRunner();
       final svc = ArtifactCleanupService('', runner: runner);
 
       final RepositoryEnsureResult result = await svc.ensureRepository(
@@ -161,13 +143,15 @@ void main() {
     });
 
     test('returns failed on a non-NOT_FOUND describe error', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(
-          exitCode: 1,
-          stdout: '',
-          stderr: 'PERMISSION_DENIED: artifactregistry.repositories.get',
-        ),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(
+            exitCode: 1,
+            stdout: '',
+            stderr: 'PERMISSION_DENIED: artifactregistry.repositories.get',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RepositoryEnsureResult result = await svc.ensureRepository(
@@ -183,9 +167,11 @@ void main() {
 
   group('ArtifactCleanupService.applyCleanupPolicies', () {
     test('writes a 2-rule policy and invokes set-cleanup-policies', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(exitCode: 0, stdout: 'Policy applied', stderr: ''),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(exitCode: 0, stdout: 'Policy applied', stderr: ''),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final CleanupPolicyResult result = await svc.applyCleanupPolicies(
@@ -216,7 +202,7 @@ void main() {
     });
 
     test('rejects keepRecent < 1 without invoking gcloud', () async {
-      final runner = _ScriptedRunner();
+      final runner = ScriptedProcessRunner();
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final CleanupPolicyResult result = await svc.applyCleanupPolicies(
@@ -231,7 +217,7 @@ void main() {
     });
 
     test('rejects deleteOlderDays < 1 without invoking gcloud', () async {
-      final runner = _ScriptedRunner();
+      final runner = ScriptedProcessRunner();
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final CleanupPolicyResult result = await svc.applyCleanupPolicies(
@@ -246,13 +232,15 @@ void main() {
     });
 
     test('returns failed on gcloud error and includes the message', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(
-          exitCode: 1,
-          stdout: '',
-          stderr: 'INVALID_ARGUMENT: invalid policy format',
-        ),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(
+            exitCode: 1,
+            stdout: '',
+            stderr: 'INVALID_ARGUMENT: invalid policy format',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final CleanupPolicyResult result = await svc.applyCleanupPolicies(
@@ -264,7 +252,7 @@ void main() {
     });
 
     test('returns failed when project id is empty', () async {
-      final runner = _ScriptedRunner();
+      final runner = ScriptedProcessRunner();
       final svc = ArtifactCleanupService('', runner: runner);
 
       final CleanupPolicyResult result = await svc.applyCleanupPolicies(
@@ -280,21 +268,25 @@ void main() {
     test('emits a Keep + Delete pair with the supplied parameters', () {
       final List<Map<String, Object?>> policy =
           ArtifactCleanupService.buildPolicy(
-        keepRecent: 7,
-        deleteOlderDays: 14,
-      );
+            keepRecent: 7,
+            deleteOlderDays: 14,
+          );
 
       expect(policy, hasLength(2));
       expect(policy[0]['name'], equals('keep-recent'));
-      expect((policy[0]['action'] as Map<String, Object?>)['type'],
-          equals('Keep'));
+      expect(
+        (policy[0]['action'] as Map<String, Object?>)['type'],
+        equals('Keep'),
+      );
       expect(
         (policy[0]['mostRecentVersions'] as Map<String, Object?>)['keepCount'],
         equals(7),
       );
       expect(policy[1]['name'], equals('delete-stale'));
-      expect((policy[1]['action'] as Map<String, Object?>)['type'],
-          equals('Delete'));
+      expect(
+        (policy[1]['action'] as Map<String, Object?>)['type'],
+        equals('Delete'),
+      );
       expect(
         (policy[1]['condition'] as Map<String, Object?>)['olderThan'],
         equals('14d'),
@@ -310,32 +302,26 @@ void main() {
       const String stdout =
           '[{"metadata":{"name":"svc-00003-abc"}},{"metadata":{"name":"svc-00002-def"}},{"metadata":{"name":"svc-00001-ghi"}}]';
 
-      final List<String>? out =
-          ArtifactCleanupService.parseRevisionList(stdout);
+      final List<String>? out = ArtifactCleanupService.parseRevisionList(
+        stdout,
+      );
 
-      expect(out,
-          equals(<String>['svc-00003-abc', 'svc-00002-def', 'svc-00001-ghi']));
+      expect(
+        out,
+        equals(<String>['svc-00003-abc', 'svc-00002-def', 'svc-00001-ghi']),
+      );
     });
 
     test('returns empty list on empty stdout', () {
-      expect(
-        ArtifactCleanupService.parseRevisionList(''),
-        equals(<String>[]),
-      );
+      expect(ArtifactCleanupService.parseRevisionList(''), equals(<String>[]));
     });
 
     test('returns null on non-list payload', () {
-      expect(
-        ArtifactCleanupService.parseRevisionList('"not-a-list"'),
-        isNull,
-      );
+      expect(ArtifactCleanupService.parseRevisionList('"not-a-list"'), isNull);
     });
 
     test('returns null on invalid JSON', () {
-      expect(
-        ArtifactCleanupService.parseRevisionList('{not json'),
-        isNull,
-      );
+      expect(ArtifactCleanupService.parseRevisionList('{not json'), isNull);
     });
 
     test('skips entries missing metadata.name', () {
@@ -368,30 +354,26 @@ void main() {
     });
 
     test('returns empty set on invalid JSON', () {
-      expect(
-        ArtifactCleanupService.parseTrafficRevisions('not json'),
-        isEmpty,
-      );
+      expect(ArtifactCleanupService.parseTrafficRevisions('not json'), isEmpty);
     });
 
     test('returns empty set on empty stdout', () {
-      expect(
-        ArtifactCleanupService.parseTrafficRevisions(''),
-        isEmpty,
-      );
+      expect(ArtifactCleanupService.parseTrafficRevisions(''), isEmpty);
     });
   });
 
   group('ArtifactCleanupService.capCloudRunRevisions', () {
     test('no-ops when revision count is at or below keepRevisions', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        // list revisions: 2 revisions
-        ProcessResult(
-          exitCode: 0,
-          stdout: '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}}]',
-          stderr: '',
-        ),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          // list revisions: 2 revisions
+          ProcessResult(
+            exitCode: 0,
+            stdout: '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}}]',
+            stderr: '',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RevisionPruneResult result = await svc.capCloudRunRevisions(
@@ -407,25 +389,28 @@ void main() {
     });
 
     test('deletes revisions beyond the keep window', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        // list revisions: r1 (newest) -> r4 (oldest)
-        ProcessResult(
-          exitCode: 0,
-          stdout:
-              '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}},{"metadata":{"name":"r3"}},{"metadata":{"name":"r4"}}]',
-          stderr: '',
-        ),
-        // traffic-describe: r1 takes 100% of traffic
-        ProcessResult(
-          exitCode: 0,
-          stdout: '{"status":{"traffic":[{"revisionName":"r1","percent":100}]}}',
-          stderr: '',
-        ),
-        // delete r3 — succeeds
-        ProcessResult(exitCode: 0, stdout: 'Deleted r3', stderr: ''),
-        // delete r4 — succeeds
-        ProcessResult(exitCode: 0, stdout: 'Deleted r4', stderr: ''),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          // list revisions: r1 (newest) -> r4 (oldest)
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}},{"metadata":{"name":"r3"}},{"metadata":{"name":"r4"}}]',
+            stderr: '',
+          ),
+          // traffic-describe: r1 takes 100% of traffic
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"status":{"traffic":[{"revisionName":"r1","percent":100}]}}',
+            stderr: '',
+          ),
+          // delete r3 — succeeds
+          ProcessResult(exitCode: 0, stdout: 'Deleted r3', stderr: ''),
+          // delete r4 — succeeds
+          ProcessResult(exitCode: 0, stdout: 'Deleted r4', stderr: ''),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RevisionPruneResult result = await svc.capCloudRunRevisions(
@@ -441,62 +426,70 @@ void main() {
       expect(runner.calls, hasLength(4));
     });
 
-    test('preserves traffic-serving revisions even outside the keep window',
-        () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(
-          exitCode: 0,
-          stdout:
-              '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}},{"metadata":{"name":"r3"}},{"metadata":{"name":"r4"}}]',
-          stderr: '',
-        ),
-        // r4 (oldest) currently serving 100% traffic — must NOT be deleted
-        ProcessResult(
-          exitCode: 0,
-          stdout:
-              '{"status":{"traffic":[{"revisionName":"r4","percent":100}]}}',
-          stderr: '',
-        ),
-        // delete r3 — succeeds
-        ProcessResult(exitCode: 0, stdout: 'Deleted r3', stderr: ''),
-      ]);
-      final svc = ArtifactCleanupService('demo', runner: runner);
+    test(
+      'preserves traffic-serving revisions even outside the keep window',
+      () async {
+        final runner = ScriptedProcessRunner(
+          results: <ProcessResult>[
+            ProcessResult(
+              exitCode: 0,
+              stdout:
+                  '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}},{"metadata":{"name":"r3"}},{"metadata":{"name":"r4"}}]',
+              stderr: '',
+            ),
+            // r4 (oldest) currently serving 100% traffic — must NOT be deleted
+            ProcessResult(
+              exitCode: 0,
+              stdout:
+                  '{"status":{"traffic":[{"revisionName":"r4","percent":100}]}}',
+              stderr: '',
+            ),
+            // delete r3 — succeeds
+            ProcessResult(exitCode: 0, stdout: 'Deleted r3', stderr: ''),
+          ],
+        );
+        final svc = ArtifactCleanupService('demo', runner: runner);
 
-      final RevisionPruneResult result = await svc.capCloudRunRevisions(
-        service: 'svc',
-        keepRevisions: 2, // keep r1, r2 + protect r4
-      );
+        final RevisionPruneResult result = await svc.capCloudRunRevisions(
+          service: 'svc',
+          keepRevisions: 2, // keep r1, r2 + protect r4
+        );
 
-      expect(result.success, isTrue);
-      expect(result.deleted, equals(1));
-      expect(result.deletedRevisions, equals(<String>['r3']));
-      // No delete attempt for r4.
-      expect(
-        runner.calls.where((c) =>
-            c.arguments.contains('delete') && c.arguments.contains('r4')),
-        isEmpty,
-      );
-    });
+        expect(result.success, isTrue);
+        expect(result.deleted, equals(1));
+        expect(result.deletedRevisions, equals(<String>['r3']));
+        // No delete attempt for r4.
+        expect(
+          runner.calls.where(
+            (c) => c.arguments.contains('delete') && c.arguments.contains('r4'),
+          ),
+          isEmpty,
+        );
+      },
+    );
 
     test('classifies "serving traffic" delete failures as skipped', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(
-          exitCode: 0,
-          stdout: '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}},{"metadata":{"name":"r3"}}]',
-          stderr: '',
-        ),
-        ProcessResult(
-          exitCode: 0,
-          stdout: '{"status":{"traffic":[{"revisionName":"r1","percent":100}]}}',
-          stderr: '',
-        ),
-        ProcessResult(
-          exitCode: 1,
-          stdout: '',
-          stderr:
-              'Cannot delete revision r3: revision is serving traffic',
-        ),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}},{"metadata":{"name":"r3"}}]',
+            stderr: '',
+          ),
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"status":{"traffic":[{"revisionName":"r1","percent":100}]}}',
+            stderr: '',
+          ),
+          ProcessResult(
+            exitCode: 1,
+            stdout: '',
+            stderr: 'Cannot delete revision r3: revision is serving traffic',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RevisionPruneResult result = await svc.capCloudRunRevisions(
@@ -510,25 +503,28 @@ void main() {
       expect(result.skippedRevisions, equals(<String>['r3']));
     });
 
-    test('returns success=false when a delete fails for another reason',
-        () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(
-          exitCode: 0,
-          stdout: '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}},{"metadata":{"name":"r3"}}]',
-          stderr: '',
-        ),
-        ProcessResult(
-          exitCode: 0,
-          stdout: '{"status":{"traffic":[{"revisionName":"r1","percent":100}]}}',
-          stderr: '',
-        ),
-        ProcessResult(
-          exitCode: 1,
-          stdout: '',
-          stderr: 'PERMISSION_DENIED: run.revisions.delete',
-        ),
-      ]);
+    test('returns success=false when a delete fails for another reason', () async {
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '[{"metadata":{"name":"r1"}},{"metadata":{"name":"r2"}},{"metadata":{"name":"r3"}}]',
+            stderr: '',
+          ),
+          ProcessResult(
+            exitCode: 0,
+            stdout:
+                '{"status":{"traffic":[{"revisionName":"r1","percent":100}]}}',
+            stderr: '',
+          ),
+          ProcessResult(
+            exitCode: 1,
+            stdout: '',
+            stderr: 'PERMISSION_DENIED: run.revisions.delete',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RevisionPruneResult result = await svc.capCloudRunRevisions(
@@ -541,13 +537,15 @@ void main() {
     });
 
     test('skips when revision list call fails', () async {
-      final runner = _ScriptedRunner(results: <ProcessResult>[
-        ProcessResult(
-          exitCode: 1,
-          stdout: '',
-          stderr: 'PERMISSION_DENIED: run.revisions.list',
-        ),
-      ]);
+      final runner = ScriptedProcessRunner(
+        results: <ProcessResult>[
+          ProcessResult(
+            exitCode: 1,
+            stdout: '',
+            stderr: 'PERMISSION_DENIED: run.revisions.list',
+          ),
+        ],
+      );
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RevisionPruneResult result = await svc.capCloudRunRevisions(
@@ -564,7 +562,7 @@ void main() {
     });
 
     test('rejects keepRevisions < 1 without invoking gcloud', () async {
-      final runner = _ScriptedRunner();
+      final runner = ScriptedProcessRunner();
       final svc = ArtifactCleanupService('demo', runner: runner);
 
       final RevisionPruneResult result = await svc.capCloudRunRevisions(
@@ -579,7 +577,7 @@ void main() {
     });
 
     test('returns failed when project id is empty', () async {
-      final runner = _ScriptedRunner();
+      final runner = ScriptedProcessRunner();
       final svc = ArtifactCleanupService('', runner: runner);
 
       final RevisionPruneResult result = await svc.capCloudRunRevisions(

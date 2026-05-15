@@ -46,8 +46,18 @@ class DeploymentTestConfig {
 
   /// Check if deployment tests can run
   static bool get canRunDeploymentTests {
+    if (!deploymentTestsRequested) {
+      return false;
+    }
     final File serviceAccount = File(serviceAccountPath);
     return serviceAccount.existsSync();
+  }
+
+  /// Live deployment tests mutate Firebase/GCP resources and are opt-in.
+  static bool get deploymentTestsRequested {
+    final String value =
+        Platform.environment['ORACULAR_RUN_DEPLOYMENT_TESTS'] ?? '';
+    return value == '1' || value.toLowerCase() == 'true';
   }
 
   /// Get environment variables for Firebase/gcloud authentication
@@ -58,8 +68,14 @@ class DeploymentTestConfig {
   }
 
   /// Skip message when tests cannot run
-  static String get skipMessage =>
-      'Deployment tests require service account at: $serviceAccountPath';
+  static String get skipMessage {
+    if (!deploymentTestsRequested) {
+      return 'Live deployment tests are opt-in. Run with: '
+          'ORACULAR_RUN_DEPLOYMENT_TESTS=1 dart test -P live-deployment '
+          'test/integration/deployment';
+    }
+    return 'Deployment tests require service account at: $serviceAccountPath';
+  }
 
   /// Activate gcloud service account for tests that need gcloud CLI
   /// Note: This does NOT set the global project - use --project flag instead

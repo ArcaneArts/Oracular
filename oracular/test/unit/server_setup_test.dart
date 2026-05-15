@@ -3,51 +3,10 @@ import 'dart:io';
 import 'package:oracular/models/setup_config.dart';
 import 'package:oracular/models/template_info.dart';
 import 'package:oracular/services/server_setup.dart';
-import 'package:oracular/utils/process_runner.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// Test double — captures `run` / `runWithRetry` invocations and replays
-/// scripted [ProcessResult]s in order. Used to test [ServerSetup.deployToCloudRun]
-/// without shelling out to gcloud / docker.
-class _CapturingRunner extends ProcessRunner {
-  final List<ProcessResult> results;
-  final List<List<String>> invocations = <List<String>>[];
-
-  _CapturingRunner(this.results) : super(showVerbose: false);
-
-  @override
-  Future<ProcessResult> run(
-    String executable,
-    List<String> arguments, {
-    String? workingDirectory,
-    Map<String, String>? environment,
-    bool inheritStdio = false,
-  }) async {
-    invocations.add(<String>[executable, ...arguments]);
-    if (results.isEmpty) {
-      return ProcessResult(exitCode: 1, stdout: '', stderr: 'no scripted result');
-    }
-    return results.removeAt(0);
-  }
-
-  @override
-  Future<ProcessResult?> runWithRetry(
-    String executable,
-    List<String> arguments, {
-    String? workingDirectory,
-    Map<String, String>? environment,
-    String? operationName,
-    bool? interactive,
-  }) async {
-    return run(
-      executable,
-      arguments,
-      workingDirectory: workingDirectory,
-      environment: environment,
-    );
-  }
-}
+import '../support/process_runner_fakes.dart';
 
 void main() {
   group('ServerSetup.copyServiceAccountKey', () {
@@ -64,7 +23,9 @@ void main() {
     });
 
     test('rotates service-account backups and keeps only 2', () async {
-      final File sourceKey = File(p.join(tempDir.path, 'new-service-account.json'));
+      final File sourceKey = File(
+        p.join(tempDir.path, 'new-service-account.json'),
+      );
       await sourceKey.writeAsString('new-key');
 
       final SetupConfig config = SetupConfig(
@@ -161,10 +122,7 @@ void main() {
         );
         expect(content, contains('gcloud run revisions list'));
         expect(content, contains('gcloud run revisions delete'));
-        expect(
-          content,
-          contains(r'$(dirname "$0")/cleanup-policy.json'),
-        );
+        expect(content, contains(r'$(dirname "$0")/cleanup-policy.json'));
       },
     );
 
@@ -245,8 +203,9 @@ void main() {
     late Directory tempDir;
 
     setUp(() async {
-      tempDir = await Directory.systemTemp
-          .createTemp('oracular_server_deploy_');
+      tempDir = await Directory.systemTemp.createTemp(
+        'oracular_server_deploy_',
+      );
     });
 
     tearDown(() async {
@@ -255,7 +214,7 @@ void main() {
       }
     });
 
-    SetupConfig _config({
+    SetupConfig config({
       bool createModels = false,
       String? projectId = 'test-project',
     }) {
@@ -271,7 +230,7 @@ void main() {
       );
     }
 
-    Future<void> _scaffoldServer(SetupConfig cfg) async {
+    Future<void> scaffoldServer(SetupConfig cfg) async {
       final String serverPath = p.join(cfg.outputDir, cfg.serverPackageName);
       await Directory(serverPath).create(recursive: true);
       // Drop a Dockerfile in so deployToCloudRun doesn't regenerate one
@@ -290,11 +249,11 @@ void main() {
     /// Tests that previously expected only `docker build/push/deploy`
     /// must thread these three results in between the auth call and the
     /// docker build call.
-    List<ProcessResult> _preconditionSuccesses() => <ProcessResult>[
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''),
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''),
-          ProcessResult(exitCode: 0, stdout: '{}', stderr: ''),
-        ];
+    List<ProcessResult> preconditionSuccesses() => <ProcessResult>[
+      ProcessResult(exitCode: 0, stdout: '', stderr: ''),
+      ProcessResult(exitCode: 0, stdout: '', stderr: ''),
+      ProcessResult(exitCode: 0, stdout: '{}', stderr: ''),
+    ];
 
     /// One scripted success for the preflight `gcloud config get-value
     /// account` call that `deployToCloudRun` runs before *anything* else
@@ -303,7 +262,7 @@ void main() {
     /// they're doing and let downstream commands fail with their own
     /// clear errors). Every test that expects to reach the auth /
     /// docker / gcloud-run pipeline must prepend this.
-    ProcessResult _unsetGcloudPreflight() =>
+    ProcessResult unsetGcloudPreflight() =>
         ProcessResult(exitCode: 0, stdout: '(unset)', stderr: '');
 
     test('returns null when createServer is false', () async {
@@ -315,20 +274,27 @@ void main() {
         outputDir: tempDir.path,
         // createServer defaults to false
       );
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[]);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
 
       expect(url, isNull);
-      expect(runner.invocations, isEmpty,
-          reason: 'should not shell out when server is disabled');
+      expect(
+        runner.invocations,
+        isEmpty,
+        reason: 'should not shell out when server is disabled',
+      );
     });
 
     test('returns null when firebaseProjectId is missing', () async {
-      final SetupConfig cfg = _config(projectId: null);
-      await _scaffoldServer(cfg);
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[]);
+      final SetupConfig cfg = config(projectId: null);
+      await scaffoldServer(cfg);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
@@ -338,9 +304,11 @@ void main() {
     });
 
     test('returns null when server package directory is missing', () async {
-      final SetupConfig cfg = _config();
+      final SetupConfig cfg = config();
       // Intentionally do NOT scaffold the server dir.
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[]);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
@@ -352,15 +320,16 @@ void main() {
     test(
       'invokes preflight → auth → prereqs → build → push → deploy → describe in order on success',
       () async {
-        final SetupConfig cfg = _config();
-        await _scaffoldServer(cfg);
-        final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
+        final SetupConfig cfg = config();
+        await scaffoldServer(cfg);
+        final CapturingProcessRunner
+        runner = CapturingProcessRunner(<ProcessResult>[
           // 1. preflight: gcloud config get-value account → (unset) → no-op
-          _unsetGcloudPreflight(),
+          unsetGcloudPreflight(),
           // 2. gcloud auth configure-docker
           ProcessResult(exitCode: 0, stdout: '', stderr: ''),
           // 3-5. precondition APIs + repo describe (success short-circuits create)
-          ..._preconditionSuccesses(),
+          ...preconditionSuccesses(),
           // 6. docker build
           ProcessResult(exitCode: 0, stdout: '', stderr: ''),
           // 7. docker push
@@ -370,8 +339,7 @@ void main() {
           // 9. gcloud run services describe
           ProcessResult(
             exitCode: 0,
-            stdout:
-                'https://test-app-server-abc123-uc.a.run.app\n',
+            stdout: 'https://test-app-server-abc123-uc.a.run.app\n',
             stderr: '',
           ),
         ]);
@@ -379,52 +347,81 @@ void main() {
 
         final String? url = await setup.deployToCloudRun();
 
-        expect(url, equals('https://test-app-server-abc123-uc.a.run.app'),
-            reason: 'should return the URL gcloud reported, not the synthetic one');
+        expect(
+          url,
+          equals('https://test-app-server-abc123-uc.a.run.app'),
+          reason:
+              'should return the URL gcloud reported, not the synthetic one',
+        );
         expect(runner.invocations, hasLength(9));
 
-        expect(runner.invocations[0].sublist(0, 4),
-            equals(<String>['gcloud', 'config', 'get-value', 'account']),
-            reason: 'preflight: detect stale active gcloud account');
-        expect(runner.invocations[1].sublist(0, 3),
-            equals(<String>['gcloud', 'auth', 'configure-docker']));
-        expect(runner.invocations[2].sublist(0, 3),
-            equals(<String>['gcloud', 'services', 'enable']),
-            reason: 'precondition: enable Artifact Registry API');
-        expect(runner.invocations[2],
-            contains('artifactregistry.googleapis.com'));
-        expect(runner.invocations[3].sublist(0, 3),
-            equals(<String>['gcloud', 'services', 'enable']),
-            reason: 'precondition: enable Cloud Run API');
+        expect(
+          runner.invocations[0].sublist(0, 4),
+          equals(<String>['gcloud', 'config', 'get-value', 'account']),
+          reason: 'preflight: detect stale active gcloud account',
+        );
+        expect(
+          runner.invocations[1].sublist(0, 3),
+          equals(<String>['gcloud', 'auth', 'configure-docker']),
+        );
+        expect(
+          runner.invocations[2].sublist(0, 3),
+          equals(<String>['gcloud', 'services', 'enable']),
+          reason: 'precondition: enable Artifact Registry API',
+        );
+        expect(
+          runner.invocations[2],
+          contains('artifactregistry.googleapis.com'),
+        );
+        expect(
+          runner.invocations[3].sublist(0, 3),
+          equals(<String>['gcloud', 'services', 'enable']),
+          reason: 'precondition: enable Cloud Run API',
+        );
         expect(runner.invocations[3], contains('run.googleapis.com'));
-        expect(runner.invocations[4].sublist(0, 4),
-            equals(<String>['gcloud', 'artifacts', 'repositories', 'describe']),
-            reason: 'precondition: describe AR repo (success skips create)');
-        expect(runner.invocations[5].sublist(0, 2),
-            equals(<String>['docker', 'build']));
-        expect(runner.invocations[6].sublist(0, 2),
-            equals(<String>['docker', 'push']));
-        expect(runner.invocations[7].sublist(0, 3),
-            equals(<String>['gcloud', 'run', 'deploy']));
-        expect(runner.invocations[7], contains('test-app-server'),
-            reason: 'service name = serverPackageName with underscores');
-        expect(runner.invocations[8].sublist(0, 4),
-            equals(<String>['gcloud', 'run', 'services', 'describe']));
+        expect(
+          runner.invocations[4].sublist(0, 4),
+          equals(<String>['gcloud', 'artifacts', 'repositories', 'describe']),
+          reason: 'precondition: describe AR repo (success skips create)',
+        );
+        expect(
+          runner.invocations[5].sublist(0, 2),
+          equals(<String>['docker', 'build']),
+        );
+        expect(
+          runner.invocations[6].sublist(0, 2),
+          equals(<String>['docker', 'push']),
+        );
+        expect(
+          runner.invocations[7].sublist(0, 3),
+          equals(<String>['gcloud', 'run', 'deploy']),
+        );
+        expect(
+          runner.invocations[7],
+          contains('test-app-server'),
+          reason: 'service name = serverPackageName with underscores',
+        );
+        expect(
+          runner.invocations[8].sublist(0, 4),
+          equals(<String>['gcloud', 'run', 'services', 'describe']),
+        );
       },
     );
 
     test('falls back to synthetic URL when describe fails', () async {
-      final SetupConfig cfg = _config();
-      await _scaffoldServer(cfg);
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-        _unsetGcloudPreflight(),                            // preflight
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
-        ..._preconditionSuccesses(),                       // APIs + repo describe
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // deploy
-        ProcessResult(exitCode: 1, stdout: '', stderr: 'permission denied'),
-      ]);
+      final SetupConfig cfg = config();
+      await scaffoldServer(cfg);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[
+          unsetGcloudPreflight(), // preflight
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
+          ...preconditionSuccesses(), // APIs + repo describe
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // deploy
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'permission denied'),
+        ],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
@@ -437,117 +434,140 @@ void main() {
     });
 
     test('short-circuits when docker auth fails', () async {
-      final SetupConfig cfg = _config();
-      await _scaffoldServer(cfg);
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-        _unsetGcloudPreflight(),                                 // preflight
-        ProcessResult(exitCode: 1, stdout: '', stderr: 'auth failed'),
-      ]);
+      final SetupConfig cfg = config();
+      await scaffoldServer(cfg);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[
+          unsetGcloudPreflight(), // preflight
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'auth failed'),
+        ],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
 
       expect(url, isNull);
-      expect(runner.invocations, hasLength(2),
-          reason:
-              'should not attempt build/push/deploy after auth failure '
-              '(preflight + auth = 2 calls)');
+      expect(
+        runner.invocations,
+        hasLength(2),
+        reason:
+            'should not attempt build/push/deploy after auth failure '
+            '(preflight + auth = 2 calls)',
+      );
     });
 
     test('short-circuits when docker build fails', () async {
-      final SetupConfig cfg = _config();
-      await _scaffoldServer(cfg);
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-        _unsetGcloudPreflight(),                            // preflight
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
-        ..._preconditionSuccesses(),                       // APIs + repo describe
-        ProcessResult(exitCode: 1, stdout: '', stderr: 'build error'),
-      ]);
+      final SetupConfig cfg = config();
+      await scaffoldServer(cfg);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[
+          unsetGcloudPreflight(), // preflight
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
+          ...preconditionSuccesses(), // APIs + repo describe
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'build error'),
+        ],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
 
       expect(url, isNull);
-      expect(runner.invocations, hasLength(6),
-          reason:
-              'should not attempt push/deploy after build failure '
-              '(preflight + auth + 3 preconditions + build = 6 calls)');
+      expect(
+        runner.invocations,
+        hasLength(6),
+        reason:
+            'should not attempt push/deploy after build failure '
+            '(preflight + auth + 3 preconditions + build = 6 calls)',
+      );
     });
 
     test('short-circuits when docker push fails', () async {
-      final SetupConfig cfg = _config();
-      await _scaffoldServer(cfg);
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-        _unsetGcloudPreflight(),                            // preflight
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
-        ..._preconditionSuccesses(),                       // APIs + repo describe
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
-        ProcessResult(exitCode: 1, stdout: '', stderr: 'push denied'),
-      ]);
+      final SetupConfig cfg = config();
+      await scaffoldServer(cfg);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[
+          unsetGcloudPreflight(), // preflight
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
+          ...preconditionSuccesses(), // APIs + repo describe
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'push denied'),
+        ],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
 
       expect(url, isNull);
-      expect(runner.invocations, hasLength(7),
-          reason:
-              'should not attempt deploy after push failure '
-              '(preflight + auth + 3 preconditions + build + push = 7 calls)');
+      expect(
+        runner.invocations,
+        hasLength(7),
+        reason:
+            'should not attempt deploy after push failure '
+            '(preflight + auth + 3 preconditions + build + push = 7 calls)',
+      );
     });
 
     test('short-circuits when gcloud run deploy fails', () async {
-      final SetupConfig cfg = _config();
-      await _scaffoldServer(cfg);
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-        _unsetGcloudPreflight(),                            // preflight
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
-        ..._preconditionSuccesses(),                       // APIs + repo describe
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
-        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
-        ProcessResult(exitCode: 1, stdout: '', stderr: 'IAM denied'),
-      ]);
+      final SetupConfig cfg = config();
+      await scaffoldServer(cfg);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[
+          unsetGcloudPreflight(), // preflight
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
+          ...preconditionSuccesses(), // APIs + repo describe
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
+          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'IAM denied'),
+        ],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
 
       expect(url, isNull);
-      expect(runner.invocations, hasLength(8),
-          reason:
-              'should not attempt describe after deploy failure '
-              '(preflight + auth + 3 preconditions + build + push + deploy '
-              '= 8 calls)');
+      expect(
+        runner.invocations,
+        hasLength(8),
+        reason:
+            'should not attempt describe after deploy failure '
+            '(preflight + auth + 3 preconditions + build + push + deploy '
+            '= 8 calls)',
+      );
     });
 
     test(
       'snapshots models package into Docker context when createModels=true',
       () async {
-        final SetupConfig cfg = _config(createModels: true);
-        await _scaffoldServer(cfg);
+        final SetupConfig cfg = config(createModels: true);
+        await scaffoldServer(cfg);
         // Create the models package so cp has something to copy.
         final String modelsPath = p.join(cfg.outputDir, cfg.modelsPackageName);
         await Directory(modelsPath).create(recursive: true);
-        await File(p.join(modelsPath, 'pubspec.yaml'))
-            .writeAsString('name: ${cfg.modelsPackageName}');
+        await File(
+          p.join(modelsPath, 'pubspec.yaml'),
+        ).writeAsString('name: ${cfg.modelsPackageName}');
 
-        final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-          // The preflight gcloud-account check runs FIRST, before models
-          // copy / docker auth / build / push / deploy. Cleanup before
-          // `cp -r` happens via Dart's `Directory.delete()`, NOT via
-          // `rm` shelled out through the runner — so it does not appear
-          // in `runner.invocations`.
-          _unsetGcloudPreflight(),                            // preflight
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // cp -r
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
-          ..._preconditionSuccesses(),                       // APIs + repo describe
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // deploy
-          ProcessResult(
-            exitCode: 0,
-            stdout: 'https://x.run.app',
-            stderr: '',
-          ), // describe
-        ]);
+        final CapturingProcessRunner runner = CapturingProcessRunner(
+          <ProcessResult>[
+            // The preflight gcloud-account check runs FIRST, before models
+            // copy / docker auth / build / push / deploy. Cleanup before
+            // `cp -r` happens via Dart's `Directory.delete()`, NOT via
+            // `rm` shelled out through the runner — so it does not appear
+            // in `runner.invocations`.
+            unsetGcloudPreflight(), // preflight
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // cp -r
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
+            ...preconditionSuccesses(), // APIs + repo describe
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // deploy
+            ProcessResult(
+              exitCode: 0,
+              stdout: 'https://x.run.app',
+              stderr: '',
+            ), // describe
+          ],
+        );
         final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
         final String? url = await setup.deployToCloudRun();
@@ -555,32 +575,39 @@ void main() {
         expect(url, equals('https://x.run.app'));
         // [0] is the preflight `gcloud config get-value account`, [1]
         // is the `cp -r` for the models snapshot.
-        expect(runner.invocations[1].first, equals('cp'),
-            reason: 'should copy models snapshot before docker auth');
-        expect(runner.invocations[1],
-            contains(modelsPath));
+        expect(
+          runner.invocations[1].first,
+          equals('cp'),
+          reason: 'should copy models snapshot before docker auth',
+        );
+        expect(runner.invocations[1], contains(modelsPath));
       },
     );
 
     test('aborts when models snapshot copy fails', () async {
-      final SetupConfig cfg = _config(createModels: true);
-      await _scaffoldServer(cfg);
+      final SetupConfig cfg = config(createModels: true);
+      await scaffoldServer(cfg);
       final String modelsPath = p.join(cfg.outputDir, cfg.modelsPackageName);
       await Directory(modelsPath).create(recursive: true);
 
-      final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-        _unsetGcloudPreflight(),                                 // preflight
-        ProcessResult(exitCode: 1, stdout: '', stderr: 'permission denied'),
-      ]);
+      final CapturingProcessRunner runner = CapturingProcessRunner(
+        <ProcessResult>[
+          unsetGcloudPreflight(), // preflight
+          ProcessResult(exitCode: 1, stdout: '', stderr: 'permission denied'),
+        ],
+      );
       final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
       final String? url = await setup.deployToCloudRun();
 
       expect(url, isNull);
-      expect(runner.invocations, hasLength(2),
-          reason:
-              'should not continue past models copy failure '
-              '(preflight + cp = 2 calls)');
+      expect(
+        runner.invocations,
+        hasLength(2),
+        reason:
+            'should not continue past models copy failure '
+            '(preflight + cp = 2 calls)',
+      );
       // Suppress unused-variable lint for `modelsPath` — kept intentionally
       // so the scaffolded directory survives the test.
       expect(modelsPath, isNotEmpty);
@@ -594,9 +621,10 @@ void main() {
         // `test-project`, downstream `gcloud services enable` calls
         // would fail with PERMISSION_DENIED — but the preflight catches
         // it first.
-        final SetupConfig cfg = _config();
-        await _scaffoldServer(cfg);
-        final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
+        final SetupConfig cfg = config();
+        await scaffoldServer(cfg);
+        final CapturingProcessRunner
+        runner = CapturingProcessRunner(<ProcessResult>[
           // 1. preflight: get active account → SA from a *different* project
           ProcessResult(
             exitCode: 0,
@@ -621,17 +649,27 @@ void main() {
 
         final String? url = await setup.deployToCloudRun();
 
-        expect(url, isNull,
-            reason: 'preflight should abort the deploy on SA mismatch');
-        expect(runner.invocations, hasLength(2),
-            reason:
-                'should NOT continue past preflight when active SA is '
-                'from the wrong project (preflight detect + auth list = '
-                '2 calls, no docker / gcloud-run calls)');
-        expect(runner.invocations[0].sublist(0, 4),
-            equals(<String>['gcloud', 'config', 'get-value', 'account']));
-        expect(runner.invocations[1].sublist(0, 3),
-            equals(<String>['gcloud', 'auth', 'list']));
+        expect(
+          url,
+          isNull,
+          reason: 'preflight should abort the deploy on SA mismatch',
+        );
+        expect(
+          runner.invocations,
+          hasLength(2),
+          reason:
+              'should NOT continue past preflight when active SA is '
+              'from the wrong project (preflight detect + auth list = '
+              '2 calls, no docker / gcloud-run calls)',
+        );
+        expect(
+          runner.invocations[0].sublist(0, 4),
+          equals(<String>['gcloud', 'config', 'get-value', 'account']),
+        );
+        expect(
+          runner.invocations[1].sublist(0, 3),
+          equals(<String>['gcloud', 'auth', 'list']),
+        );
       },
     );
 
@@ -642,69 +680,71 @@ void main() {
         // service-account emails (no `<sa>@<project>.iam.gserviceaccount.
         // com` pattern), and could in principle have IAM bindings on
         // any project. The preflight must let them through.
-        final SetupConfig cfg = _config();
-        await _scaffoldServer(cfg);
-        final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-          // preflight: returns a user-account email → no-op, proceed
-          ProcessResult(
-            exitCode: 0,
-            stdout: 'brian@myrhe.net\n',
-            stderr: '',
-          ),
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
-          ..._preconditionSuccesses(),                       // APIs + repo describe
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // deploy
-          ProcessResult(
-            exitCode: 0,
-            stdout: 'https://test-app-server.run.app\n',
-            stderr: '',
-          ), // describe
-        ]);
+        final SetupConfig cfg = config();
+        await scaffoldServer(cfg);
+        final CapturingProcessRunner runner = CapturingProcessRunner(
+          <ProcessResult>[
+            // preflight: returns a user-account email → no-op, proceed
+            ProcessResult(exitCode: 0, stdout: 'brian@myrhe.net\n', stderr: ''),
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
+            ...preconditionSuccesses(), // APIs + repo describe
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
+            ProcessResult(exitCode: 0, stdout: '', stderr: ''), // deploy
+            ProcessResult(
+              exitCode: 0,
+              stdout: 'https://test-app-server.run.app\n',
+              stderr: '',
+            ), // describe
+          ],
+        );
         final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
         final String? url = await setup.deployToCloudRun();
 
-        expect(url, equals('https://test-app-server.run.app'),
-            reason: 'user-account preflight should be a pass-through');
+        expect(
+          url,
+          equals('https://test-app-server.run.app'),
+          reason: 'user-account preflight should be a pass-through',
+        );
         expect(runner.invocations, hasLength(9));
       },
     );
 
-    test(
-      'preflight allows SA matching the target project',
-      () async {
-        // The SA `<sa>@<projectId>.iam.gserviceaccount.com` is the
-        // canonical "this project's own SA" — must be allowed through.
-        final SetupConfig cfg = _config();
-        await _scaffoldServer(cfg);
-        final _CapturingRunner runner = _CapturingRunner(<ProcessResult>[
-          ProcessResult(
-            exitCode: 0,
-            stdout:
-                'firebase-adminsdk-fbsvc@test-project.iam.gserviceaccount.com\n',
-            stderr: '',
-          ), // preflight: matching SA
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
-          ..._preconditionSuccesses(),                       // APIs + repo describe
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
-          ProcessResult(exitCode: 0, stdout: '', stderr: ''), // deploy
-          ProcessResult(
-            exitCode: 0,
-            stdout: 'https://test-app-server.run.app\n',
-            stderr: '',
-          ), // describe
-        ]);
-        final ServerSetup setup = ServerSetup(cfg, runner: runner);
+    test('preflight allows SA matching the target project', () async {
+      // The SA `<sa>@<projectId>.iam.gserviceaccount.com` is the
+      // canonical "this project's own SA" — must be allowed through.
+      final SetupConfig cfg = config();
+      await scaffoldServer(cfg);
+      final CapturingProcessRunner
+      runner = CapturingProcessRunner(<ProcessResult>[
+        ProcessResult(
+          exitCode: 0,
+          stdout:
+              'firebase-adminsdk-fbsvc@test-project.iam.gserviceaccount.com\n',
+          stderr: '',
+        ), // preflight: matching SA
+        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // auth
+        ...preconditionSuccesses(), // APIs + repo describe
+        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // build
+        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // push
+        ProcessResult(exitCode: 0, stdout: '', stderr: ''), // deploy
+        ProcessResult(
+          exitCode: 0,
+          stdout: 'https://test-app-server.run.app\n',
+          stderr: '',
+        ), // describe
+      ]);
+      final ServerSetup setup = ServerSetup(cfg, runner: runner);
 
-        final String? url = await setup.deployToCloudRun();
+      final String? url = await setup.deployToCloudRun();
 
-        expect(url, equals('https://test-app-server.run.app'),
-            reason: 'matching-project SA preflight should be a pass-through');
-        expect(runner.invocations, hasLength(9));
-      },
-    );
+      expect(
+        url,
+        equals('https://test-app-server.run.app'),
+        reason: 'matching-project SA preflight should be a pass-through',
+      );
+      expect(runner.invocations, hasLength(9));
+    });
   });
 }

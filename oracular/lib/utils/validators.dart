@@ -1,4 +1,5 @@
 /// Input validation utilities for Oracular CLI
+library;
 
 /// Validation result with optional error message
 class ValidationResult {

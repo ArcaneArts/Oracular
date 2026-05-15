@@ -79,6 +79,20 @@ oracular
 oracular create app --name my_app --org com.example
 ```
 
+## Development Test Safety
+
+From `oracular/`, plain `dart test` is the safe default: it skips live
+Firebase/GCP deployment suites and keeps local validation on unit tests,
+template copy/permutation checks, and non-deploying compile checks.
+
+Run live deployment tests only when you intend to mutate the shared Firebase
+test project and have credentials in place:
+
+```bash
+cd oracular
+ORACULAR_RUN_DEPLOYMENT_TESTS=1 dart test -P live-deployment test/integration/deployment
+```
+
 ## Commands
 
 ### Project Creation

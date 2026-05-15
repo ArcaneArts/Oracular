@@ -1,17 +1,20 @@
 @TestOn('vm')
 @Timeout(Duration(minutes: 60))
 // Run tests serially to avoid port conflicts with jaspr build
-@Tags(<String>['serial'])
+@Tags(<String>['serial', 'live_deployment'])
+library;
+
 import 'dart:io';
 
 import 'package:oracular/models/setup_config.dart';
 import 'package:oracular/models/template_info.dart';
 import 'package:oracular/services/template_copier.dart';
-import 'package:oracular/utils/process_runner.dart';
+import 'package:oracular/utils/process_runner.dart' show ProcessResult;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'authenticated_runner.dart';
+import 'deployment_test_harness.dart';
 import 'test_config.dart';
 
 /// Default port for jaspr tests (avoids 8080 which may be in use)
@@ -23,18 +26,11 @@ void main() {
     late Directory tempDir;
     late AuthenticatedProcessRunner runner;
 
-    setUpAll(() async {
-      if (!DeploymentTestConfig.canRunDeploymentTests) {
-        return;
-      }
-      await DeploymentTestConfig.initializeGcloud();
-    });
+    setUpAll(initializeLiveDeploymentSuite);
 
     setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('oracular_jaspr_');
-      runner = AuthenticatedProcessRunner(
-        environment: DeploymentTestConfig.authEnvironment,
-      );
+      tempDir = await createDeploymentTempDir('oracular_jaspr_');
+      runner = authenticatedDeploymentRunner();
     });
 
     tearDown(() async {
@@ -52,20 +48,22 @@ void main() {
             continue;
           }
 
-          final String permName = 'models=${createModels ? "yes" : "no"}, server=${createServer ? "yes" : "no"}';
+          final String permName =
+              'models=${createModels ? "yes" : "no"}, server=${createServer ? "yes" : "no"}';
 
           test(
             'build and deploy with $permName',
             () async {
-              if (!DeploymentTestConfig.canRunDeploymentTests) {
-                markTestSkipped(DeploymentTestConfig.skipMessage);
+              if (skipUnlessLiveDeploymentEnabled()) {
                 return;
               }
 
               // Small delay to ensure port is released from previous test
               await Future<void>.delayed(const Duration(seconds: 2));
 
-              final String timestamp = DateTime.now().millisecondsSinceEpoch.toString().substring(5);
+              final String timestamp = DateTime.now().millisecondsSinceEpoch
+                  .toString()
+                  .substring(5);
               final String appName = 'jaspr$timestamp';
 
               final SetupConfig config = SetupConfig(
@@ -81,16 +79,23 @@ void main() {
               );
 
               // Step 1: Copy templates
-              final String templatesPath = _getTemplatesPath();
-              final TemplateCopier copier = TemplateCopier.withPath(config, templatesPath);
+              final String templatesPath = deploymentTemplatesPath;
+              final TemplateCopier copier = TemplateCopier.withPath(
+                config,
+                templatesPath,
+              );
               await copier.copyAll();
 
               // Verify web project created (Jaspr uses webPackageName)
-              final String webPath = p.join(tempDir.path, config.webPackageName);
+              final String webPath = p.join(
+                tempDir.path,
+                config.webPackageName,
+              );
               expect(
                 Directory(webPath).existsSync(),
                 isTrue,
-                reason: 'Web project should be created at ${config.webPackageName}',
+                reason:
+                    'Web project should be created at ${config.webPackageName}',
               );
 
               // Configure jaspr to use a non-standard port (avoids 8080)
@@ -98,7 +103,10 @@ void main() {
 
               // Verify models if requested
               if (createModels) {
-                final String modelsPath = p.join(tempDir.path, config.modelsPackageName);
+                final String modelsPath = p.join(
+                  tempDir.path,
+                  config.modelsPackageName,
+                );
                 expect(
                   Directory(modelsPath).existsSync(),
                   isTrue,
@@ -111,7 +119,11 @@ void main() {
                   <String>['pub', 'get'],
                   workingDirectory: modelsPath,
                 );
-                expect(modelsPubResult.exitCode, equals(0), reason: 'Models pub get should succeed');
+                expect(
+                  modelsPubResult.exitCode,
+                  equals(0),
+                  reason: 'Models pub get should succeed',
+                );
 
                 // Analyze models
                 final ProcessResult modelsAnalyze = await runner.run(
@@ -119,12 +131,19 @@ void main() {
                   <String>['analyze'],
                   workingDirectory: modelsPath,
                 );
-                expect(modelsAnalyze.exitCode, equals(0), reason: 'Models should analyze cleanly');
+                expect(
+                  modelsAnalyze.exitCode,
+                  equals(0),
+                  reason: 'Models should analyze cleanly',
+                );
               }
 
               // Verify server if requested
               if (createServer) {
-                final String serverPath = p.join(tempDir.path, config.serverPackageName);
+                final String serverPath = p.join(
+                  tempDir.path,
+                  config.serverPackageName,
+                );
                 expect(
                   Directory(serverPath).existsSync(),
                   isTrue,
@@ -137,7 +156,11 @@ void main() {
                   <String>['pub', 'get'],
                   workingDirectory: serverPath,
                 );
-                expect(serverPubResult.exitCode, equals(0), reason: 'Server pub get should succeed');
+                expect(
+                  serverPubResult.exitCode,
+                  equals(0),
+                  reason: 'Server pub get should succeed',
+                );
 
                 // Analyze server
                 final ProcessResult serverAnalyze = await runner.run(
@@ -145,16 +168,23 @@ void main() {
                   <String>['analyze'],
                   workingDirectory: serverPath,
                 );
-                expect(serverAnalyze.exitCode, equals(0), reason: 'Server should analyze cleanly');
+                expect(
+                  serverAnalyze.exitCode,
+                  equals(0),
+                  reason: 'Server should analyze cleanly',
+                );
               }
 
               // Step 2: Get web dependencies
-              final ProcessResult pubResult = await runner.run(
-                'dart',
-                <String>['pub', 'get'],
-                workingDirectory: webPath,
+              final ProcessResult pubResult = await runner.run('dart', <String>[
+                'pub',
+                'get',
+              ], workingDirectory: webPath);
+              expect(
+                pubResult.exitCode,
+                equals(0),
+                reason: 'Web pub get should succeed',
               );
-              expect(pubResult.exitCode, equals(0), reason: 'Web pub get should succeed');
 
               // Step 3: Build with Jaspr
               final ProcessResult buildResult = await runner.run(
@@ -169,8 +199,14 @@ void main() {
               );
 
               // Verify build output
-              final Directory buildDir = Directory(p.join(webPath, 'build', 'jaspr'));
-              expect(buildDir.existsSync(), isTrue, reason: 'Jaspr build output should exist');
+              final Directory buildDir = Directory(
+                p.join(webPath, 'build', 'jaspr'),
+              );
+              expect(
+                buildDir.existsSync(),
+                isTrue,
+                reason: 'Jaspr build output should exist',
+              );
 
               // Step 4: Setup Firebase config
               final File firebaseJson = File(p.join(webPath, 'firebase.json'));
@@ -194,16 +230,20 @@ void main() {
 ''');
 
               // Step 5: Deploy
-              final ProcessResult deployResult = await runner.run(
-                'firebase',
-                <String>['deploy', '--only', 'hosting', '--project', DeploymentTestConfig.projectId],
-                workingDirectory: webPath,
-              );
+              final ProcessResult deployResult = await runner
+                  .run('firebase', <String>[
+                    'deploy',
+                    '--only',
+                    'hosting',
+                    '--project',
+                    DeploymentTestConfig.projectId,
+                  ], workingDirectory: webPath);
 
               expect(
                 deployResult.exitCode,
                 equals(0),
-                reason: 'Firebase deploy should succeed:\n${deployResult.stdout}\n${deployResult.stderr}',
+                reason:
+                    'Firebase deploy should succeed:\n${deployResult.stdout}\n${deployResult.stderr}',
               );
 
               print('Successfully tested arcaneJaspr with $permName');
@@ -223,20 +263,22 @@ void main() {
             continue;
           }
 
-          final String permName = 'models=${createModels ? "yes" : "no"}, server=${createServer ? "yes" : "no"}';
+          final String permName =
+              'models=${createModels ? "yes" : "no"}, server=${createServer ? "yes" : "no"}';
 
           test(
             'build and deploy with $permName',
             () async {
-              if (!DeploymentTestConfig.canRunDeploymentTests) {
-                markTestSkipped(DeploymentTestConfig.skipMessage);
+              if (skipUnlessLiveDeploymentEnabled()) {
                 return;
               }
 
               // Small delay to ensure port is released from previous test
               await Future<void>.delayed(const Duration(seconds: 2));
 
-              final String timestamp = DateTime.now().millisecondsSinceEpoch.toString().substring(5);
+              final String timestamp = DateTime.now().millisecondsSinceEpoch
+                  .toString()
+                  .substring(5);
               final String appName = 'jasprdocs$timestamp';
 
               final SetupConfig config = SetupConfig(
@@ -252,16 +294,23 @@ void main() {
               );
 
               // Step 1: Copy templates
-              final String templatesPath = _getTemplatesPath();
-              final TemplateCopier copier = TemplateCopier.withPath(config, templatesPath);
+              final String templatesPath = deploymentTemplatesPath;
+              final TemplateCopier copier = TemplateCopier.withPath(
+                config,
+                templatesPath,
+              );
               await copier.copyAll();
 
               // Verify web project created
-              final String webPath = p.join(tempDir.path, config.webPackageName);
+              final String webPath = p.join(
+                tempDir.path,
+                config.webPackageName,
+              );
               expect(
                 Directory(webPath).existsSync(),
                 isTrue,
-                reason: 'Web project should be created at ${config.webPackageName}',
+                reason:
+                    'Web project should be created at ${config.webPackageName}',
               );
 
               // Configure jaspr to use a non-standard port (avoids 8080)
@@ -269,7 +318,10 @@ void main() {
 
               // Verify models if requested
               if (createModels) {
-                final String modelsPath = p.join(tempDir.path, config.modelsPackageName);
+                final String modelsPath = p.join(
+                  tempDir.path,
+                  config.modelsPackageName,
+                );
                 expect(
                   Directory(modelsPath).existsSync(),
                   isTrue,
@@ -281,19 +333,30 @@ void main() {
                   <String>['pub', 'get'],
                   workingDirectory: modelsPath,
                 );
-                expect(modelsPubResult.exitCode, equals(0), reason: 'Models pub get should succeed');
+                expect(
+                  modelsPubResult.exitCode,
+                  equals(0),
+                  reason: 'Models pub get should succeed',
+                );
 
                 final ProcessResult modelsAnalyze = await runner.run(
                   'dart',
                   <String>['analyze'],
                   workingDirectory: modelsPath,
                 );
-                expect(modelsAnalyze.exitCode, equals(0), reason: 'Models should analyze cleanly');
+                expect(
+                  modelsAnalyze.exitCode,
+                  equals(0),
+                  reason: 'Models should analyze cleanly',
+                );
               }
 
               // Verify server if requested
               if (createServer) {
-                final String serverPath = p.join(tempDir.path, config.serverPackageName);
+                final String serverPath = p.join(
+                  tempDir.path,
+                  config.serverPackageName,
+                );
                 expect(
                   Directory(serverPath).existsSync(),
                   isTrue,
@@ -305,23 +368,34 @@ void main() {
                   <String>['pub', 'get'],
                   workingDirectory: serverPath,
                 );
-                expect(serverPubResult.exitCode, equals(0), reason: 'Server pub get should succeed');
+                expect(
+                  serverPubResult.exitCode,
+                  equals(0),
+                  reason: 'Server pub get should succeed',
+                );
 
                 final ProcessResult serverAnalyze = await runner.run(
                   'dart',
                   <String>['analyze'],
                   workingDirectory: serverPath,
                 );
-                expect(serverAnalyze.exitCode, equals(0), reason: 'Server should analyze cleanly');
+                expect(
+                  serverAnalyze.exitCode,
+                  equals(0),
+                  reason: 'Server should analyze cleanly',
+                );
               }
 
               // Step 2: Get web dependencies
-              final ProcessResult pubResult = await runner.run(
-                'dart',
-                <String>['pub', 'get'],
-                workingDirectory: webPath,
+              final ProcessResult pubResult = await runner.run('dart', <String>[
+                'pub',
+                'get',
+              ], workingDirectory: webPath);
+              expect(
+                pubResult.exitCode,
+                equals(0),
+                reason: 'Web pub get should succeed',
               );
-              expect(pubResult.exitCode, equals(0), reason: 'Web pub get should succeed');
 
               // Step 3: Build with Jaspr
               final ProcessResult buildResult = await runner.run(
@@ -336,8 +410,14 @@ void main() {
               );
 
               // Verify build output
-              final Directory buildDir = Directory(p.join(webPath, 'build', 'jaspr'));
-              expect(buildDir.existsSync(), isTrue, reason: 'Jaspr build output should exist');
+              final Directory buildDir = Directory(
+                p.join(webPath, 'build', 'jaspr'),
+              );
+              expect(
+                buildDir.existsSync(),
+                isTrue,
+                reason: 'Jaspr build output should exist',
+              );
 
               // Step 4: Setup Firebase config
               final File firebaseJson = File(p.join(webPath, 'firebase.json'));
@@ -361,16 +441,20 @@ void main() {
 ''');
 
               // Step 5: Deploy
-              final ProcessResult deployResult = await runner.run(
-                'firebase',
-                <String>['deploy', '--only', 'hosting', '--project', DeploymentTestConfig.projectId],
-                workingDirectory: webPath,
-              );
+              final ProcessResult deployResult = await runner
+                  .run('firebase', <String>[
+                    'deploy',
+                    '--only',
+                    'hosting',
+                    '--project',
+                    DeploymentTestConfig.projectId,
+                  ], workingDirectory: webPath);
 
               expect(
                 deployResult.exitCode,
                 equals(0),
-                reason: 'Firebase deploy should succeed:\n${deployResult.stdout}\n${deployResult.stderr}',
+                reason:
+                    'Firebase deploy should succeed:\n${deployResult.stdout}\n${deployResult.stderr}',
               );
 
               print('Successfully tested arcaneJasprDocs with $permName');
@@ -381,10 +465,6 @@ void main() {
       }
     });
   });
-}
-
-String _getTemplatesPath() {
-  return p.normalize(p.join(Directory.current.path, '..', 'templates'));
 }
 
 /// Configure jaspr to use a different port (avoids 8080)
@@ -404,7 +484,10 @@ Future<void> _configureJasprPort(String webPath) async {
     content = content.replaceAllMapped(jasprSection, (Match match) {
       final String existingContent = match.group(0)!;
       // Add port after 'jaspr:\n'
-      return existingContent.replaceFirst('jaspr:\n', 'jaspr:\n  port: $_jasprTestPort\n');
+      return existingContent.replaceFirst(
+        'jaspr:\n',
+        'jaspr:\n  port: $_jasprTestPort\n',
+      );
     });
   } else if (content.contains('jaspr:')) {
     // Simple jaspr: line without content

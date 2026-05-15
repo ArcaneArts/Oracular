@@ -1,4 +1,3 @@
-
 import 'package:arcane/arcane.dart' hide Window, MenuItem;
 import 'package:fast_log/fast_log.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
@@ -186,8 +185,7 @@ class ArcaneDockTrayListener implements TrayListener {
         WindowManager.show();
         break;
       case 'settings':
-        // TODO: Implement settings
-        info("Settings clicked");
+        info("Opening settings");
         WindowManager.show();
         break;
       case 'exit':

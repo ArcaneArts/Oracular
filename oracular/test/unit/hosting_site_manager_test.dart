@@ -1,56 +1,12 @@
 import 'package:oracular/services/hosting_site_manager.dart';
-import 'package:oracular/utils/process_runner.dart';
 import 'package:test/test.dart';
 
-class _CapturedCall {
-  _CapturedCall(
-    this.executable,
-    List<String> arguments,
-    this.workingDirectory,
-    this.environment,
-  ) : arguments = List<String>.unmodifiable(arguments);
-
-  final String executable;
-  final List<String> arguments;
-  final String? workingDirectory;
-  final Map<String, String>? environment;
-}
-
-class _ScriptedRunner extends ProcessRunner {
-  _ScriptedRunner({this.results = const <ProcessResult>[]})
-    : super(maxAutoRetries: 0);
-
-  List<ProcessResult> results;
-  final List<_CapturedCall> calls = <_CapturedCall>[];
-  int _cursor = 0;
-
-  @override
-  Future<ProcessResult> run(
-    String executable,
-    List<String> arguments, {
-    String? workingDirectory,
-    Map<String, String>? environment,
-    bool inheritStdio = false,
-  }) async {
-    calls.add(
-      _CapturedCall(
-        executable,
-        arguments,
-        workingDirectory,
-        environment == null ? null : Map<String, String>.from(environment),
-      ),
-    );
-    if (_cursor >= results.length) {
-      return ProcessResult(exitCode: 0, stdout: '', stderr: '');
-    }
-    return results[_cursor++];
-  }
-}
+import '../support/process_runner_fakes.dart';
 
 void main() {
   group('HostingSiteManager.listSites', () {
     test('parses the standard Firebase CLI JSON envelope', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(
             exitCode: 0,
@@ -77,7 +33,7 @@ void main() {
     });
 
     test('falls back to parsing `name` when `siteId` is missing', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(
             exitCode: 0,
@@ -99,7 +55,7 @@ void main() {
     });
 
     test('returns null on non-JSON output', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(exitCode: 0, stdout: 'not-json', stderr: ''),
         ],
@@ -114,7 +70,7 @@ void main() {
     });
 
     test('returns null when the CLI fails', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(exitCode: 1, stdout: '', stderr: 'auth required'),
         ],
@@ -131,7 +87,7 @@ void main() {
 
   group('HostingSiteManager.ensureBetaSite', () {
     test('returns existed when list shows the site', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(
             exitCode: 0,
@@ -157,7 +113,7 @@ void main() {
     });
 
     test('creates the site when not in the list', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           // 1) list returns no beta site
           ProcessResult(
@@ -189,7 +145,7 @@ void main() {
     });
 
     test('treats ALREADY_EXISTS during create as existed', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           // 1) list call fails so we fall through to optimistic create
           ProcessResult(exitCode: 1, stdout: '', stderr: 'list failed'),
@@ -215,7 +171,7 @@ void main() {
     });
 
     test('returns failed when create fails for any other reason', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(exitCode: 1, stdout: '', stderr: 'list failed'),
           ProcessResult(
@@ -239,7 +195,7 @@ void main() {
     });
 
     test('returns failed when project id is empty', () async {
-      final runner = _ScriptedRunner();
+      final runner = ScriptedProcessRunner();
       final manager = HostingSiteManager(
         '',
         workingDirectory: '/tmp',
@@ -255,7 +211,7 @@ void main() {
 
   group('HostingSiteManager.applyTargets', () {
     test('runs target:apply for both release and beta', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(exitCode: 0, stdout: '', stderr: ''),
           ProcessResult(exitCode: 0, stdout: '', stderr: ''),
@@ -283,7 +239,7 @@ void main() {
     });
 
     test('reports per-target failures', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(exitCode: 0, stdout: '', stderr: ''),
           ProcessResult(exitCode: 1, stdout: '', stderr: 'site not found'),
@@ -304,7 +260,7 @@ void main() {
     });
 
     test('returns failure when project id is empty', () async {
-      final runner = _ScriptedRunner();
+      final runner = ScriptedProcessRunner();
       final manager = HostingSiteManager(
         '',
         workingDirectory: '/tmp/proj',
@@ -344,7 +300,7 @@ void main() {
 
   group('HostingSiteManager auth env propagation', () {
     test('listSites passes the configured environment to firebase', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(
             exitCode: 0,
@@ -373,7 +329,7 @@ void main() {
     });
 
     test('ensureBetaSite passes env to both list and create calls', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(
             exitCode: 0,
@@ -409,7 +365,7 @@ void main() {
     });
 
     test('applyTargets passes env to both target:apply calls', () async {
-      final runner = _ScriptedRunner(
+      final runner = ScriptedProcessRunner(
         results: <ProcessResult>[
           ProcessResult(exitCode: 0, stdout: '', stderr: ''),
           ProcessResult(exitCode: 0, stdout: '', stderr: ''),
@@ -439,7 +395,7 @@ void main() {
     test(
       'no environment param means firebase calls inherit parent env',
       () async {
-        final runner = _ScriptedRunner(
+        final runner = ScriptedProcessRunner(
           results: <ProcessResult>[
             ProcessResult(
               exitCode: 0,
@@ -466,7 +422,7 @@ void main() {
     test(
       'does not force-logout or retry when service-account auth fails',
       () async {
-        final runner = _ScriptedRunner(
+        final runner = ScriptedProcessRunner(
           results: <ProcessResult>[
             // 1) list shows no beta site → fall through to create
             ProcessResult(
@@ -515,7 +471,7 @@ void main() {
         );
         expect(
           runner.calls.any(
-            (_CapturedCall call) => call.arguments.contains('logout'),
+            (CapturedProcessCall call) => call.arguments.contains('logout'),
           ),
           isFalse,
         );
@@ -528,7 +484,7 @@ void main() {
         // Without an environment, we don't know that the user wants SA-
         // based auth at all. Return the original failure without suggesting
         // a destructive global CLI logout.
-        final runner = _ScriptedRunner(
+        final runner = ScriptedProcessRunner(
           results: <ProcessResult>[
             ProcessResult(
               exitCode: 0,
@@ -563,7 +519,7 @@ void main() {
     test(
       'auth guidance recognises command-requires-authentication phrasing',
       () async {
-        final runner = _ScriptedRunner(
+        final runner = ScriptedProcessRunner(
           results: <ProcessResult>[
             ProcessResult(
               exitCode: 0,
@@ -594,7 +550,7 @@ void main() {
         expect(runner.calls, hasLength(2));
         expect(
           runner.calls.any(
-            (_CapturedCall call) => call.arguments.contains('logout'),
+            (CapturedProcessCall call) => call.arguments.contains('logout'),
           ),
           isFalse,
         );

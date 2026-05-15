@@ -1,4 +1,5 @@
 /// String manipulation utilities for Oracular CLI
+library;
 
 /// Convert snake_case to PascalCase
 /// Example: "my_app_name" -> "MyAppName"

@@ -16,13 +16,15 @@ import '../../services/server_setup.dart';
 import '../../utils/project_config_loader.dart';
 import '../../utils/setup_guidance.dart';
 import '../../utils/user_prompt.dart';
+import 'setup_config_requirements.dart';
 
 /// Re-walks the upward search path used by [ProjectConfigLoader] and returns
 /// the first existing `setup_config.env` path. Used when a handler needs to
 /// persist mutations back to the same file the loader read from.
 String? _findExistingConfigPath() {
-  final List<String> paths =
-      ProjectConfigLoader.configSearchPaths(Directory.current.path);
+  final List<String> paths = ProjectConfigLoader.configSearchPaths(
+    Directory.current.path,
+  );
   for (final String path in paths) {
     if (File(path).existsSync()) {
       return path;
@@ -209,11 +211,11 @@ Future<void> handleDeployAll() async {
     return;
   }
 
-  if (!config.useFirebase &&
-      !config.createServer &&
-      !config.hasJasprServer) {
-    error('Neither Firebase, a Jaspr server, nor an arcane_server is '
-        'enabled for this project — nothing to deploy.');
+  if (!config.useFirebase && !config.createServer && !config.hasJasprServer) {
+    error(
+      'Neither Firebase, a Jaspr server, nor an arcane_server is '
+      'enabled for this project — nothing to deploy.',
+    );
     return;
   }
 
@@ -249,8 +251,10 @@ Future<void> handleDeployAll() async {
       error('Jaspr server deploy failed: ${result.message}');
     }
   } else if (config.template.isJasprApp) {
-    info('Jaspr render mode "${config.jasprRenderMode.displayName}" '
-        'does not require a Cloud Run service — skipping Jaspr server deploy.');
+    info(
+      'Jaspr render mode "${config.jasprRenderMode.displayName}" '
+      'does not require a Cloud Run service — skipping Jaspr server deploy.',
+    );
   }
 
   // ─── Server (arcane_server companion) ──────────────────────────────────
@@ -264,8 +268,10 @@ Future<void> handleDeployAll() async {
     serverUrl = await server.deployToCloudRun();
     serverOk = serverUrl != null;
     if (!serverOk) {
-      error('Server deploy failed. See errors above for the failing step '
-          '(docker auth / build / push / gcloud run deploy).');
+      error(
+        'Server deploy failed. See errors above for the failing step '
+        '(docker auth / build / push / gcloud run deploy).',
+      );
     }
   } else {
     info('arcane_server is disabled — skipping its Cloud Run deploy.');
@@ -330,15 +336,17 @@ Future<void> handleDeployJasprServer() async {
     print('');
     UserPrompt.printList(<String>[
       'oracular deploy jaspr-server only applies to Jaspr templates '
-      'rendered in SSR / hybrid mode.',
+          'rendered in SSR / hybrid mode.',
       'Current template: ${config.template.displayName}',
     ]);
     return;
   }
 
   if (!config.hasJasprServer) {
-    error('Render mode "${config.jasprRenderMode.displayName}" does not '
-        'produce a Cloud Run image — nothing to deploy.');
+    error(
+      'Render mode "${config.jasprRenderMode.displayName}" does not '
+      'produce a Cloud Run image — nothing to deploy.',
+    );
     print('');
     UserPrompt.printList(<String>[
       'To enable a Jaspr Cloud Run service, set:',
@@ -402,7 +410,9 @@ Future<void> handleDeployServer() async {
   }
   if (config.firebaseProjectId == null ||
       config.firebaseProjectId!.trim().isEmpty) {
-    error('No FIREBASE_PROJECT_ID configured \u2014 cannot deploy to Cloud Run.');
+    error(
+      'No FIREBASE_PROJECT_ID configured \u2014 cannot deploy to Cloud Run.',
+    );
     print('');
     UserPrompt.printList(<String>[
       'Set FIREBASE_PROJECT_ID in '
@@ -570,30 +580,36 @@ Future<void> handleFirebaseSetupFull() async {
   UserPrompt.printList(<String>[
     'Project: ${config.firebaseProjectId}',
     'Template: ${config.template.name}',
-    if (SetupGuidance.supportsWebHosting(config))
-      'Web hosting: enabled',
+    if (SetupGuidance.supportsWebHosting(config)) 'Web hosting: enabled',
     if (config.createServer) 'Server (Cloud Run): enabled',
   ]);
   print('');
 
-  final FirebaseSetupOrchestrator orchestrator =
-      FirebaseSetupOrchestrator(config);
+  final FirebaseSetupOrchestrator orchestrator = FirebaseSetupOrchestrator(
+    config,
+  );
 
   final OrchestratorReport report = await orchestrator.runAll(
     interactive: true,
     onStep: (SetupStepResult result) async {
       switch (result.status) {
         case SetupStepStatus.success:
-          success('${result.step.label}'
-              '${result.message.isNotEmpty ? ' — ${result.message}' : ''}');
+          success(
+            '${result.step.label}'
+            '${result.message.isNotEmpty ? ' — ${result.message}' : ''}',
+          );
           break;
         case SetupStepStatus.skipped:
-          warn('${result.step.label} skipped'
-              '${result.message.isNotEmpty ? ': ${result.message}' : ''}');
+          warn(
+            '${result.step.label} skipped'
+            '${result.message.isNotEmpty ? ': ${result.message}' : ''}',
+          );
           break;
         case SetupStepStatus.failed:
-          error('${result.step.label} failed'
-              '${result.message.isNotEmpty ? ': ${result.message}' : ''}');
+          error(
+            '${result.step.label} failed'
+            '${result.message.isNotEmpty ? ': ${result.message}' : ''}',
+          );
           break;
       }
     },
@@ -659,15 +675,8 @@ Future<void> handleFirebaseSetupFull() async {
 
 /// Create the `<project>-beta` site and apply hosting targets (T6).
 Future<void> handleHostingInit() async {
-  final SetupConfig? config = await ProjectConfigLoader.load();
-  if (config == null) {
-    ProjectConfigLoader.printMissingConfigHelp();
-    return;
-  }
-  if (!config.useFirebase || config.firebaseProjectId == null) {
-    error('Firebase is not enabled or project ID not set.');
-    return;
-  }
+  final SetupConfig? config = await requireFirebaseProjectConfig();
+  if (config == null) return;
   if (!SetupGuidance.supportsWebHosting(config)) {
     error('This project does not produce a web build; nothing to host.');
     return;
@@ -716,28 +725,26 @@ void _printSiteResult(SiteEnsureResult result, {required String role}) {
       success('$role site `${result.siteId}` created.');
       break;
     case SiteEnsureOutcome.failed:
-      error('$role site `${result.siteId}` could not be ensured: '
-          '${result.message}');
+      error(
+        '$role site `${result.siteId}` could not be ensured: '
+        '${result.message}',
+      );
       break;
   }
 }
 
 /// Ensure the default Firestore database exists (T4).
 Future<void> handleFirestoreInit() async {
-  final SetupConfig? config = await ProjectConfigLoader.load();
-  if (config == null) {
-    ProjectConfigLoader.printMissingConfigHelp();
-    return;
-  }
-  if (!config.useFirebase || config.firebaseProjectId == null) {
-    error('Firebase is not enabled or project ID not set.');
-    return;
-  }
+  final SetupConfig? config = await requireFirebaseProjectConfig();
+  if (config == null) return;
 
-  final FirebaseInitializer initializer =
-      FirebaseInitializer(config.firebaseProjectId!);
+  final FirebaseInitializer initializer = FirebaseInitializer(
+    config.firebaseProjectId!,
+  );
 
-  info('Ensuring Firestore default database exists for ${config.firebaseProjectId}...');
+  info(
+    'Ensuring Firestore default database exists for ${config.firebaseProjectId}...',
+  );
   final FirestoreInitResult result = await initializer.ensureFirestoreDatabase(
     region: config.firestoreRegion,
   );
@@ -768,27 +775,25 @@ Future<void> handleFirestoreInit() async {
 
 /// Ensure the default Storage bucket exists (T4).
 Future<void> handleStorageInit() async {
-  final SetupConfig? config = await ProjectConfigLoader.load();
-  if (config == null) {
-    ProjectConfigLoader.printMissingConfigHelp();
-    return;
-  }
-  if (!config.useFirebase || config.firebaseProjectId == null) {
-    error('Firebase is not enabled or project ID not set.');
-    return;
-  }
+  final SetupConfig? config = await requireFirebaseProjectConfig();
+  if (config == null) return;
 
-  final FirebaseInitializer initializer =
-      FirebaseInitializer(config.firebaseProjectId!);
+  final FirebaseInitializer initializer = FirebaseInitializer(
+    config.firebaseProjectId!,
+  );
 
-  info('Ensuring default Storage bucket exists for ${config.firebaseProjectId}...');
+  info(
+    'Ensuring default Storage bucket exists for ${config.firebaseProjectId}...',
+  );
   final StorageInitResult result = await initializer.ensureStorageBucket();
 
   if (result.success) {
     if (result.created) {
       success('Default Storage bucket created: gs://${result.bucketName}');
     } else {
-      success('Default Storage bucket already exists: gs://${result.bucketName}');
+      success(
+        'Default Storage bucket already exists: gs://${result.bucketName}',
+      );
     }
     print('');
     if (result.needsFirebaseInit && result.getStartedUrl != null) {
@@ -801,7 +806,10 @@ Future<void> handleStorageInit() async {
     if (result.getStartedUrl != null) {
       print('');
       UserPrompt.printList(<String>[
-        SetupGuidance.linkLine('Firebase Storage console', result.getStartedUrl!),
+        SetupGuidance.linkLine(
+          'Firebase Storage console',
+          result.getStartedUrl!,
+        ),
         'Click "Get Started" once, then re-run: oracular deploy storage-init',
       ]);
     }
@@ -810,15 +818,8 @@ Future<void> handleStorageInit() async {
 
 /// Enable Email/Password and Google auth providers (T5).
 Future<void> handleAuthProviders() async {
-  final SetupConfig? config = await ProjectConfigLoader.load();
-  if (config == null) {
-    ProjectConfigLoader.printMissingConfigHelp();
-    return;
-  }
-  if (!config.useFirebase || config.firebaseProjectId == null) {
-    error('Firebase is not enabled or project ID not set.');
-    return;
-  }
+  final SetupConfig? config = await requireFirebaseProjectConfig();
+  if (config == null) return;
 
   final Set<AuthProvider> providers = <AuthProvider>{
     if (config.enableEmailAuth) AuthProvider.emailPassword,
@@ -837,10 +838,12 @@ Future<void> handleAuthProviders() async {
     return;
   }
 
-  final FirebaseInitializer initializer =
-      FirebaseInitializer(config.firebaseProjectId!);
-  final AuthProvidersResult result =
-      await initializer.enableAuthProviders(providers: providers);
+  final FirebaseInitializer initializer = FirebaseInitializer(
+    config.firebaseProjectId!,
+  );
+  final AuthProvidersResult result = await initializer.enableAuthProviders(
+    providers: providers,
+  );
 
   if (result.success) {
     success(
@@ -853,23 +856,18 @@ Future<void> handleAuthProviders() async {
 
 /// Apply Artifact Registry cleanup policy (T7).
 Future<void> handleArtifactCleanup() async {
-  final SetupConfig? config = await ProjectConfigLoader.load();
-  if (config == null) {
-    ProjectConfigLoader.printMissingConfigHelp();
-    return;
-  }
-  if (!config.setupCloudRun) {
-    error('Cloud Run is not enabled for this project; nothing to clean up.');
-    return;
-  }
-  if (config.firebaseProjectId == null) {
-    error('Firebase / GCP project ID not set; cannot apply cleanup policy.');
-    return;
-  }
+  final SetupConfig? config = await requireCloudRunProjectConfig(
+    disabledMessage:
+        'Cloud Run is not enabled for this project; nothing to clean up.',
+    missingProjectMessage:
+        'Firebase / GCP project ID not set; cannot apply cleanup policy.',
+  );
+  if (config == null) return;
 
   const String repository = 'oracular';
-  final ArtifactCleanupService svc =
-      ArtifactCleanupService(config.firebaseProjectId!);
+  final ArtifactCleanupService svc = ArtifactCleanupService(
+    config.firebaseProjectId!,
+  );
 
   info(
     'Ensuring Artifact Registry repository `$repository` exists '
@@ -913,23 +911,18 @@ Future<void> handleArtifactCleanup() async {
 
 /// Prune Cloud Run revisions to the configured retention count (T7).
 Future<void> handleCloudRunPrune() async {
-  final SetupConfig? config = await ProjectConfigLoader.load();
-  if (config == null) {
-    ProjectConfigLoader.printMissingConfigHelp();
-    return;
-  }
-  if (!config.setupCloudRun) {
-    error('Cloud Run is not enabled for this project; nothing to prune.');
-    return;
-  }
-  if (config.firebaseProjectId == null) {
-    error('Firebase / GCP project ID not set; cannot prune revisions.');
-    return;
-  }
+  final SetupConfig? config = await requireCloudRunProjectConfig(
+    disabledMessage:
+        'Cloud Run is not enabled for this project; nothing to prune.',
+    missingProjectMessage:
+        'Firebase / GCP project ID not set; cannot prune revisions.',
+  );
+  if (config == null) return;
 
   final String service = config.serverPackageName.replaceAll('_', '-');
-  final ArtifactCleanupService svc =
-      ArtifactCleanupService(config.firebaseProjectId!);
+  final ArtifactCleanupService svc = ArtifactCleanupService(
+    config.firebaseProjectId!,
+  );
 
   info(
     'Pruning Cloud Run revisions for `$service`@${svc.defaultRegion} '

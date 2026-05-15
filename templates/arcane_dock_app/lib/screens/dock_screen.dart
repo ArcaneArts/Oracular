@@ -81,11 +81,11 @@ class _DockScreenState extends State<DockScreen> {
         children: [
           Tile(
             leading: const Icon(Icons.infinite_ionic),
-            titleText: 'Example Action',
-            subtitleText: 'This is an example quick action',
+            titleText: 'Refresh Settings',
+            subtitleText: 'Reload persisted dock preferences',
             onPressed: () {
-              // TODO: Implement action
-              info('Example action pressed');
+              _loadSettings();
+              info('Settings refreshed');
             },
           ),
           Tile(

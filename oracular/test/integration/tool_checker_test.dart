@@ -1,12 +1,30 @@
 @TestOn('vm')
+library;
+
 import 'package:oracular/services/tool_checker.dart';
 import 'package:test/test.dart';
+
+import '../support/process_runner_fakes.dart';
 
 void main() {
   late ToolChecker checker;
 
   setUp(() {
-    checker = ToolChecker();
+    checker = ToolChecker(
+      runner: ToolInventoryProcessRunner(
+        versions: const <String, String>{
+          'flutter': 'Flutter 3.35.0',
+          'dart': 'Dart SDK version: 3.9.0',
+          'firebase': '13.0.0',
+          'flutterfire': '1.0.0',
+          'gcloud': 'Google Cloud SDK 520.0.0',
+          'docker': 'Docker version 28.0.0',
+          'npm': '11.0.0',
+          'pod': '1.16.0',
+          'brew': 'Homebrew 4.5.0',
+        },
+      ),
+    );
   });
 
   group('ToolChecker', () {

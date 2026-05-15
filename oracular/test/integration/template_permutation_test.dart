@@ -1,4 +1,6 @@
 @TestOn('vm')
+library;
+
 import 'dart:io';
 
 import 'package:oracular/models/setup_config.dart';
@@ -12,6 +14,17 @@ import 'package:test/test.dart';
 String getTemplatesPath() {
   // From test/integration/ we need to go up to oracular/, then up to Oracular/templates
   return p.normalize(p.join(Directory.current.path, '..', 'templates'));
+}
+
+List<String> packageRootsForTemplate(String templateRoot, String templateName) {
+  if (templateName == TemplateType.arcaneJasprFlutterEmbed.directoryName) {
+    return <String>[
+      p.join(templateRoot, 'arcane_jaspr_flutter_embed_web'),
+      p.join(templateRoot, 'arcane_jaspr_flutter_embed_app'),
+    ];
+  }
+
+  return <String>[templateRoot];
 }
 
 Future<ProcessResult> runJasprBuildWithRetry({
@@ -249,14 +262,18 @@ void main() {
         ];
 
         for (final name in templateNames) {
-          final pubspec = File(
-            p.join(copier.getTemplatePath(name), 'pubspec.yaml'),
-          );
-          expect(
-            pubspec.existsSync(),
-            isTrue,
-            reason: 'pubspec.yaml should exist in $name',
-          );
+          final String templateRoot = copier.getTemplatePath(name);
+          for (final packageRoot in packageRootsForTemplate(
+            templateRoot,
+            name,
+          )) {
+            final pubspec = File(p.join(packageRoot, 'pubspec.yaml'));
+            expect(
+              pubspec.existsSync(),
+              isTrue,
+              reason: 'pubspec.yaml should exist in $packageRoot',
+            );
+          }
         }
       });
 
@@ -277,12 +294,18 @@ void main() {
         ];
 
         for (final name in templateNames) {
-          final libDir = Directory(p.join(copier.getTemplatePath(name), 'lib'));
-          expect(
-            libDir.existsSync(),
-            isTrue,
-            reason: 'lib directory should exist in $name',
-          );
+          final String templateRoot = copier.getTemplatePath(name);
+          for (final packageRoot in packageRootsForTemplate(
+            templateRoot,
+            name,
+          )) {
+            final libDir = Directory(p.join(packageRoot, 'lib'));
+            expect(
+              libDir.existsSync(),
+              isTrue,
+              reason: 'lib directory should exist in $packageRoot',
+            );
+          }
         }
       });
     });

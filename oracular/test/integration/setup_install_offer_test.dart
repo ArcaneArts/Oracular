@@ -27,6 +27,7 @@
 // a temp directory and runs setup.dart from inside it.
 
 @TestOn('vm')
+@Timeout(Duration(minutes: 2))
 library;
 
 import 'dart:io';
@@ -54,67 +55,63 @@ void main() {
     _repoRoot = Directory.current.path.endsWith('oracular')
         ? Directory.current.parent
         : Directory.current;
-    _packagerPath =
-        p.join(_repoRoot.path, 'scripts', 'package_template.dart');
-    _generatorPath =
-        p.join(_repoRoot.path, 'scripts', 'generate_setup_script.dart');
+    _packagerPath = p.join(_repoRoot.path, 'scripts', 'package_template.dart');
+    _generatorPath = p.join(
+      _repoRoot.path,
+      'scripts',
+      'generate_setup_script.dart',
+    );
 
     // 1. Generate setup.dart once.
-    final Directory genDir =
-        await Directory.systemTemp.createTemp('oracular_offer_gen_');
-    _generatedSetupPath = p.join(genDir.path, 'setup.dart');
-    final ProcessResult gen = await Process.run(
-      'dart',
-      <String>[
-        'run',
-        _generatorPath,
-        '--version',
-        _version,
-        '--build-id',
-        _buildId,
-        '--out',
-        _generatedSetupPath,
-      ],
-      workingDirectory: _repoRoot.path,
+    final Directory genDir = await Directory.systemTemp.createTemp(
+      'oracular_offer_gen_',
     );
+    _generatedSetupPath = p.join(genDir.path, 'setup.dart');
+    final ProcessResult gen = await Process.run('dart', <String>[
+      'run',
+      _generatorPath,
+      '--version',
+      _version,
+      '--build-id',
+      _buildId,
+      '--out',
+      _generatedSetupPath,
+    ], workingDirectory: _repoRoot.path);
     if (gen.exitCode != 0) {
       fail('generate_setup_script.dart failed: ${gen.stderr}');
     }
 
     // 2. Package arcane_app once.
-    final Directory zipOutDir =
-        await Directory.systemTemp.createTemp('oracular_offer_zip_');
-    final ProcessResult pkg = await Process.run(
-      'dart',
-      <String>[
-        'run',
-        _packagerPath,
-        '--template',
-        'arcane_app',
-        '--version',
-        _version,
-        '--build-id',
-        _buildId,
-        '--setup-script',
-        _generatedSetupPath,
-        '--out',
-        zipOutDir.path,
-      ],
-      workingDirectory: _repoRoot.path,
+    final Directory zipOutDir = await Directory.systemTemp.createTemp(
+      'oracular_offer_zip_',
     );
+    final ProcessResult pkg = await Process.run('dart', <String>[
+      'run',
+      _packagerPath,
+      '--template',
+      'arcane_app',
+      '--version',
+      _version,
+      '--build-id',
+      _buildId,
+      '--setup-script',
+      _generatedSetupPath,
+      '--out',
+      zipOutDir.path,
+    ], workingDirectory: _repoRoot.path);
     if (pkg.exitCode != 0) {
       fail('package_template.dart failed: ${pkg.stderr}');
     }
-    _arcaneAppZipPath =
-        p.join(zipOutDir.path, 'arcane_app-v$_version.zip');
+    _arcaneAppZipPath = p.join(zipOutDir.path, 'arcane_app-v$_version.zip');
     expect(File(_arcaneAppZipPath).existsSync(), isTrue);
 
     // 3. Build the fake `dart` script. Records its argv into the log
     //    file pointed to by FAKE_DART_LOG, exits with FAKE_DART_EXIT
     //    (default 0). Stays Unix-only — Windows runners aren't in the
     //    plan §7 scope yet.
-    final Directory fakeDir =
-        await Directory.systemTemp.createTemp('oracular_offer_fake_');
+    final Directory fakeDir = await Directory.systemTemp.createTemp(
+      'oracular_offer_fake_',
+    );
     if (Platform.isWindows) {
       _fakeDartPath = p.join(fakeDir.path, 'fake_dart.bat');
       await File(_fakeDartPath).writeAsString('''@echo off
@@ -129,8 +126,10 @@ set -u
 echo "ARGV: \$*" >> "\$FAKE_DART_LOG"
 exit "\${FAKE_DART_EXIT:-0}"
 ''');
-      final ProcessResult chmod =
-          await Process.run('chmod', <String>['+x', _fakeDartPath]);
+      final ProcessResult chmod = await Process.run('chmod', <String>[
+        '+x',
+        _fakeDartPath,
+      ]);
       if (chmod.exitCode != 0) {
         fail('chmod +x on fake_dart.sh failed: ${chmod.stderr}');
       }
@@ -139,13 +138,13 @@ exit "\${FAKE_DART_EXIT:-0}"
 
   group('install-offer state machine', () {
     test('1. --no-install-oracular skips silently', () async {
-      final _Run r = await _runScenario(
-        installFlag: 'no',
-        yes: true,
-      );
+      final _Run r = await _runScenario(installFlag: 'no', yes: true);
       expect(r.exitCode, equals(0));
-      expect(r.activationLog, isEmpty,
-          reason: 'No activation should have been attempted.');
+      expect(
+        r.activationLog,
+        isEmpty,
+        reason: 'No activation should have been attempted.',
+      );
       expect(r.stdout, contains('Skipped oracular install'));
     });
 
@@ -156,10 +155,15 @@ exit "\${FAKE_DART_EXIT:-0}"
         detectOverride: 'missing',
       );
       expect(r.exitCode, equals(0));
-      expect(r.activationLog, hasLength(1),
-          reason: 'Activation should be invoked exactly once.');
-      expect(r.activationLog.first,
-          contains('pub global activate oracular $_version'));
+      expect(
+        r.activationLog,
+        hasLength(1),
+        reason: 'Activation should be invoked exactly once.',
+      );
+      expect(
+        r.activationLog.first,
+        contains('pub global activate oracular $_version'),
+      );
     });
 
     test('3. --yes (no install flag) activates by default', () async {
@@ -171,10 +175,15 @@ exit "\${FAKE_DART_EXIT:-0}"
         detectOverride: 'missing',
       );
       expect(r.exitCode, equals(0));
-      expect(r.activationLog, hasLength(1),
-          reason: '--yes should be treated as --install-oracular.');
-      expect(r.activationLog.first,
-          contains('pub global activate oracular $_version'));
+      expect(
+        r.activationLog,
+        hasLength(1),
+        reason: '--yes should be treated as --install-oracular.',
+      );
+      expect(
+        r.activationLog.first,
+        contains('pub global activate oracular $_version'),
+      );
     });
 
     test('4. piped stdin without flags skips silently', () async {
@@ -187,11 +196,17 @@ exit "\${FAKE_DART_EXIT:-0}"
         // No simulateTty.
       );
       expect(r.exitCode, equals(0));
-      expect(r.activationLog, isEmpty,
-          reason: 'Piped stdin must not trigger activation.');
+      expect(
+        r.activationLog,
+        isEmpty,
+        reason: 'Piped stdin must not trigger activation.',
+      );
       expect(r.stdout, contains('Skipped oracular install'));
-      expect(r.stdout, isNot(contains('Install the oracular CLI')),
-          reason: 'Prompt should NOT be rendered for piped stdin.');
+      expect(
+        r.stdout,
+        isNot(contains('Install the oracular CLI')),
+        reason: 'Prompt should NOT be rendered for piped stdin.',
+      );
     });
 
     test('5. simulated TTY renders prompt, user says "n"', () async {
@@ -203,10 +218,16 @@ exit "\${FAKE_DART_EXIT:-0}"
         stdinInput: 'n\n',
       );
       expect(r.exitCode, equals(0));
-      expect(r.stdout, contains('Install the oracular CLI'),
-          reason: 'Prompt should be rendered when TTY is simulated.');
-      expect(r.activationLog, isEmpty,
-          reason: 'User answered "n"; no activation should happen.');
+      expect(
+        r.stdout,
+        contains('Install the oracular CLI'),
+        reason: 'Prompt should be rendered when TTY is simulated.',
+      );
+      expect(
+        r.activationLog,
+        isEmpty,
+        reason: 'User answered "n"; no activation should happen.',
+      );
     });
 
     test('6. activation failure exits 0 with retry hint', () async {
@@ -216,12 +237,18 @@ exit "\${FAKE_DART_EXIT:-0}"
         detectOverride: 'missing',
         fakeDartExit: 1,
       );
-      expect(r.exitCode, equals(0),
-          reason:
-              'Project is already scaffolded; failed activation must '
-              'not propagate.');
-      expect(r.activationLog, hasLength(1),
-          reason: 'Activation should still be attempted exactly once.');
+      expect(
+        r.exitCode,
+        equals(0),
+        reason:
+            'Project is already scaffolded; failed activation must '
+            'not propagate.',
+      );
+      expect(
+        r.activationLog,
+        hasLength(1),
+        reason: 'Activation should still be attempted exactly once.',
+      );
       expect(r.stdout, contains('Retry manually with'));
     });
   });
@@ -257,14 +284,15 @@ Future<_Run> _runScenario({
   int fakeDartExit = 0,
 }) async {
   // Fresh extract + output dir per scenario so state never leaks.
-  final Directory extracted =
-      await Directory.systemTemp.createTemp('oracular_offer_extract_');
+  final Directory extracted = await Directory.systemTemp.createTemp(
+    'oracular_offer_extract_',
+  );
   await _extractZip(_arcaneAppZipPath, extracted);
 
-  final Directory outDir =
-      await Directory.systemTemp.createTemp('oracular_offer_out_');
-  final File activationLog =
-      File(p.join(extracted.path, '.fake_dart.log'));
+  final Directory outDir = await Directory.systemTemp.createTemp(
+    'oracular_offer_out_',
+  );
+  final File activationLog = File(p.join(extracted.path, '.fake_dart.log'));
 
   final List<String> setupArgs = <String>[
     'run',
@@ -319,9 +347,9 @@ Future<_Run> _runScenario({
 
   final List<String> log = activationLog.existsSync()
       ? activationLog
-          .readAsLinesSync()
-          .where((String l) => l.trim().isNotEmpty)
-          .toList()
+            .readAsLinesSync()
+            .where((String l) => l.trim().isNotEmpty)
+            .toList()
       : <String>[];
 
   // Best-effort cleanup; ignore errors during teardown.
