@@ -1,3 +1,7 @@
+## 3.5.2 - 2026-05-15
+
+- Updated the runtime version banner to match the published package version.
+
 ## 3.5.1 - 2026-05-15
 
 - Fixed generated Jaspr starter route wrappers for the current Jaspr component
