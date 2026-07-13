@@ -218,7 +218,7 @@ class DocsGenerator {
       buf.writeln('cd ../${config.modelsPackageName} && dart pub get');
     }
     if (config.createServer) {
-      buf.writeln('cd ../${config.serverPackageName} && dart pub get');
+      buf.writeln('cd ../${config.serverPackageName} && flutter pub get');
     }
     buf.writeln('```');
     buf.writeln();
@@ -289,11 +289,24 @@ class DocsGenerator {
     buf.writeln('| Command | Description |');
     buf.writeln('| --- | --- |');
     buf.writeln('| `oracular` | Launch the interactive setup wizard. |');
-    buf.writeln('| `oracular --version` | Print the installed Oracular version. |');
+    buf.writeln(
+      '| `oracular new <app_name>` | Create a project using defaults. |',
+    );
+    buf.writeln(
+      '| `oracular --version` | Print the installed Oracular version. |',
+    );
     buf.writeln('| `oracular --help` | Show top-level command help. |');
-    buf.writeln('| `oracular check tools` | Verify Flutter/Dart/Firebase CLI installations. |');
+    buf.writeln(
+      '| `oracular check tools` | Verify Flutter/Dart/Firebase CLI installations. |',
+    );
     buf.writeln('| `oracular check firebase` | Validate Firebase CLI auth. |');
-    buf.writeln('| `oracular guide` | (Re)write the project setup guide and docs/ folder. |');
+    buf.writeln('| `oracular next` | Show project-specific next steps. |');
+    buf.writeln(
+      '| `oracular verify` | Run dependency and analyzer checks for generated packages. |',
+    );
+    buf.writeln(
+      '| `oracular guide` | (Re)write the project setup guide and docs/ folder. |',
+    );
     buf.writeln('| `oracular guide --print` | Print the guide to stdout. |');
     buf.writeln();
 
@@ -316,14 +329,22 @@ class DocsGenerator {
     if (config.createServer) {
       buf.writeln('| `oracular open server` | Server package folder. |');
       if (config.firebaseProjectId != null) {
-        buf.writeln('| `oracular open service-account` | Firebase service-account web console. |');
-        buf.writeln('| `oracular open cloud-run` | Google Cloud Run console. |');
+        buf.writeln(
+          '| `oracular open service-account` | Firebase service-account web console. |',
+        );
+        buf.writeln(
+          '| `oracular open cloud-run` | Google Cloud Run console. |',
+        );
       }
     }
     if (config.useFirebase) {
       buf.writeln('| `oracular open firebase` | Firebase project overview. |');
-      buf.writeln('| `oracular open auth` | Firebase Authentication console. |');
-      buf.writeln('| `oracular open firestore` | Firestore database console. |');
+      buf.writeln(
+        '| `oracular open auth` | Firebase Authentication console. |',
+      );
+      buf.writeln(
+        '| `oracular open firestore` | Firestore database console. |',
+      );
       buf.writeln('| `oracular open storage` | Firebase Storage console. |');
       if (SetupGuidance.supportsWebHosting(config)) {
         buf.writeln('| `oracular open hosting` | Firebase Hosting console. |');
@@ -336,12 +357,20 @@ class DocsGenerator {
       buf.writeln();
       buf.writeln('| Command | Effect |');
       buf.writeln('| --- | --- |');
-      buf.writeln('| `oracular deploy firebase-setup` | One-shot bootstrap: FlutterFire/Jaspr config, hosting init, GCP APIs. |');
-      buf.writeln('| `oracular deploy generate-configs` | Regenerate `firebase_options.dart` / Jaspr Firebase JS config. |');
-      buf.writeln('| `oracular deploy firestore` | Deploy `firestore.rules` and indexes. |');
+      buf.writeln(
+        '| `oracular deploy firebase-setup` | One-shot bootstrap: FlutterFire/Jaspr config, hosting init, GCP APIs. |',
+      );
+      buf.writeln(
+        '| `oracular deploy generate-configs` | Regenerate `firebase_options.dart` / Jaspr Firebase JS config. |',
+      );
+      buf.writeln(
+        '| `oracular deploy firestore` | Deploy `firestore.rules` and indexes. |',
+      );
       buf.writeln('| `oracular deploy storage` | Deploy `storage.rules`. |');
       if (SetupGuidance.supportsWebHosting(config)) {
-        buf.writeln('| `oracular deploy hosting` | Deploy production web hosting. |');
+        buf.writeln(
+          '| `oracular deploy hosting` | Deploy production web hosting. |',
+        );
         buf.writeln(
           '| `oracular deploy hosting-beta` | Deploy beta channel '
           '(${projectBetaUrl(config)}). |',
@@ -350,7 +379,9 @@ class DocsGenerator {
       buf.writeln();
     }
 
-    buf.writeln('## Pubspec scripts (run from `${SetupGuidance.mainProjectName(config)}/`)');
+    buf.writeln(
+      '## Pubspec scripts (run from `${SetupGuidance.mainProjectName(config)}/`)',
+    );
     buf.writeln();
     buf.writeln(
       'Use `oracular scripts list` and `oracular scripts exec <name>` to discover '
@@ -371,7 +402,6 @@ class DocsGenerator {
       buf.writeln('| `test` | `flutter test` |');
       buf.writeln('| `analyze` | `flutter analyze` |');
       buf.writeln('| `clean` | `flutter clean` |');
-      buf.writeln('| `build_runner` | `dart run build_runner build --delete-conflicting-outputs` |');
       buf.writeln();
     } else if (config.template.isJasprApp) {
       buf.writeln('### Jaspr scripts');
@@ -383,9 +413,15 @@ class DocsGenerator {
       buf.writeln('| `build` | `jaspr build` |');
       buf.writeln('| `clean` | `jaspr clean` |');
       buf.writeln('| `killall` | `pkill -f "jaspr serve"` |');
-      buf.writeln('| `build_runner` | `dart run build_runner build --delete-conflicting-outputs` |');
-      buf.writeln('| `watch` | `dart run build_runner watch --delete-conflicting-outputs` |');
-      buf.writeln('| `firebase_deploy` | Build then `firebase deploy --only hosting`. |');
+      buf.writeln(
+        '| `build_runner` | `dart run build_runner build --delete-conflicting-outputs` |',
+      );
+      buf.writeln(
+        '| `watch` | `dart run build_runner watch --delete-conflicting-outputs` |',
+      );
+      buf.writeln(
+        '| `firebase_deploy` | Build then `firebase deploy --only hosting`. |',
+      );
       buf.writeln();
     } else if (config.template.isDartCli) {
       buf.writeln('### CLI app scripts');
@@ -401,12 +437,33 @@ class DocsGenerator {
     }
 
     if (config.createServer) {
-      buf.writeln('### Server scripts (run from `${config.serverPackageName}/`)');
+      buf.writeln(
+        '### Server scripts (run from `${config.serverPackageName}/`)',
+      );
       buf.writeln();
       buf.writeln('| Script | Command |');
       buf.writeln('| --- | --- |');
       buf.writeln('| `dev` | `dart run bin/main.dart` |');
-      buf.writeln('| `deploy` | `./script_deploy.sh` |');
+      buf.writeln('| `deploy` | `oracular deploy arcane-server` |');
+      buf.writeln('| `deploy_manual` | `sh ./script_deploy.sh` |');
+      buf.writeln('| `test` | `flutter test` |');
+      buf.writeln('| `analyze` | `flutter analyze` |');
+      buf.writeln();
+    }
+
+    if (config.createModels) {
+      buf.writeln(
+        '### Models scripts (run from `${config.modelsPackageName}/`)',
+      );
+      buf.writeln();
+      buf.writeln('| Script | Command |');
+      buf.writeln('| --- | --- |');
+      buf.writeln(
+        '| `build_runner` | `dart run build_runner build --delete-conflicting-outputs` |',
+      );
+      buf.writeln(
+        '| `build_runner_watch` | `dart run build_runner watch --delete-conflicting-outputs` |',
+      );
       buf.writeln('| `test` | `dart test` |');
       buf.writeln('| `analyze` | `dart analyze` |');
       buf.writeln();
@@ -421,20 +478,34 @@ class DocsGenerator {
     buf.writeln();
     buf.writeln('```text');
     buf.writeln('${p.basename(config.outputDir)}/');
-    buf.writeln('|-- ${SetupGuidance.mainProjectName(config)}/'
-        '              # ${SetupGuidance.mainProjectLabel(config)}');
+    buf.writeln(
+      '|-- ${SetupGuidance.mainProjectName(config)}/'
+      '              # ${SetupGuidance.mainProjectLabel(config)}',
+    );
     if (config.createModels) {
-      buf.writeln('|-- ${config.modelsPackageName}/'
-          '              # Shared models package');
+      buf.writeln(
+        '|-- ${config.modelsPackageName}/'
+        '              # Shared models package',
+      );
     }
     if (config.createServer) {
-      buf.writeln('|-- ${config.serverPackageName}/'
-          '              # Dart REST API server');
+      buf.writeln(
+        '|-- ${config.serverPackageName}/'
+        '              # Dart REST API server',
+      );
     }
-    buf.writeln('|-- config/                              # Setup metadata + Firebase JSON');
-    buf.writeln('|-- references/                          # Vendored Arcane reference docs');
-    buf.writeln('|-- docs/                                # This documentation folder');
-    buf.writeln('|-- GET_STARTED.md                       # Auto-generated quick-start guide');
+    buf.writeln(
+      '|-- config/                              # Setup metadata + Firebase JSON',
+    );
+    buf.writeln(
+      '|-- references/                          # Vendored Arcane reference docs',
+    );
+    buf.writeln(
+      '|-- docs/                                # This documentation folder',
+    );
+    buf.writeln(
+      '|-- GET_STARTED.md                       # Auto-generated quick-start guide',
+    );
     buf.writeln('|-- README.md');
     buf.writeln('`-- ...');
     buf.writeln('```');
@@ -447,18 +518,26 @@ class DocsGenerator {
       buf.writeln('lib/');
       buf.writeln('|-- main.dart                        # App entrypoint');
       if (config.template == TemplateType.arcaneBeamer) {
-        buf.writeln('|-- routes/                          # Beamer location definitions');
+        buf.writeln(
+          '|-- routes/                          # Beamer location definitions',
+        );
         buf.writeln('|-- screens/                         # Top-level screens');
       }
       if (config.template == TemplateType.arcaneDock) {
         buf.writeln('|-- tray/                            # Tray icon + menu');
-        buf.writeln('|-- windows/                         # Mini-window components');
+        buf.writeln(
+          '|-- windows/                         # Mini-window components',
+        );
       }
       buf.writeln('|-- components/                      # Reusable widgets');
-      buf.writeln('|-- services/                        # Domain logic & data access');
+      buf.writeln(
+        '|-- services/                        # Domain logic & data access',
+      );
       buf.writeln('|-- utils/                           # Helpers, constants');
       if (config.useFirebase) {
-        buf.writeln('`-- firebase_options.dart            # FlutterFire-generated config');
+        buf.writeln(
+          '`-- firebase_options.dart            # FlutterFire-generated config',
+        );
       }
       buf.writeln('```');
       buf.writeln();
@@ -467,16 +546,26 @@ class DocsGenerator {
       buf.writeln();
       buf.writeln('```text');
       buf.writeln('lib/');
-      buf.writeln('|-- main.client.dart                # Client-side entrypoint');
-      buf.writeln('|-- app.dart                        # Top-level <App/> component');
+      buf.writeln(
+        '|-- main.client.dart                # Client-side entrypoint',
+      );
+      buf.writeln(
+        '|-- app.dart                        # Top-level <App/> component',
+      );
       buf.writeln('|-- routes/');
       buf.writeln('|   `-- app_router.dart             # Route table');
-      buf.writeln('|-- screens/                        # Page-level components');
-      buf.writeln('|-- components/                     # Reusable UI components');
+      buf.writeln(
+        '|-- screens/                        # Page-level components',
+      );
+      buf.writeln(
+        '|-- components/                     # Reusable UI components',
+      );
       buf.writeln('`-- utils/');
       buf.writeln('    `-- constants.dart              # Route/app constants');
       buf.writeln('web/');
-      buf.writeln('|-- index.html                      # HTML shell + Firebase JS hooks');
+      buf.writeln(
+        '|-- index.html                      # HTML shell + Firebase JS hooks',
+      );
       buf.writeln('|-- styles.css                      # Global theme + reset');
       buf.writeln('`-- assets/');
       buf.writeln('```');
@@ -489,9 +578,15 @@ class DocsGenerator {
       buf.writeln('`-- main.dart                       # CLI entrypoint');
       buf.writeln('lib/');
       buf.writeln('|-- cli/');
-      buf.writeln('|   |-- commands.dart               # Command tree definition');
-      buf.writeln('|   `-- handlers/                   # Implementation per command');
-      buf.writeln('`-- services/                       # Reusable domain logic');
+      buf.writeln(
+        '|   |-- commands.dart               # Command tree definition',
+      );
+      buf.writeln(
+        '|   `-- handlers/                   # Implementation per command',
+      );
+      buf.writeln(
+        '`-- services/                       # Reusable domain logic',
+      );
       buf.writeln('```');
       buf.writeln();
     }
@@ -501,13 +596,17 @@ class DocsGenerator {
       buf.writeln();
       buf.writeln('```text');
       buf.writeln('bin/');
-      buf.writeln('|-- main.dart                       # Cloud Run / shelf entrypoint');
+      buf.writeln(
+        '|-- main.dart                       # Cloud Run / shelf entrypoint',
+      );
       buf.writeln('lib/');
       buf.writeln('|-- routes/                         # HTTP route handlers');
       buf.writeln('|-- middleware/                     # Auth, CORS, logging');
       buf.writeln('`-- services/                       # Domain layer');
       buf.writeln('Dockerfile                          # Container build');
-      buf.writeln('script_deploy.sh                    # gcloud run deploy helper');
+      buf.writeln(
+        'script_deploy.sh                    # gcloud run deploy helper',
+      );
       buf.writeln('```');
       buf.writeln();
     }
@@ -551,19 +650,28 @@ class DocsGenerator {
     }
     buf.writeln();
 
-    buf.writeln('## Code generation');
-    buf.writeln();
-    buf.writeln('```bash');
-    buf.writeln('cd ${SetupGuidance.mainProjectName(config)}');
-    buf.writeln('dart run build_runner build --delete-conflicting-outputs');
-    buf.writeln('# or, while editing models continuously:');
-    buf.writeln('dart run build_runner watch --delete-conflicting-outputs');
-    buf.writeln('```');
-    buf.writeln();
-
-    if (config.createModels) {
-      buf.writeln('Run the same commands inside `${config.modelsPackageName}/` '
-          'when you change `@artifact` annotated classes.');
+    if (config.template.isJasprApp || config.createModels) {
+      buf.writeln('## Code generation');
+      buf.writeln();
+      buf.writeln('```bash');
+      if (config.template.isJasprApp) {
+        buf.writeln('cd ${SetupGuidance.mainProjectName(config)}');
+        buf.writeln('dart run build_runner build --delete-conflicting-outputs');
+        buf.writeln();
+      }
+      if (config.createModels) {
+        buf.writeln(
+          'cd ${config.createModels && config.template.isJasprApp ? '../' : ''}${config.modelsPackageName}',
+        );
+        buf.writeln('dart run build_runner build --delete-conflicting-outputs');
+        buf.writeln('dart run build_runner watch --delete-conflicting-outputs');
+      }
+      buf.writeln('```');
+      buf.writeln();
+    } else {
+      buf.writeln('## Code generation');
+      buf.writeln();
+      buf.writeln('No code generation is required by the starter template.');
       buf.writeln();
     }
 
@@ -680,9 +788,7 @@ class DocsGenerator {
     final StringBuffer buf = StringBuffer();
     buf.writeln('# Enabling Firebase Later');
     buf.writeln();
-    buf.writeln(
-      'You created this project without Firebase. To turn it on:',
-    );
+    buf.writeln('You created this project without Firebase. To turn it on:');
     buf.writeln();
     buf.writeln('1. Edit `$configPath` and set:');
     buf.writeln();
@@ -727,12 +833,12 @@ class DocsGenerator {
         '- Beta: <${SetupGuidance.betaHostingUrl(projectId)}>',
       );
       buf.writeln();
-      buf.writeln(
-        'First-time beta deploys need the channel created once:',
-      );
+      buf.writeln('First-time beta deploys need the channel created once:');
       buf.writeln();
       buf.writeln('```bash');
-      buf.writeln('firebase hosting:sites:create $projectId-beta --project $projectId');
+      buf.writeln(
+        'firebase hosting:sites:create $projectId-beta --project $projectId',
+      );
       buf.writeln('```');
       buf.writeln();
     }
@@ -797,8 +903,10 @@ class DocsGenerator {
       '`config/setup_config.env`. Changing it requires:',
     );
     buf.writeln();
-    buf.writeln('1. Edit `JASPR_RENDER_MODE` (one of '
-        '`csr`, `ssg`, `ssr`, `hybrid`, `embed`).');
+    buf.writeln(
+      '1. Edit `JASPR_RENDER_MODE` (one of '
+      '`csr`, `ssg`, `ssr`, `hybrid`, `embed`).',
+    );
     buf.writeln(
       '2. Update `${config.webPackageName}/jaspr.yaml` `mode:` line '
       '(`client` / `static` / `server`).',
@@ -814,7 +922,6 @@ class DocsGenerator {
     buf.writeln();
     return buf.toString();
   }
-
 
   /// Writes the Jaspr build/deploy block keyed off the configured render
   /// mode. Added by T9.1 of the 2026-05-10 build/deploy/rendering-modes
@@ -926,7 +1033,9 @@ class DocsGenerator {
     buf.writeln();
     buf.writeln('```bash');
     buf.writeln('oracular build flutter-app   # Flutter web bundle only');
-    buf.writeln('oracular build jaspr-site    # Jaspr host only (uses staged Flutter)');
+    buf.writeln(
+      'oracular build jaspr-site    # Jaspr host only (uses staged Flutter)',
+    );
     buf.writeln('```');
     buf.writeln();
   }
@@ -948,7 +1057,9 @@ class DocsGenerator {
     buf.writeln('dart run bin/main.dart');
     buf.writeln('```');
     buf.writeln();
-    buf.writeln('The server reads `PORT` from the environment (defaults to 8080).');
+    buf.writeln(
+      'The server reads `PORT` from the environment (defaults to 8080).',
+    );
     buf.writeln();
 
     buf.writeln('## Service account key');
@@ -974,7 +1085,9 @@ class DocsGenerator {
     buf.writeln('./script_deploy.sh');
     buf.writeln('```');
     buf.writeln();
-    buf.writeln('Cloud Run console: <${SetupGuidance.cloudRunConsoleUrl(projectId)}>');
+    buf.writeln(
+      'Cloud Run console: <${SetupGuidance.cloudRunConsoleUrl(projectId)}>',
+    );
     return buf.toString();
   }
 
@@ -1119,8 +1232,10 @@ class DocsGenerator {
     }
     if (config.template.isJasprApp) {
       buf.writeln('- arcane_jaspr: <https://pub.dev/packages/arcane_jaspr>');
-      buf.writeln('- arcane_jaspr_shadcn (in monorepo): '
-          '<https://github.com/ArcaneArts/arcane_jaspr/tree/master/packages/arcane_jaspr_shadcn>');
+      buf.writeln(
+        '- arcane_jaspr_shadcn (in monorepo): '
+        '<https://github.com/ArcaneArts/arcane_jaspr/tree/master/packages/arcane_jaspr_shadcn>',
+      );
     }
     buf.writeln('- artifact: <https://pub.dev/packages/artifact>');
     buf.writeln('- fast_log: <https://pub.dev/packages/fast_log>');
@@ -1130,7 +1245,9 @@ class DocsGenerator {
     buf.writeln();
     if (config.template.isFlutterApp) {
       buf.writeln('- Flutter: <https://docs.flutter.dev>');
-      buf.writeln('- Flutter web deploy: <https://docs.flutter.dev/deployment/web>');
+      buf.writeln(
+        '- Flutter web deploy: <https://docs.flutter.dev/deployment/web>',
+      );
     }
     if (config.template.isJasprApp) {
       buf.writeln('- Jaspr docs: <https://docs.jaspr.site>');
@@ -1144,7 +1261,9 @@ class DocsGenerator {
     buf.writeln('## Firebase / GCP');
     buf.writeln();
     buf.writeln('- Firebase docs: <https://firebase.google.com/docs>');
-    buf.writeln('- FlutterFire setup: <https://firebase.google.com/docs/flutter/setup>');
+    buf.writeln(
+      '- FlutterFire setup: <https://firebase.google.com/docs/flutter/setup>',
+    );
     if (config.createServer) {
       buf.writeln('- Cloud Run: <https://cloud.google.com/run/docs>');
     }

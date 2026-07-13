@@ -57,6 +57,7 @@ dependencies:
 
 dev_dependencies:
   lints: ^6.1.0
+  test: ^1.31.0
 
 # Define executable name (allows: dart pub global activate)
 executables:
@@ -64,10 +65,17 @@ executables:
 
 scripts:
   # Oracular Commands
-  check_tools: oracular check all
+  check_tools: oracular check tools
+  next: oracular next
+  verify: oracular verify
 
   # Run
+  dev: dart run bin/main.dart --help
   run: dart run bin/main.dart
+  compile: mkdir -p build && dart compile exe bin/main.dart -o build/arcane_cli_app
+  test: dart test
+  analyze: dart analyze
+  format: dart format .
 
   # Local Installation (for development)
   activate: dart pub global activate . --source=path

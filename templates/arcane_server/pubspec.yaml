@@ -51,9 +51,16 @@ flutter:
 
 scripts:
   # Oracular Commands
-  deploy: oracular deploy server
+  deploy: oracular deploy arcane-server
   deploy_all: oracular deploy all
   check_tools: oracular check server
+  next: oracular next
+  verify: oracular verify
+
+  # Development
+  dev: dart run bin/main.dart
+  test: flutter test
+  analyze: flutter analyze
 
   # Manual Deployment
   deploy_manual: sh ./script_deploy.sh

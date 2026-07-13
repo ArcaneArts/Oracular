@@ -97,6 +97,43 @@ extension TemplateTypeExtension on TemplateType {
     }
   }
 
+  /// Broad category shown by `oracular create templates`.
+  String get categoryLabel {
+    switch (this) {
+      case TemplateType.arcaneTemplate:
+      case TemplateType.arcaneBeamer:
+        return 'Flutter app';
+      case TemplateType.arcaneDock:
+        return 'Flutter desktop';
+      case TemplateType.arcaneCli:
+        return 'Dart CLI';
+      case TemplateType.arcaneJaspr:
+      case TemplateType.arcaneJasprDocs:
+      case TemplateType.arcaneJasprFlutterEmbed:
+        return 'Jaspr web';
+    }
+  }
+
+  /// Short operator-facing recommendation for choosing this template.
+  String get recommendedUse {
+    switch (this) {
+      case TemplateType.arcaneTemplate:
+        return 'First Arcane app, prototypes, and simple multi-platform tools.';
+      case TemplateType.arcaneBeamer:
+        return 'Apps with multiple screens, deep links, or URL-aware navigation.';
+      case TemplateType.arcaneDock:
+        return 'Desktop utilities that live in the system tray or menu bar.';
+      case TemplateType.arcaneCli:
+        return 'Terminal tools, automation commands, and publishable Dart CLIs.';
+      case TemplateType.arcaneJaspr:
+        return 'Arcane-styled web apps that do not need Flutter widgets.';
+      case TemplateType.arcaneJasprDocs:
+        return 'Static documentation sites backed by markdown content.';
+      case TemplateType.arcaneJasprFlutterEmbed:
+        return 'Static sites that host a Flutter web experience under /app.';
+    }
+  }
+
   /// Get supported platforms for this template
   List<String> get supportedPlatforms {
     switch (this) {
@@ -227,6 +264,8 @@ class TemplateInfo {
 
   /// Get all available templates
   static List<TemplateInfo> get all {
-    return TemplateType.values.map((TemplateType t) => TemplateInfo.fromType(t)).toList();
+    return TemplateType.values
+        .map((TemplateType t) => TemplateInfo.fromType(t))
+        .toList();
   }
 }

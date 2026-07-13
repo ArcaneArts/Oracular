@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:oracular/models/setup_config.dart';
 import 'package:oracular/models/template_info.dart';
+import 'package:oracular/version.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -19,6 +20,7 @@ void main() {
       expect(config.orgDomain, equals('com.example'));
       expect(config.baseClassName, equals('MyApp'));
       expect(config.template, equals(TemplateType.arcaneTemplate));
+      expect(config.templateVersion, equals(oracularVersion));
       expect(config.outputDir, equals('/tmp/test'));
     });
 
@@ -198,6 +200,7 @@ void main() {
       expect(map['App Name'], equals('my_app'));
       expect(map['Organization'], equals('com.example'));
       expect(map['Template'], equals('Arcane Beamer (With Navigation)'));
+      expect(map['Template Version'], equals(oracularVersion));
       expect(map['Models Package'], equals('Yes'));
       expect(map['Server App'], equals('Yes'));
       expect(map['Firebase'], equals('Yes'));
@@ -242,6 +245,7 @@ void main() {
       expect(loaded.orgDomain, equals('com.test'));
       expect(loaded.baseClassName, equals('TestApp'));
       expect(loaded.template, equals(TemplateType.arcaneBeamer));
+      expect(loaded.templateVersion, equals(oracularVersion));
       expect(loaded.createModels, isTrue);
       expect(loaded.createServer, isTrue);
       expect(loaded.useFirebase, isTrue);
@@ -271,7 +275,33 @@ PLATFORMS=
 
       expect(loaded, isNotNull);
       expect(loaded!.template, equals(TemplateType.arcaneJasprDocs));
+      expect(loaded.templateVersion, equals(oracularVersion));
       expect(loaded.platforms, isEmpty);
+    });
+
+    test('preserves explicit template version pins', () async {
+      final config = SetupConfig(
+        appName: 'test_app',
+        orgDomain: 'com.test',
+        baseClassName: 'TestApp',
+        template: TemplateType.arcaneTemplate,
+        templateVersion: '3.5.1',
+        outputDir: tempDir.path,
+      );
+
+      final configPath = '${tempDir.path}/config.env';
+      await config.saveToFile(configPath);
+
+      final content = await File(configPath).readAsString();
+      final loaded = await SetupConfig.loadFromFile(configPath);
+
+      expect(content, contains('TEMPLATE_VERSION=3.5.1'));
+      expect(loaded, isNotNull);
+      expect(loaded!.templateVersion, equals('3.5.1'));
+      expect(
+        loaded.copyWith(appName: 'other_app').templateVersion,
+        equals('3.5.1'),
+      );
     });
   });
 
@@ -413,36 +443,45 @@ PLATFORMS=
       expect(hybrid.hasJasprServer, isTrue);
     });
 
-    test('effectiveJasprServerServiceName replaces underscores with dashes', () {
-      final config = SetupConfig(
-        appName: 'my_app',
-        orgDomain: 'com.example',
-        baseClassName: 'MyApp',
-        template: TemplateType.arcaneJaspr,
-        outputDir: '/tmp/test',
-        jasprRenderMode: JasprRenderMode.ssr,
-      );
-      // Default fallback: <appName>_web → my_app_web → my-app-web.
-      expect(config.effectiveJasprServerServiceName, equals('my-app-web'));
+    test(
+      'effectiveJasprServerServiceName replaces underscores with dashes',
+      () {
+        final config = SetupConfig(
+          appName: 'my_app',
+          orgDomain: 'com.example',
+          baseClassName: 'MyApp',
+          template: TemplateType.arcaneJaspr,
+          outputDir: '/tmp/test',
+          jasprRenderMode: JasprRenderMode.ssr,
+        );
+        // Default fallback: <appName>_web → my_app_web → my-app-web.
+        expect(config.effectiveJasprServerServiceName, equals('my-app-web'));
 
-      final renamed = config.copyWith(
-        jasprServerServiceName: 'custom_service',
-      );
-      expect(renamed.effectiveJasprServerServiceName, equals('custom-service'));
-    });
+        final renamed = config.copyWith(
+          jasprServerServiceName: 'custom_service',
+        );
+        expect(
+          renamed.effectiveJasprServerServiceName,
+          equals('custom-service'),
+        );
+      },
+    );
 
-    test('embedded package + class names derive from appName + baseClassName', () {
-      final config = SetupConfig(
-        appName: 'my_app',
-        orgDomain: 'com.example',
-        baseClassName: 'MyApp',
-        template: TemplateType.arcaneJasprFlutterEmbed,
-        outputDir: '/tmp/test',
-      );
-      expect(config.embeddedFlutterPackageName, equals('my_app_app'));
-      expect(config.embeddedFlutterClassName, equals('MyAppApp'));
-      expect(config.embeddedFlutterMount, equals('/app'));
-    });
+    test(
+      'embedded package + class names derive from appName + baseClassName',
+      () {
+        final config = SetupConfig(
+          appName: 'my_app',
+          orgDomain: 'com.example',
+          baseClassName: 'MyApp',
+          template: TemplateType.arcaneJasprFlutterEmbed,
+          outputDir: '/tmp/test',
+        );
+        expect(config.embeddedFlutterPackageName, equals('my_app_app'));
+        expect(config.embeddedFlutterClassName, equals('MyAppApp'));
+        expect(config.embeddedFlutterMount, equals('/app'));
+      },
+    );
 
     test('hybridDynamicPrefixes defaults to [/api, /auth]', () {
       final config = SetupConfig(
@@ -517,11 +556,13 @@ PLATFORMS=
       }
     });
 
-    test('loadFromFile falls back gracefully when JASPR_RENDER_MODE is missing', () async {
-      final tempDir = await Directory.systemTemp.createTemp('oracular_rm_');
-      try {
-        final configPath = '${tempDir.path}/config.env';
-        await File(configPath).writeAsString('''
+    test(
+      'loadFromFile falls back gracefully when JASPR_RENDER_MODE is missing',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp('oracular_rm_');
+        try {
+          final configPath = '${tempDir.path}/config.env';
+          await File(configPath).writeAsString('''
 APP_NAME=legacy_app
 ORG_DOMAIN=com.example
 BASE_CLASS_NAME=LegacyApp
@@ -529,20 +570,21 @@ TEMPLATE_NAME=arcaneJaspr
 OUTPUT_DIR=${tempDir.path}
 PLATFORMS=
 ''');
-        final loaded = await SetupConfig.loadFromFile(configPath);
-        expect(loaded, isNotNull);
-        // Falls back to the template-derived default (csr for arcaneJaspr).
-        expect(loaded!.jasprRenderMode, equals(JasprRenderMode.csr));
-        expect(loaded.embeddedFlutterMount, equals('/app'));
-        expect(
-          loaded.hybridDynamicPrefixes,
-          equals(<String>['/api', '/auth']),
-        );
-      } finally {
-        if (tempDir.existsSync()) {
-          await tempDir.delete(recursive: true);
+          final loaded = await SetupConfig.loadFromFile(configPath);
+          expect(loaded, isNotNull);
+          // Falls back to the template-derived default (csr for arcaneJaspr).
+          expect(loaded!.jasprRenderMode, equals(JasprRenderMode.csr));
+          expect(loaded.embeddedFlutterMount, equals('/app'));
+          expect(
+            loaded.hybridDynamicPrefixes,
+            equals(<String>['/api', '/auth']),
+          );
+        } finally {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
         }
-      }
-    });
+      },
+    );
   });
 }

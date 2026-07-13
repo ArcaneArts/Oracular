@@ -1,168 +1,109 @@
 import 'dart:io';
 
 import 'package:fast_log/fast_log.dart';
-import 'package:path/path.dart' as p;
-import 'package:yaml/yaml.dart';
 
-/// Get the configuration directory path
-String get _configDir {
-  final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
-  if (home == null) {
-    throw Exception('Could not determine home directory');
-  }
-  return p.join(home, '.oracular');
-}
-
-/// Get the configuration file path
-String get _configPath => p.join(_configDir, 'config.yaml');
+import '../../utils/global_config.dart';
 
 /// Initialize configuration file
-Future<void> handleConfigInit(Map<String, dynamic> args, Map<String, dynamic> flags) async {
+Future<void> handleConfigInit(
+  Map<String, dynamic> args,
+  Map<String, dynamic> flags,
+) async {
   final force = flags['force'] == true;
 
-  info("Initializing configuration...");
+  info('Initializing configuration...');
 
-  final configFile = File(_configPath);
+  final configFile = File(OracularGlobalConfig.configPath);
 
   if (configFile.existsSync() && !force) {
-    warn("Configuration already exists at: $_configPath");
-    info("Use --force to overwrite");
+    warn('Configuration already exists at: ${OracularGlobalConfig.configPath}');
+    info('Use --force to overwrite');
     return;
   }
 
-  // Create config directory if it doesn't exist
-  await Directory(_configDir).create(recursive: true);
-
-  // Write default configuration
-  final defaultConfig = '''
-# Oracular Configuration File
-# Generated: ${DateTime.now().toIso8601String()}
-
-# General Settings
-app_name: oracular
-version: 1.0.0
-
-# Add your custom configuration here
-''';
-
-  await configFile.writeAsString(defaultConfig);
-  success("Configuration initialized at: $_configPath");
+  await OracularGlobalConfig.ensureExists(force: force);
+  success('Configuration initialized at: ${OracularGlobalConfig.configPath}');
 }
 
 /// Get a configuration value
-Future<void> handleConfigGet(Map<String, dynamic> args, Map<String, dynamic> flags) async {
+Future<void> handleConfigGet(
+  Map<String, dynamic> args,
+  Map<String, dynamic> flags,
+) async {
   final key = args['key'] as String?;
   if (key == null) {
     error('Please provide a configuration key');
     return;
   }
 
-  info("Reading configuration key: $key");
+  final String normalizedKey = OracularGlobalConfig.normalizeKey(key);
+  info('Reading configuration key: $normalizedKey');
 
-  final configFile = File(_configPath);
-
-  if (!configFile.existsSync()) {
-    error("Configuration not found. Run 'oracular config init' first.");
-    return;
-  }
-
-  final content = await configFile.readAsString();
-  final yaml = loadYaml(content);
-
-  if (yaml is! Map) {
-    error("Invalid configuration format");
-    return;
-  }
-
-  final value = yaml[key];
-
+  final String? value = await OracularGlobalConfig.get(normalizedKey);
   if (value == null) {
-    warn("Key '$key' not found in configuration");
+    warn("Key '$normalizedKey' not found in configuration");
     return;
   }
 
-  print('$key: $value');
-  success("Retrieved configuration value");
+  print('$normalizedKey: $value');
 }
 
 /// Set a configuration value
-Future<void> handleConfigSet(Map<String, dynamic> args, Map<String, dynamic> flags) async {
+Future<void> handleConfigSet(
+  Map<String, dynamic> args,
+  Map<String, dynamic> flags,
+) async {
   final key = args['key'] as String?;
   final value = args['value'] as String?;
 
   if (key == null || value == null) {
     error('Please provide both key and value');
+    print('Example: oracular config set org art.arcane');
     return;
   }
 
-  info("Setting configuration: $key = $value");
-
-  final configFile = File(_configPath);
-
-  if (!configFile.existsSync()) {
-    error("Configuration not found. Run 'oracular config init' first.");
-    return;
+  final String normalizedKey = OracularGlobalConfig.normalizeKey(key);
+  if (!OracularGlobalConfig.supportedKeys.contains(normalizedKey) &&
+      !OracularGlobalConfig.defaults.containsKey(normalizedKey)) {
+    warn('Unknown config key "$key". It will be saved as "$normalizedKey".');
   }
 
-  // Read existing config
-  final content = await configFile.readAsString();
-  final lines = content.split('\n');
-
-  // Find and update the key, or append it
-  bool found = false;
-  final updatedLines = <String>[];
-
-  for (final line in lines) {
-    if (line.trim().startsWith('$key:')) {
-      updatedLines.add('$key: $value');
-      found = true;
-    } else {
-      updatedLines.add(line);
-    }
-  }
-
-  if (!found) {
-    updatedLines.add('$key: $value');
-  }
-
-  await configFile.writeAsString(updatedLines.join('\n'));
-  success("Configuration updated: $key = $value");
+  await OracularGlobalConfig.set(normalizedKey, value);
+  success('Configuration updated: $normalizedKey = $value');
 }
 
 /// List all configuration values
 Future<void> handleConfigList() async {
-  info("Listing configuration...");
+  info('Listing configuration...');
 
-  final configFile = File(_configPath);
+  final Map<String, String> values = <String, String>{
+    ...OracularGlobalConfig.defaults,
+    ...await OracularGlobalConfig.load(),
+  };
 
-  if (!configFile.existsSync()) {
+  if (values.isEmpty) {
     error("Configuration not found. Run 'oracular config init' first.");
     return;
   }
 
-  final content = await configFile.readAsString();
-  final yaml = loadYaml(content);
-
-  if (yaml is! Map) {
-    error("Invalid configuration format");
-    return;
+  print('\nConfiguration (${OracularGlobalConfig.configPath}):');
+  print('─' * 50);
+  for (final String key in values.keys) {
+    print('$key: ${values[key]}');
   }
-
-  print('\nConfiguration ($_configPath):');
   print('─' * 50);
-
-  yaml.forEach((key, value) {
-    print('$key: $value');
-  });
-
-  print('─' * 50);
-  success("Listed ${yaml.length} configuration value(s)");
+  print('');
+  print('Common defaults:');
+  print('  oracular config set org art.arcane');
+  print('  oracular config set output_dir ~/Developer');
+  print('  oracular config set default_template arcane_app');
+  print('  oracular config set firebase_project_id my-project');
 }
 
 /// Show configuration file path
 Future<void> handleConfigPath() async {
-  print('Configuration path: $_configPath');
-  final exists = File(_configPath).existsSync();
+  print('Configuration path: ${OracularGlobalConfig.configPath}');
+  final exists = File(OracularGlobalConfig.configPath).existsSync();
   print('Exists: ${exists ? 'Yes' : 'No'}');
 
   if (!exists) {

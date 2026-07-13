@@ -460,7 +460,10 @@ Future<void> handleGenerateConfigs([Map<String, dynamic>? args]) async {
   // shape for the darted_cli single-value argument model.
   final String? raw = args == null
       ? null
-      : args['hybrid-dynamic-prefix']?.toString();
+      : (args['hybrid-dynamic-prefix'] ??
+                args['hybriddynamicprefix'] ??
+                args['H'])
+            ?.toString();
   if (raw != null && raw.trim().isNotEmpty) {
     final List<String> requested = raw
         .split(RegExp('[,\\s]+'))

@@ -107,6 +107,23 @@ class ScriptedProcessRunner extends ProcessRunner {
     }
     return results[_cursor++];
   }
+
+  @override
+  Future<ProcessResult?> runWithRetry(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+    Map<String, String>? environment,
+    String? operationName,
+    bool? interactive,
+  }) async {
+    return run(
+      executable,
+      arguments,
+      workingDirectory: workingDirectory,
+      environment: environment,
+    );
+  }
 }
 
 ProcessResult successResult({String stdout = '', String stderr = ''}) {

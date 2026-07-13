@@ -80,13 +80,13 @@ Future<void> handleRebuild(
   // darted_cli is invoked.
   final String? configPathArg =
       (args['config'] as String?) ?? (args['c'] as String?);
-  final String? outputDirArg = (args['output-dir'] as String?) ??
+  final String? outputDirArg =
+      (args['output-dir'] as String?) ??
       (args['outputdir'] as String?) ??
       (args['d'] as String?);
   final bool yes = flags['yes'] == true || flags['y'] == true;
-  final bool dryRunOnly = flags['dry-run'] == true ||
-      flags['dryrun'] == true ||
-      flags['n'] == true;
+  final bool dryRunOnly =
+      flags['dry-run'] == true || flags['dryrun'] == true || flags['n'] == true;
 
   final SetupConfig? config = await _resolveConfig(
     configPath: configPathArg,
@@ -142,14 +142,18 @@ Future<void> handleRebuild(
 
   if (dryRunOnly) {
     print('');
-    info('Dry run only — no changes were made. Run without --dry-run to apply.');
+    info(
+      'Dry run only — no changes were made. Run without --dry-run to apply.',
+    );
     return;
   }
 
   print('');
   if (!yes) {
-    final bool confirmed =
-        await UserPrompt.askYesNo('Proceed with rebuild?', defaultValue: false);
+    final bool confirmed = await UserPrompt.askYesNo(
+      'Proceed with rebuild?',
+      defaultValue: false,
+    );
     if (!confirmed) {
       warn('Rebuild cancelled.');
       return;
@@ -180,8 +184,14 @@ Future<void> handleRebuild(
   if (config.createModels) {
     await depManager.linkModelsToProjects();
   }
-  await depManager.getAllDependencies();
-  await depManager.runAllBuildRunners();
+  if (!await depManager.getAllDependencies()) {
+    error('Dependency installation failed during rebuild.');
+    exit(1);
+  }
+  if (!await depManager.runAllBuildRunners()) {
+    error('Code generation failed during rebuild.');
+    exit(1);
+  }
 
   // ── 3. Re-emit Firebase / server config files (idempotent overlays) ──
   if (config.useFirebase) {

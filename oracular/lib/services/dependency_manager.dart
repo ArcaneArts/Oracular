@@ -74,13 +74,14 @@ class DependencyManager {
     List<String> packages, {
     bool isDev = false,
   }) async {
+    bool allSucceeded = true;
     for (final String package in packages) {
       if (!await addDependency(projectPath, package, isDev: isDev)) {
         warn('Failed to add: $package');
-        // Continue with other packages
+        allSucceeded = false;
       }
     }
-    return true;
+    return allSucceeded;
   }
 
   /// Get dependencies for the main app
@@ -103,7 +104,10 @@ class DependencyManager {
   Future<bool> getModelsDependencies() async {
     if (!config.createModels) return true;
 
-    final String projectPath = p.join(config.outputDir, config.modelsPackageName);
+    final String projectPath = p.join(
+      config.outputDir,
+      config.modelsPackageName,
+    );
     return await dartPubGet(projectPath);
   }
 
@@ -111,14 +115,18 @@ class DependencyManager {
   Future<bool> getServerDependencies() async {
     if (!config.createServer) return true;
 
-    final String projectPath = p.join(config.outputDir, config.serverPackageName);
+    final String projectPath = p.join(
+      config.outputDir,
+      config.serverPackageName,
+    );
     return await flutterPubGet(projectPath);
   }
 
   /// Get dependencies for all projects with progress tracking
   Future<bool> getAllDependencies() async {
     // Build list of packages to process
-    final List<(String, Future<bool> Function())> packages = <(String, Future<bool> Function())>[];
+    final List<(String, Future<bool> Function())> packages =
+        <(String, Future<bool> Function())>[];
 
     if (config.createModels) {
       packages.add(('Models', getModelsDependencies));
@@ -133,16 +141,26 @@ class DependencyManager {
     }
 
     // Process each package with progress
+    bool allSucceeded = true;
     for (int i = 0; i < packages.length; i++) {
       final (name, getter) = packages[i];
-      UserPrompt.showProgress(i, packages.length, 'Getting $name dependencies...');
+      UserPrompt.showProgress(
+        i,
+        packages.length,
+        'Getting $name dependencies...',
+      );
       if (!await getter()) {
         warn('Failed to get $name dependencies');
+        allSucceeded = false;
       }
     }
-    UserPrompt.showProgress(packages.length, packages.length, 'All dependencies retrieved');
+    UserPrompt.showProgress(
+      packages.length,
+      packages.length,
+      'All dependencies retrieved',
+    );
 
-    return true;
+    return allSucceeded;
   }
 
   /// Run build_runner in a project
@@ -191,16 +209,26 @@ class DependencyManager {
     }
 
     // Run build_runner for each project with progress
+    bool allSucceeded = true;
     for (int i = 0; i < projects.length; i++) {
       final (name, path) = projects[i];
-      UserPrompt.showProgress(i, projects.length, 'Running build_runner for $name...');
+      UserPrompt.showProgress(
+        i,
+        projects.length,
+        'Running build_runner for $name...',
+      );
       if (!await runBuildRunner(path)) {
         warn('Failed to run build_runner for $name');
+        allSucceeded = false;
       }
     }
-    UserPrompt.showProgress(projects.length, projects.length, 'Code generation complete');
+    UserPrompt.showProgress(
+      projects.length,
+      projects.length,
+      'Code generation complete',
+    );
 
-    return true;
+    return allSucceeded;
   }
 
   /// Returns true when the pubspec.yaml at [projectPath] declares
@@ -273,7 +301,8 @@ class DependencyManager {
     ).firstMatch(content);
     if (dependenciesMatch != null) {
       final int insertPoint = dependenciesMatch.end;
-      final String dependencyLine = '\n  $packageName:\n    path: $relativePath\n';
+      final String dependencyLine =
+          '\n  $packageName:\n    path: $relativePath\n';
       content =
           content.substring(0, insertPoint) +
           dependencyLine +

@@ -12,14 +12,17 @@ void main() {
     });
 
     test('has correct directory names (new canonical names)', () {
+      expect(TemplateType.arcaneTemplate.directoryName, equals('arcane_app'));
       expect(
-        TemplateType.arcaneTemplate.directoryName,
-        equals('arcane_app'),
+        TemplateType.arcaneBeamer.directoryName,
+        equals('arcane_beamer_app'),
       );
-      expect(TemplateType.arcaneBeamer.directoryName, equals('arcane_beamer_app'));
       expect(TemplateType.arcaneDock.directoryName, equals('arcane_dock_app'));
       expect(TemplateType.arcaneCli.directoryName, equals('arcane_cli_app'));
-      expect(TemplateType.arcaneJaspr.directoryName, equals('arcane_jaspr_app'));
+      expect(
+        TemplateType.arcaneJaspr.directoryName,
+        equals('arcane_jaspr_app'),
+      );
     });
 
     test('has correct canonical package names', () {
@@ -93,6 +96,17 @@ void main() {
       expect(TemplateType.arcaneCli.number, equals(4));
       expect(TemplateType.arcaneJaspr.number, equals(5));
     });
+
+    test('exposes category labels and recommended uses', () {
+      expect(TemplateType.arcaneTemplate.categoryLabel, equals('Flutter app'));
+      expect(TemplateType.arcaneDock.categoryLabel, equals('Flutter desktop'));
+      expect(TemplateType.arcaneCli.categoryLabel, equals('Dart CLI'));
+      expect(TemplateType.arcaneJasprDocs.categoryLabel, equals('Jaspr web'));
+
+      for (final TemplateType type in TemplateType.values) {
+        expect(type.recommendedUse, isNotEmpty);
+      }
+    });
   });
 
   group('TemplateTypeExtension.parse', () {
@@ -107,7 +121,10 @@ void main() {
       );
       expect(TemplateTypeExtension.parse('3'), equals(TemplateType.arcaneDock));
       expect(TemplateTypeExtension.parse('4'), equals(TemplateType.arcaneCli));
-      expect(TemplateTypeExtension.parse('5'), equals(TemplateType.arcaneJaspr));
+      expect(
+        TemplateTypeExtension.parse('5'),
+        equals(TemplateType.arcaneJaspr),
+      );
     });
 
     test('parses new directory names correctly', () {
@@ -235,10 +252,7 @@ void main() {
       expect(t.displayName, contains('Jaspr'));
       expect(t.displayName, contains('Flutter'));
       expect(t.directoryName, equals('arcane_jaspr_flutter_embed'));
-      expect(
-        t.canonicalPackageName,
-        equals('arcane_jaspr_flutter_embed_web'),
-      );
+      expect(t.canonicalPackageName, equals('arcane_jaspr_flutter_embed_web'));
       expect(t.description, contains('Flutter'));
       expect(t.supportedPlatforms, isEmpty);
       expect(t.isFlutterApp, isFalse);
@@ -247,10 +261,7 @@ void main() {
 
     test('counts as a Jaspr app and as the embed variant', () {
       expect(TemplateType.arcaneJasprFlutterEmbed.isJasprApp, isTrue);
-      expect(
-        TemplateType.arcaneJasprFlutterEmbed.isJasprFlutterEmbed,
-        isTrue,
-      );
+      expect(TemplateType.arcaneJasprFlutterEmbed.isJasprFlutterEmbed, isTrue);
       expect(TemplateType.arcaneJasprFlutterEmbed.isJasprDocs, isFalse);
       // Other Jaspr templates should NOT be classified as the embed variant.
       expect(TemplateType.arcaneJaspr.isJasprFlutterEmbed, isFalse);

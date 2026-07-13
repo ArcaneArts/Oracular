@@ -82,7 +82,15 @@ flutter_launcher_icons:
 scripts:
   # Oracular Commands
   deploy: oracular deploy all
-  check_tools: oracular check all
+  check_tools: oracular check tools
+  next: oracular next
+  verify: oracular verify
+
+  # Development
+  dev: flutter run
+  test: flutter test
+  analyze: flutter analyze
+  clean: flutter clean
 
   # Platform Setup
   pod_install_macos: cd macos && rm -f Podfile.lock && pod install --repo-update && cd ..

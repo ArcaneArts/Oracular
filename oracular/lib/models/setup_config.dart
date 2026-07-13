@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import '../version.dart';
 import 'template_info.dart';
 
 /// Rendering strategy for Jaspr web sites.
@@ -142,6 +143,9 @@ class SetupConfig {
   /// Selected template
   final TemplateType template;
 
+  /// Oracular/template generation version that created this config.
+  final String templateVersion;
+
   /// Output directory for created projects
   final String outputDir;
 
@@ -254,6 +258,7 @@ class SetupConfig {
     required this.baseClassName,
     required this.template,
     required this.outputDir,
+    String? templateVersion,
     this.createModels = false,
     this.createServer = false,
     this.useFirebase = false,
@@ -284,14 +289,15 @@ class SetupConfig {
     this.jasprServerServiceName,
     this.embeddedFlutterMount = '/app',
     List<String>? hybridDynamicPrefixes,
-  }) : deployHostingRelease = deployHostingRelease ??
-            _defaultSupportsWebHosting(template, platforms),
-       deployHostingBeta = deployHostingBeta ??
-            _defaultSupportsWebHosting(template, platforms),
+  }) : templateVersion = templateVersion ?? oracularVersion,
+       deployHostingRelease =
+           deployHostingRelease ??
+           _defaultSupportsWebHosting(template, platforms),
+       deployHostingBeta =
+           deployHostingBeta ?? _defaultSupportsWebHosting(template, platforms),
        requireBlaze = requireBlaze ?? (createServer || setupCloudRun),
        setupArtifactCleanup = setupArtifactCleanup ?? setupCloudRun,
-       jasprRenderMode =
-           jasprRenderMode ?? _defaultJasprRenderMode(template),
+       jasprRenderMode = jasprRenderMode ?? _defaultJasprRenderMode(template),
        hybridDynamicPrefixes =
            hybridDynamicPrefixes ?? const <String>['/api', '/auth'];
 
@@ -303,6 +309,7 @@ class SetupConfig {
       baseClassName: 'MyApp',
       template: TemplateType.arcaneTemplate,
       outputDir: Directory.current.path,
+      templateVersion: oracularVersion,
     );
   }
 
@@ -312,6 +319,7 @@ class SetupConfig {
     String? orgDomain,
     String? baseClassName,
     TemplateType? template,
+    String? templateVersion,
     String? outputDir,
     bool? createModels,
     bool? createServer,
@@ -342,6 +350,7 @@ class SetupConfig {
       orgDomain: orgDomain ?? this.orgDomain,
       baseClassName: baseClassName ?? this.baseClassName,
       template: template ?? this.template,
+      templateVersion: templateVersion ?? this.templateVersion,
       outputDir: outputDir ?? this.outputDir,
       createModels: createModels ?? this.createModels,
       createServer: createServer ?? this.createServer,
@@ -351,8 +360,7 @@ class SetupConfig {
       serviceAccountKeyPath:
           serviceAccountKeyPath ?? this.serviceAccountKeyPath,
       platforms: platforms ?? this.platforms,
-      deployHostingRelease:
-          deployHostingRelease ?? this.deployHostingRelease,
+      deployHostingRelease: deployHostingRelease ?? this.deployHostingRelease,
       deployHostingBeta: deployHostingBeta ?? this.deployHostingBeta,
       firestoreRegion: firestoreRegion ?? this.firestoreRegion,
       initializeFirestore: initializeFirestore ?? this.initializeFirestore,
@@ -360,8 +368,7 @@ class SetupConfig {
       enableEmailAuth: enableEmailAuth ?? this.enableEmailAuth,
       enableGoogleAuth: enableGoogleAuth ?? this.enableGoogleAuth,
       requireBlaze: requireBlaze ?? this.requireBlaze,
-      setupArtifactCleanup:
-          setupArtifactCleanup ?? this.setupArtifactCleanup,
+      setupArtifactCleanup: setupArtifactCleanup ?? this.setupArtifactCleanup,
       artifactKeepRecent: artifactKeepRecent ?? this.artifactKeepRecent,
       artifactDeleteOlderDays:
           artifactDeleteOlderDays ?? this.artifactDeleteOlderDays,
@@ -370,8 +377,7 @@ class SetupConfig {
       jasprRenderMode: jasprRenderMode ?? this.jasprRenderMode,
       jasprServerServiceName:
           jasprServerServiceName ?? this.jasprServerServiceName,
-      embeddedFlutterMount:
-          embeddedFlutterMount ?? this.embeddedFlutterMount,
+      embeddedFlutterMount: embeddedFlutterMount ?? this.embeddedFlutterMount,
       hybridDynamicPrefixes:
           hybridDynamicPrefixes ?? this.hybridDynamicPrefixes,
     );
@@ -445,6 +451,7 @@ APP_NAME=$appName
 ORG_DOMAIN=$orgDomain
 BASE_CLASS_NAME=$baseClassName
 TEMPLATE_NAME=${template.name}
+TEMPLATE_VERSION=$templateVersion
 OUTPUT_DIR=$outputDir
 PLATFORMS=${platforms.join(',')}
 CREATE_MODELS=${createModels ? 'yes' : 'no'}
@@ -498,13 +505,17 @@ HYBRID_DYNAMIC_PREFIXES=${hybridDynamicPrefixes.join(',')}
       orElse: () => TemplateType.arcaneTemplate,
     );
 
-    final List<String> platforms = _parsePlatforms(values['PLATFORMS'], template);
+    final List<String> platforms = _parsePlatforms(
+      values['PLATFORMS'],
+      template,
+    );
 
     return SetupConfig(
       appName: values['APP_NAME'] ?? 'my_app',
       orgDomain: values['ORG_DOMAIN'] ?? 'com.example',
       baseClassName: values['BASE_CLASS_NAME'] ?? 'MyApp',
       template: template,
+      templateVersion: values['TEMPLATE_VERSION'],
       outputDir: values['OUTPUT_DIR'] ?? Directory.current.path,
       platforms: platforms,
       createModels: _parseBool(values['CREATE_MODELS']),
@@ -513,18 +524,43 @@ HYBRID_DYNAMIC_PREFIXES=${hybridDynamicPrefixes.join(',')}
       firebaseProjectId: values['FIREBASE_PROJECT_ID'],
       setupCloudRun: _parseBool(values['SETUP_CLOUD_RUN']),
       serviceAccountKeyPath: values['SERVICE_ACCOUNT_KEY'],
-      deployHostingRelease: _parseOptionalBool(values['DEPLOY_HOSTING_RELEASE']),
+      deployHostingRelease: _parseOptionalBool(
+        values['DEPLOY_HOSTING_RELEASE'],
+      ),
       deployHostingBeta: _parseOptionalBool(values['DEPLOY_HOSTING_BETA']),
       firestoreRegion: values['FIRESTORE_REGION'] ?? 'nam5',
-      initializeFirestore: _parseBool(values['INITIALIZE_FIRESTORE'], defaultValue: true),
-      initializeStorage: _parseBool(values['INITIALIZE_STORAGE'], defaultValue: true),
-      enableEmailAuth: _parseBool(values['ENABLE_EMAIL_AUTH'], defaultValue: true),
-      enableGoogleAuth: _parseBool(values['ENABLE_GOOGLE_AUTH'], defaultValue: true),
+      initializeFirestore: _parseBool(
+        values['INITIALIZE_FIRESTORE'],
+        defaultValue: true,
+      ),
+      initializeStorage: _parseBool(
+        values['INITIALIZE_STORAGE'],
+        defaultValue: true,
+      ),
+      enableEmailAuth: _parseBool(
+        values['ENABLE_EMAIL_AUTH'],
+        defaultValue: true,
+      ),
+      enableGoogleAuth: _parseBool(
+        values['ENABLE_GOOGLE_AUTH'],
+        defaultValue: true,
+      ),
       requireBlaze: _parseOptionalBool(values['REQUIRE_BLAZE']),
-      setupArtifactCleanup: _parseOptionalBool(values['SETUP_ARTIFACT_CLEANUP']),
-      artifactKeepRecent: _parseInt(values['ARTIFACT_KEEP_RECENT'], defaultValue: 5),
-      artifactDeleteOlderDays: _parseInt(values['ARTIFACT_DELETE_OLDER_DAYS'], defaultValue: 30),
-      cloudRunKeepRevisions: _parseInt(values['CLOUD_RUN_KEEP_REVISIONS'], defaultValue: 3),
+      setupArtifactCleanup: _parseOptionalBool(
+        values['SETUP_ARTIFACT_CLEANUP'],
+      ),
+      artifactKeepRecent: _parseInt(
+        values['ARTIFACT_KEEP_RECENT'],
+        defaultValue: 5,
+      ),
+      artifactDeleteOlderDays: _parseInt(
+        values['ARTIFACT_DELETE_OLDER_DAYS'],
+        defaultValue: 30,
+      ),
+      cloudRunKeepRevisions: _parseInt(
+        values['CLOUD_RUN_KEEP_REVISIONS'],
+        defaultValue: 3,
+      ),
       jasprRenderMode: JasprRenderModeExtension.parse(
         values['JASPR_RENDER_MODE'],
       ),
@@ -543,6 +579,7 @@ HYBRID_DYNAMIC_PREFIXES=${hybridDynamicPrefixes.join(',')}
     buffer.writeln('org_domain: $orgDomain');
     buffer.writeln('base_class_name: $baseClassName');
     buffer.writeln('template: ${template.displayName}');
+    buffer.writeln('template_version: $templateVersion');
     buffer.writeln('output_dir: $outputDir');
     buffer.writeln('platforms: ${platforms.join(', ')}');
     buffer.writeln('create_models: $createModels');
@@ -588,6 +625,7 @@ HYBRID_DYNAMIC_PREFIXES=${hybridDynamicPrefixes.join(',')}
       'Organization': orgDomain,
       'Class Name': baseClassName,
       'Template': template.displayName,
+      'Template Version': templateVersion,
       'Output Dir': outputDir,
       // Only show platforms for Flutter templates
       if (template.isFlutterApp) 'Platforms': platforms.join(', '),
@@ -612,14 +650,11 @@ HYBRID_DYNAMIC_PREFIXES=${hybridDynamicPrefixes.join(',')}
         'Artifact Cleanup': setupArtifactCleanup
             ? 'keep $artifactKeepRecent / delete >${artifactDeleteOlderDays}d'
             : 'No',
-      if (setupCloudRun)
-        'Cloud Run Revisions': 'keep $cloudRunKeepRevisions',
-      if (template.isJasprApp)
-        'Render Mode': jasprRenderMode.displayName,
+      if (setupCloudRun) 'Cloud Run Revisions': 'keep $cloudRunKeepRevisions',
+      if (template.isJasprApp) 'Render Mode': jasprRenderMode.displayName,
       if (hasJasprServer)
         'Jaspr Cloud Run Service': effectiveJasprServerServiceName,
-      if (hasEmbeddedFlutter)
-        'Embedded Flutter Mount': embeddedFlutterMount,
+      if (hasEmbeddedFlutter) 'Embedded Flutter Mount': embeddedFlutterMount,
       if (jasprRenderMode == JasprRenderMode.hybrid)
         'Hybrid Dynamic Paths': hybridDynamicPrefixes.join(', '),
     };

@@ -107,9 +107,17 @@ flutter_launcher_icons:
 scripts:
   # Oracular Commands
   deploy: oracular deploy all
-  deploy_firebase: oracular deploy firebase
-  deploy_server: oracular deploy server
-  check_tools: oracular check all
+  deploy_firebase: oracular deploy firebase-setup-full
+  deploy_server: oracular deploy arcane-server
+  check_tools: oracular check tools
+  next: oracular next
+  verify: oracular verify
+
+  # Development
+  dev: flutter run
+  test: flutter test
+  analyze: flutter analyze
+  clean: flutter clean
 
   # Firebase Deployment (Manual)
   firebase_deploy: flutter build web --release && cd .. && firebase deploy --project FIREBASE_PROJECT_ID
@@ -119,6 +127,8 @@ scripts:
   firebase_hosting_beta: flutter build web --release && cd .. && firebase deploy --only hosting:beta --project FIREBASE_PROJECT_ID
 
   # Build & Deploy Web
+  build_apk: flutter build apk --release
+  build_ios: flutter build ios --release
   build_web: flutter build web --release
   deploy_web: flutter build web --release && cd .. && firebase deploy --only hosting:release --project FIREBASE_PROJECT_ID
 

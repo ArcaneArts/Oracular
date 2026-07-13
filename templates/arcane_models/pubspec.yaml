@@ -16,10 +16,18 @@ dev_dependencies:
   build_runner: ^2.14.0
   fire_crud_gen: ^1.1.5
   lints: ^6.1.0
+  test: ^1.31.0
 
 scripts:
   # Oracular Commands
-  check_tools: oracular check all
+  check_tools: oracular check tools
+  next: oracular next
+  verify: oracular verify
+
+  # Development
+  test: dart test
+  analyze: dart analyze
+  format: dart format .
 
   # Code Generation
   build_runner: dart run build_runner build --delete-conflicting-outputs

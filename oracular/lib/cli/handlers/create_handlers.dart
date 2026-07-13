@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../../models/setup_config.dart';
 import '../../models/template_info.dart';
+import '../../models/tool_status.dart';
 import '../../services/config_generator.dart';
 import '../../services/dependency_manager.dart';
 import '../../services/docs_generator.dart';
@@ -13,6 +14,7 @@ import '../../services/server_setup.dart';
 import '../../services/template_copier.dart';
 import '../../services/tool_checker.dart';
 import '../../utils/firebase_setup_prompts.dart';
+import '../../utils/global_config.dart';
 import '../../utils/process_runner.dart';
 import '../../utils/string_utils.dart';
 import '../../utils/setup_guidance.dart';
@@ -29,37 +31,74 @@ Future<void> handleCreate(
     subtitle: 'Arcane Template System',
   );
 
-  // Check required tools first
-  final skipCheck = flags['skip-check'] == true;
-  if (!skipCheck) {
-    final checker = ToolChecker();
-    final result = await checker.checkRequired();
-    if (!result.allRequiredInstalled) {
-      error(
-        'Required tools are missing. Run "oracular check tools" for details.',
-      );
-      exit(1);
-    }
-  }
-
-  final yes = flags['yes'] == true;
+  final bool yes = _flag(flags, 'yes', aliases: const <String>['y']);
+  final bool skipCheck = _flag(
+    flags,
+    'skipcheck',
+    aliases: const <String>['skip-check', 'x'],
+  );
 
   // Gather configuration
   final config = await _gatherConfig(
-    appName: args['app-name'] as String?,
-    org: args['org'] as String?,
-    template: args['template'] as String?,
-    className: args['class-name'] as String?,
-    outputDir: args['output-dir'] as String?,
-    withModels: flags['with-models'] == true,
-    withServer: flags['with-server'] == true,
-    withFirebase: flags['with-firebase'] == true,
-    firebaseProjectId: args['firebase-project-id'] as String?,
-    withCloudRun: flags['with-cloud-run'] == true,
-    serviceAccountKey: args['service-account-key'] as String?,
-    renderMode: args['render-mode'] as String?,
+    appName: _arg(
+      args,
+      'appname',
+      aliases: const <String>['app-name', 'name', 'n'],
+    ),
+    org: _arg(args, 'org', aliases: const <String>['o']),
+    template: _arg(args, 'template', aliases: const <String>['t']),
+    className: _arg(
+      args,
+      'classname',
+      aliases: const <String>['class-name', 'c'],
+    ),
+    outputDir: _arg(
+      args,
+      'outputdir',
+      aliases: const <String>['output-dir', 'd'],
+    ),
+    withModels: _flag(
+      flags,
+      'withmodels',
+      aliases: const <String>['with-models', 'm'],
+    ),
+    withServer: _flag(
+      flags,
+      'withserver',
+      aliases: const <String>['with-server', 's'],
+    ),
+    withFirebase: _flag(
+      flags,
+      'withfirebase',
+      aliases: const <String>['with-firebase', 'f'],
+    ),
+    firebaseProjectId: _arg(
+      args,
+      'firebaseprojectid',
+      aliases: const <String>['firebase-project-id', 'p'],
+    ),
+    withCloudRun: _flag(
+      flags,
+      'withcloudrun',
+      aliases: const <String>['with-cloud-run', 'r'],
+    ),
+    serviceAccountKey: _arg(
+      args,
+      'serviceaccountkey',
+      aliases: const <String>['service-account-key', 'k'],
+    ),
+    renderMode: _arg(
+      args,
+      'rendermode',
+      aliases: const <String>['render-mode', 'R'],
+    ),
     interactive: !yes,
   );
+
+  if (!skipCheck) {
+    await _checkRequiredTools(config);
+    await _checkContextualTools(config, interactive: !yes);
+  }
 
   // Show config and confirm
   if (!yes) {
@@ -76,10 +115,45 @@ Future<void> handleCreate(
   await _executeCreation(config, nonInteractive: yes);
 }
 
-/// List available templates
-Future<void> handleListTemplates(
+/// Friendly `oracular new my_app` happy path.
+Future<void> handleNew(
   Map<String, dynamic> args,
   Map<String, dynamic> flags,
+) async {
+  await handleCreate(args, <String, dynamic>{...flags, 'yes': true, 'y': true});
+}
+
+/// Alias for users who type `oracular create app`.
+Future<void> handleCreateAppAlias(
+  Map<String, dynamic> args,
+  Map<String, dynamic> flags,
+) async {
+  final String? requestedTemplate = _arg(
+    args,
+    'template',
+    aliases: const <String>['t'],
+  );
+  if (requestedTemplate != null) {
+    final TemplateType? parsed = TemplateTypeExtension.parse(requestedTemplate);
+    if (parsed == null || !parsed.isFlutterApp) {
+      error('`oracular create app` only supports Flutter app templates.');
+      info(
+        'Use `oracular create --template $requestedTemplate` for non-Flutter templates.',
+      );
+      exit(1);
+    }
+  }
+
+  await handleCreate(<String, dynamic>{
+    ...args,
+    if (requestedTemplate == null) 'template': 'arcane_app',
+  }, flags);
+}
+
+/// List available templates
+Future<void> handleListTemplates(
+  Map<String, dynamic> _,
+  Map<String, dynamic> _,
 ) async {
   print('\nAvailable Templates:');
   print('\u2500' * 70);
@@ -88,11 +162,11 @@ Future<void> handleListTemplates(
     print('');
     print('  ${type.number}. ${type.displayName}');
     print('     ${type.description}');
+    print('     Category: ${type.categoryLabel}');
     if (type.supportedPlatforms.isNotEmpty) {
       print('     Platforms: ${type.supportedPlatforms.join(", ")}');
-    } else {
-      print('     Type: Dart CLI (no Flutter platforms)');
     }
+    print('     Recommended for: ${type.recommendedUse}');
   }
 
   print('');
@@ -116,6 +190,22 @@ Future<SetupConfig> _gatherConfig({
   String? renderMode,
   bool interactive = true,
 }) async {
+  final Map<String, String> globalDefaults = await OracularGlobalConfig.load();
+  final String defaultOrg = OracularGlobalConfig.defaultOrg(globalDefaults);
+  final String defaultOutputDir = OracularGlobalConfig.defaultOutputDir(
+    globalDefaults,
+  );
+  final TemplateType defaultTemplate = OracularGlobalConfig.defaultTemplate(
+    globalDefaults,
+  );
+  final String? defaultFirebaseProjectId =
+      OracularGlobalConfig.defaultFirebaseProjectId(globalDefaults);
+  final String? defaultServiceAccountKey =
+      OracularGlobalConfig.defaultServiceAccountKey(globalDefaults);
+  final String? defaultRenderMode = OracularGlobalConfig.defaultRenderMode(
+    globalDefaults,
+  );
+
   // App name
   String finalAppName;
   if (appName != null) {
@@ -145,11 +235,10 @@ Future<SetupConfig> _gatherConfig({
   } else if (interactive) {
     finalOrg = await UserPrompt.askString(
       'Enter organization domain (e.g., com.example)',
-      defaultValue: 'com.example',
+      defaultValue: defaultOrg,
     );
   } else {
-    error('--org is required');
-    exit(1);
+    finalOrg = defaultOrg;
   }
 
   // Template
@@ -168,19 +257,18 @@ Future<SetupConfig> _gatherConfig({
       TemplateType.values
           .map((t) => '${t.displayName}\n      ${t.description}')
           .toList(),
-      defaultIndex: 0,
+      defaultIndex: TemplateType.values.indexOf(defaultTemplate),
     );
     finalTemplate = TemplateType.values[templateIndex];
   } else {
-    error('--template is required');
-    exit(1);
+    finalTemplate = defaultTemplate;
   }
 
   // Class name (auto-generate from app name if not provided)
   final finalClassName = className ?? snakeToPascal(finalAppName);
 
   // Output directory
-  final finalOutputDir = outputDir ?? Directory.current.path;
+  final finalOutputDir = outputDir ?? defaultOutputDir;
 
   // Platforms
   List<String> finalPlatforms = finalTemplate.supportedPlatforms;
@@ -259,9 +347,11 @@ Future<SetupConfig> _gatherConfig({
   }
 
   // Firebase
-  bool finalWithFirebase = withFirebase ||
+  bool finalWithFirebase =
+      withFirebase ||
       (firebaseProjectId != null && firebaseProjectId.trim().isNotEmpty);
-  String? finalFirebaseProjectId = firebaseProjectId?.trim();
+  String? finalFirebaseProjectId =
+      firebaseProjectId?.trim() ?? defaultFirebaseProjectId;
 
   // Discover an existing service-account.json *before* asking for project
   // id so we can default to the SA's project_id and offer to reuse the SA
@@ -269,9 +359,9 @@ Future<SetupConfig> _gatherConfig({
   // already keeps a key at their workspace root.
   final DiscoveredServiceAccount? preDiscovered =
       FirebaseSetupPrompts.findExistingServiceAccountKey(
-    outputDir: finalOutputDir,
-    serverPackageName: finalWithServer ? '${finalAppName}_server' : null,
-  );
+        outputDir: finalOutputDir,
+        serverPackageName: finalWithServer ? '${finalAppName}_server' : null,
+      );
 
   if (interactive && !finalWithFirebase) {
     finalWithFirebase = await UserPrompt.askYesNo(
@@ -316,36 +406,43 @@ Future<SetupConfig> _gatherConfig({
   // deploys. When no server is being created, the key lands in
   // `<outputDir>/config/keys/` (resolved automatically by FirebaseService).
   String? finalServiceAccountKey =
-      FirebaseSetupPrompts.normalizeConfiguredKeyPath(serviceAccountKey);
+      FirebaseSetupPrompts.normalizeConfiguredKeyPath(
+        serviceAccountKey ?? defaultServiceAccountKey,
+      );
   if (finalWithFirebase &&
       interactive &&
       serviceAccountKey == null &&
       finalFirebaseProjectId != null) {
     finalServiceAccountKey =
         await FirebaseSetupPrompts.askServiceAccountKeyPath(
-      outputDir: finalOutputDir,
-      serverPackageName: finalWithServer ? '${finalAppName}_server' : null,
-    );
+          outputDir: finalOutputDir,
+          serverPackageName: finalWithServer ? '${finalAppName}_server' : null,
+        );
   }
 
   // Jaspr render mode. Only meaningful for Jaspr templates; for everything
   // else the SetupConfig constructor still stores a value (csr) for
   // serialization simplicity but it is ignored at build/deploy time.
   JasprRenderMode? finalRenderMode;
-  if (renderMode != null && renderMode.trim().isNotEmpty) {
-    final JasprRenderMode? parsed = JasprRenderModeExtension.parse(renderMode);
+  final String? effectiveRenderMode = renderMode ?? defaultRenderMode;
+  if (effectiveRenderMode != null && effectiveRenderMode.trim().isNotEmpty) {
+    final JasprRenderMode? parsed = JasprRenderModeExtension.parse(
+      effectiveRenderMode,
+    );
     if (parsed == null) {
       error(
-        'Invalid --render-mode "$renderMode". '
+        'Invalid --render-mode "$effectiveRenderMode". '
         'Valid values: csr, ssg, ssr, hybrid, embed.',
       );
       exit(1);
     }
     if (!finalTemplate.isJasprApp) {
-      warn(
-        '--render-mode is only meaningful for Jaspr templates; '
-        'ignoring "$renderMode" for ${finalTemplate.displayName}.',
-      );
+      if (renderMode != null && renderMode.trim().isNotEmpty) {
+        warn(
+          '--render-mode is only meaningful for Jaspr templates; '
+          'ignoring "$effectiveRenderMode" for ${finalTemplate.displayName}.',
+        );
+      }
     } else if (parsed == JasprRenderMode.embed &&
         finalTemplate != TemplateType.arcaneJasprFlutterEmbed) {
       error(
@@ -383,7 +480,9 @@ Future<SetupConfig> _gatherConfig({
     final int idx = await UserPrompt.showMenu(
       'Select Jaspr render mode',
       choices
-          .map((JasprRenderMode m) => '${m.displayName}\n      ${m.description}')
+          .map(
+            (JasprRenderMode m) => '${m.displayName}\n      ${m.description}',
+          )
           .toList(),
       defaultIndex: defaultIndex < 0 ? 0 : defaultIndex,
     );
@@ -405,6 +504,129 @@ Future<SetupConfig> _gatherConfig({
     platforms: finalPlatforms,
     jasprRenderMode: finalRenderMode,
   );
+}
+
+Future<void> _checkRequiredTools(SetupConfig config) async {
+  final ToolChecker checker = ToolChecker();
+  final List<ToolStatus> required = <ToolStatus>[
+    await checker.checkDart(),
+    if (_requiresFlutter(config)) await checker.checkFlutter(),
+  ];
+  final ToolCheckResult result = ToolCheckResult(tools: required);
+  if (result.allRequiredInstalled) {
+    return;
+  }
+
+  error('Required tools are missing for this project.');
+  result.printSummary();
+  print('');
+  UserPrompt.printList(<String>[
+    'Run `oracular check tools` for a full environment report.',
+    if (!_requiresFlutter(config))
+      'This template does not require Flutter unless you add models, server, or an embedded Flutter app.',
+  ]);
+  exit(1);
+}
+
+bool _requiresFlutter(SetupConfig config) {
+  return config.template.isFlutterApp ||
+      config.template.isJasprFlutterEmbed ||
+      config.createModels ||
+      config.createServer;
+}
+
+Future<void> _checkContextualTools(
+  SetupConfig config, {
+  required bool interactive,
+}) async {
+  final ToolChecker checker = ToolChecker();
+  final List<String> missing = <String>[];
+
+  Future<void> collect(
+    String label,
+    Future<ToolCheckResult> Function() check,
+  ) async {
+    final ToolCheckResult result = await check();
+    if (result.missing.isEmpty) {
+      return;
+    }
+
+    warn('$label tools are not fully installed.');
+    missing.addAll(
+      result.missing.map(
+        (ToolStatus tool) =>
+            '${tool.name}: ${tool.installInstructions ?? 'install manually'}',
+      ),
+    );
+  }
+
+  if (config.useFirebase) {
+    await collect('Firebase', checker.checkFirebaseTools);
+  }
+
+  if (config.createServer || config.setupCloudRun || config.hasJasprServer) {
+    await collect('Cloud Run/server', checker.checkServerTools);
+  }
+
+  if (config.template.isFlutterApp &&
+      (config.platforms.contains('ios') ||
+          config.platforms.contains('macos'))) {
+    final ToolStatus pods = await checker.checkCocoaPods();
+    if (!pods.isInstalled) {
+      warn('Apple platform tooling is incomplete.');
+      missing.add(
+        '${pods.name}: ${pods.installInstructions ?? 'install manually'}',
+      );
+    }
+  }
+
+  if (missing.isEmpty) {
+    return;
+  }
+
+  print('');
+  UserPrompt.printList(<String>[
+    ...missing,
+    interactive
+        ? 'You can still scaffold now and install these before running deploy/build commands.'
+        : 'Continuing because scaffolding can finish without these optional tools.',
+  ]);
+}
+
+String? _arg(
+  Map<String, dynamic> args,
+  String key, {
+  List<String> aliases = const <String>[],
+}) {
+  for (final String candidate in _keyVariants(key, aliases)) {
+    final Object? value = args[candidate];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+bool _flag(
+  Map<String, dynamic> flags,
+  String key, {
+  List<String> aliases = const <String>[],
+}) {
+  for (final String candidate in _keyVariants(key, aliases)) {
+    if (flags[candidate] == true) {
+      return true;
+    }
+  }
+  return false;
+}
+
+List<String> _keyVariants(String key, List<String> aliases) {
+  final Set<String> keys = <String>{key, ...aliases};
+  for (final String alias in <String>[key, ...aliases]) {
+    keys.add(alias.replaceAll('-', ''));
+    keys.add(alias.replaceAll('-', '_'));
+  }
+  return keys.toList(growable: false);
 }
 
 /// Execute the project creation
@@ -443,10 +665,22 @@ Future<void> _executeCreation(
     await depManager.linkModelsToProjects();
   }
 
-  await depManager.getAllDependencies();
+  final bool depsOk = await depManager.getAllDependencies();
+  if (!depsOk) {
+    error(
+      'Failed to install dependencies. Run `oracular verify` after fixing the errors above.',
+    );
+    exit(1);
+  }
 
   // 5. Run build_runner where needed
-  await depManager.runAllBuildRunners();
+  final bool codegenOk = await depManager.runAllBuildRunners();
+  if (!codegenOk) {
+    error(
+      'Code generation failed. Run `oracular verify` after fixing the errors above.',
+    );
+    exit(1);
+  }
 
   // 6. Generate deployment configuration
   if (config.useFirebase) {
@@ -482,6 +716,8 @@ Future<void> _executeCreation(
     'Generated guide: ${guide.path}',
     'Docs folder: ${docs.path}/',
     'Open the guide: oracular open guide',
+    'Show next steps: oracular next',
+    'Verify the project: oracular verify',
     'Open the docs:  oracular open docs',
   ]);
   print('');

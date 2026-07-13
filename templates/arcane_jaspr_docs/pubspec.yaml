@@ -47,6 +47,10 @@ scripts:
   # Kill running servers
   killall: pkill -f "jaspr serve" || true
 
+  # Code Generation
+  build_runner: dart run build_runner build --delete-conflicting-outputs
+  watch: dart run build_runner watch --delete-conflicting-outputs
+
   # Firebase Deployment (run from parent directory)
   firebase_deploy: jaspr build && cd .. && firebase deploy --only hosting --project FIREBASE_PROJECT_ID
 
